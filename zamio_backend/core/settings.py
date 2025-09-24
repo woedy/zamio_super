@@ -37,8 +37,16 @@ DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
 # Hosts / CSRF
 # Default to safer localhost-only in absence of env override.
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
-CSRF_TRUSTED_ORIGINS = os.environ.get('CSRF_TRUSTED_ORIGINS', '').split(',') if os.environ.get('CSRF_TRUSTED_ORIGINS') else []
+def _split_env_list(value: str) -> list[str]:
+    """Return a sanitized list from a comma separated env string."""
+
+    if not value:
+        return []
+    return [item.strip() for item in value.split(',') if item.strip()]
+
+
+ALLOWED_HOSTS = _split_env_list(os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1'))
+CSRF_TRUSTED_ORIGINS = _split_env_list(os.environ.get('CSRF_TRUSTED_ORIGINS', ''))
 
 # Email configuration
 # Default to file-based backend for local development; override via env for SMTP.
@@ -281,12 +289,62 @@ CHANNEL_LAYERS = {
 
 # CORS configuration: allow all in DEBUG; otherwise configure via env
 CORS_ALLOW_ALL_ORIGINS = DEBUG
-CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', '').split(',') if os.environ.get('CORS_ALLOWED_ORIGINS') else []
+CORS_ALLOWED_ORIGINS = _split_env_list(os.environ.get('CORS_ALLOWED_ORIGINS', ''))
 
 CORS_ALLOW_CREDENTIALS = True
 
 
+def _env_flag(name: str, default: bool) -> bool:
+    return os.environ.get(name, str(default)).lower() in {"1", "true", "yes"}
+
+
+# Secure headers / cookie defaults
+SECURE_SSL_REDIRECT = _env_flag('SECURE_SSL_REDIRECT', not DEBUG)
+
+if SECURE_SSL_REDIRECT or _env_flag('SECURE_HSTS_ENABLED', not DEBUG):
+    SECURE_HSTS_SECONDS = int(os.environ.get('SECURE_HSTS_SECONDS', '31536000'))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = _env_flag('SECURE_HSTS_INCLUDE_SUBDOMAINS', True)
+    SECURE_HSTS_PRELOAD = _env_flag('SECURE_HSTS_PRELOAD', True)
+else:
+    SECURE_HSTS_SECONDS = 0
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+    SECURE_HSTS_PRELOAD = False
+
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+SECURE_REFERRER_POLICY = os.environ.get('SECURE_REFERRER_POLICY', 'strict-origin-when-cross-origin')
+SECURE_CONTENT_TYPE_NOSNIFF = True
+
+SESSION_COOKIE_SECURE = _env_flag('SESSION_COOKIE_SECURE', not DEBUG)
+CSRF_COOKIE_SECURE = _env_flag('CSRF_COOKIE_SECURE', not DEBUG)
+SESSION_COOKIE_HTTPONLY = True
+CSRF_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = os.environ.get('SESSION_COOKIE_SAMESITE', 'Lax')
+CSRF_COOKIE_SAMESITE = os.environ.get('CSRF_COOKIE_SAMESITE', 'Lax')
+
+_csp_directives = {
+    'default-src': os.environ.get('CSP_DEFAULT_SRC', "'self'"),
+    'script-src': os.environ.get('CSP_SCRIPT_SRC', "'self'"),
+    'style-src': os.environ.get('CSP_STYLE_SRC', "'self' 'unsafe-inline'" if DEBUG else "'self'"),
+    'img-src': os.environ.get('CSP_IMG_SRC', "'self' data:"),
+    'font-src': os.environ.get('CSP_FONT_SRC', "'self' data:"),
+    'connect-src': os.environ.get('CSP_CONNECT_SRC', "'self'"),
+    'frame-ancestors': os.environ.get('CSP_FRAME_ANCESTORS', "'none'"),
+}
+
+CONTENT_SECURITY_POLICY = "; ".join(
+    f"{directive} {value}"
+    for directive, value in _csp_directives.items()
+    if value
+)
+
+PERMISSIONS_POLICY = os.environ.get(
+    'PERMISSIONS_POLICY',
+    'camera=(), microphone=(), geolocation=()'
+)
+
+CROSS_ORIGIN_OPENER_POLICY = os.environ.get('CROSS_ORIGIN_OPENER_POLICY', 'same-origin')
+CROSS_ORIGIN_EMBEDDER_POLICY = os.environ.get('CROSS_ORIGIN_EMBEDDER_POLICY', 'require-corp')
+CROSS_ORIGIN_RESOURCE_POLICY = os.environ.get('CROSS_ORIGIN_RESOURCE_POLICY', 'same-origin')
 
 
 # JWT Configuration

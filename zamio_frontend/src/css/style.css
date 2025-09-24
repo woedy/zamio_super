@@ -36,35 +36,6 @@
   body.dark .bg-whiten, body.dark .bg-whiter { background-color: #0b1220 !important; } /* dark surface */
   body.dark .text-black { color: #ffffff !important; }
   body.dark .border-stroke { border-color: #2E3A47 !important; } /* strokedark */
-  /* Light-mode fixes: improve readability of dark-oriented classes without touching dark mode */
-  body:not(.dark) .text-white { color: #0f172a !important; }
-  body:not(.dark) .text-white\/90 { color: rgba(15, 23, 42, 0.9) !important; }
-  body:not(.dark) .text-white\/80 { color: rgba(15, 23, 42, 0.8) !important; }
-  body:not(.dark) .text-white\/70 { color: rgba(15, 23, 42, 0.7) !important; }
-  body:not(.dark) .text-white\/60 { color: rgba(15, 23, 42, 0.6) !important; }
-  body:not(.dark) .text-white\/50 { color: rgba(15, 23, 42, 0.5) !important; }
-  body:not(.dark) .text-white\/40 { color: rgba(15, 23, 42, 0.4) !important; }
-  /* Custom gray token used as text color in dark UIs */
-  body:not(.dark) .text-gray { color: #64748b !important; }
-
-  /* Panels that rely on translucent white in dark mode → subtle gray in light mode */
-  body:not(.dark) .bg-white\/5  { background-color: rgba(0, 0, 0, 0.025) !important; }
-  body:not(.dark) .bg-white\/10 { background-color: rgba(0, 0, 0, 0.05) !important; }
-  body:not(.dark) .bg-white\/20 { background-color: rgba(0, 0, 0, 0.08) !important; }
-  /* Solid dark-panels swapped to light surfaces when not in dark mode */
-  body:not(.dark) .bg-boxdark, body:not(.dark) .bg-boxdark-2 { background-color: #ffffff !important; }
-  body:not(.dark) .bg-graydark { background-color: #F8FAFC !important; }
-
-  /* Borders that were white and disappear on white backgrounds */
-  body:not(.dark) .border-white\/10 { border-color: #E2E8F0 !important; }
-  body:not(.dark) .border-white\/20 { border-color: #E2E8F0 !important; }
-  body:not(.dark) .border-white\/30 { border-color: #E2E8F0 !important; }
-
-  /* Placeholders designed for dark inputs */
-  body:not(.dark) .placeholder-white\/40::placeholder { color: #94a3b8 !important; }
-  body:not(.dark) .placeholder-white\/50::placeholder { color: #94a3b8 !important; }
-  body:not(.dark) .placeholder-white\/60::placeholder { color: #64748b !important; }
-
   /* Chrome, Safari and Opera */
   .no-scrollbar::-webkit-scrollbar {
     display: none;
@@ -265,4 +236,55 @@ span.flatpickr-weekday,
 
 [x-cloak] {
   display: none !important;
+}
+
+/* Light-mode readability overrides within the app shell */
+html:not(.dark) .app-shell {
+  /* Ensure a true light background & dark text base */
+  background-color: #f3f7fd; /* soft app canvas */
+  color: #0f172a; /* slate-900 */
+}
+
+/* Keep gradients for cards; do not override .bg-gradient-to-br globally */
+
+/* Make text-white readable on light backgrounds */
+html:not(.dark) .app-shell .text-white {
+  color: #0f172a !important; /* slate-900 */
+}
+
+/* Glass panels and subtle borders should be solid/light in light mode */
+html:not(.dark) .app-shell .bg-white\/10,
+html:not(.dark) .app-shell .bg-white\/5 {
+  background-color: #e9eef5 !important; /* card/section surface */
+}
+/* Page sub-headers should be transparent in light mode */
+html:not(.dark) .app-shell header.bg-black\/20 {
+  background-color: transparent !important;
+  border-color: transparent !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+html:not(.dark) .app-shell .border-white\/10,
+html:not(.dark) .app-shell .border-white\/20 {
+  border-color: #e5e7eb !important; /* gray-200 */
+}
+
+/* Inputs/buttons using translucent whites become proper light UI */
+html:not(.dark) .app-shell .hover\:bg-white\/10:hover,
+html:not(.dark) .app-shell .hover\:bg-white\/20:hover {
+  background-color: #dde6f1 !important; /* subtle hover */
+}
+
+/* Muted text colors for light mode */
+html:not(.dark) .app-shell .text-gray-300 {
+  color: #475569 !important; /* slate-600 */
+}
+html:not(.dark) .app-shell .text-gray-400 {
+  color: #64748b !important; /* slate-500 */
+}
+
+/* Keep number badges readable when they relied on white text */
+html:not(.dark) .app-shell .text-white.bg-white,
+html:not(.dark) .app-shell .text-white.bg-gray-50 {
+  color: #111827 !important;
 }

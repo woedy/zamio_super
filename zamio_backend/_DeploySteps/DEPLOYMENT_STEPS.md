@@ -105,3 +105,17 @@ docker-compose -f docker-compose.local.yml down
 ```
 
 ---
+
+## ☁️ **COOLIFY PRODUCTION DEPLOYMENT (SUMMARY)**
+
+Full step-by-step instructions now live in `deploy/coolify/README.md` at the repository root. The highlights:
+
+1. Use the dedicated `Dockerfile.coolify` in each service directory to build production images (Gunicorn for Django, Nginx for all Vite frontends).
+2. Provide environment variables from `zamio_backend/env.coolify.example` (set `SERVICE_ROLE=web`, `worker`, or `beat` as appropriate).
+3. Attach the backend, Celery worker, Celery beat, and all React apps to the same Coolify private network along with managed PostgreSQL and Redis instances.
+4. Mount persistent storage for `/app/static_cdn` and `/app/media`, or configure S3 before enabling uploads.
+5. Use the `/healthz` endpoint exposed by each frontend (and your API health endpoint) for Coolify health checks.
+
+Follow the root guide for detailed environment tables, domain routing, and the optional `docker-compose.coolify.template.yml` reference.
+
+---

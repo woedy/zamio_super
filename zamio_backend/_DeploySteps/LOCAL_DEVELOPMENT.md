@@ -16,6 +16,11 @@
 # Start services
 docker-compose -f docker-compose.local.yml up -d
 
+
+
+python -c "from pathlib import Path; p=Path('entrypoint.sh'); 
+p.write_bytes(p.read_text().replace('\r\n','\n').encode())"
+
 docker-compose -f docker-compose.local.yml exec zamio_app python manage.py migrate
 
 # Access app
@@ -119,6 +124,7 @@ docker-compose -f docker-compose.local.yml logs db
 ```bash
 # Check Django logs
 docker-compose -f docker-compose.local.yml logs zamio_app
+
 
 # Run Django commands manually
 docker-compose -f docker-compose.local.yml exec zamio_app python manage.py check

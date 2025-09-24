@@ -362,15 +362,13 @@ class UploadProgress {
   final String? error;
   final DateTime timestamp;
 
-  const UploadProgress({
+  UploadProgress({
     required this.captureId,
     required this.status,
     required this.progress,
     this.error,
     DateTime? timestamp,
-  }) : timestamp = timestamp ?? const Duration().inMicroseconds != 0 
-                    ? DateTime.now() 
-                    : DateTime.now();
+  }) : timestamp = timestamp ?? DateTime.now();
 
   UploadProgress copyWith({
     String? captureId,

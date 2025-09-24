@@ -1,0 +1,95 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: zamio
+      POSTGRES_USER: zamio
+      POSTGRES_PASSWORD: change-me
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - zamio
+
+  redis:
+    image: redis:7-alpine
+    networks:
+      - zamio
+
+  backend:
+    build:
+      context: ../zamio_backend
+      dockerfile: Dockerfile.coolify
+    environment:
+      SERVICE_ROLE: web
+      SECRET_KEY: changeme
+      DATABASE_URL: postgresql://zamio:change-me@postgres:5432/zamio
+      REDIS_URL: redis://redis:6379/0
+      ALLOWED_HOSTS: api.zamio.test
+      CSRF_TRUSTED_ORIGINS: https://app.zamio.test
+      BASE_URL: https://api.zamio.test
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      - "8000:8000"
+    networks:
+      - zamio
+    volumes:
+      - backend_static:/app/static_cdn
+      - backend_media:/app/media
+
+  celery_worker:
+    build:
+      context: ../zamio_backend
+      dockerfile: Dockerfile.coolify
+    environment:
+      SERVICE_ROLE: worker
+      SECRET_KEY: changeme
+      DATABASE_URL: postgresql://zamio:change-me@postgres:5432/zamio
+      REDIS_URL: redis://redis:6379/0
+      ALLOWED_HOSTS: api.zamio.test
+      BASE_URL: https://api.zamio.test
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - zamio
+
+  celery_beat:
+    build:
+      context: ../zamio_backend
+      dockerfile: Dockerfile.coolify
+    environment:
+      SERVICE_ROLE: beat
+      SECRET_KEY: changeme
+      DATABASE_URL: postgresql://zamio:change-me@postgres:5432/zamio
+      REDIS_URL: redis://redis:6379/0
+      ALLOWED_HOSTS: api.zamio.test
+      BASE_URL: https://api.zamio.test
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - zamio
+
+  artist_frontend:
+    build:
+      context: ../zamio_frontend
+      dockerfile: Dockerfile.coolify
+    environment:
+      VITE_API_URL: https://api.zamio.test
+    ports:
+      - "8080:8080"
+    networks:
+      - zamio
+
+networks:
+  zamio:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  backend_static:
+  backend_media:

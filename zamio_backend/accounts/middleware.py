@@ -94,6 +94,7 @@ class AuditLoggingMiddleware(MiddlewareMixin):
             logger.error(f"Audit logging failed: {str(e)}")
         
         return response
+
     
     def get_client_ip(self, request):
         """Extract client IP address from request"""
@@ -183,16 +184,37 @@ class RateLimitMiddleware(MiddlewareMixin):
 
 class SecurityHeadersMiddleware(MiddlewareMixin):
     """Add security headers to responses"""
-    
+
     def process_response(self, request, response):
-        # Add security headers
-        response['X-Content-Type-Options'] = 'nosniff'
-        response['X-Frame-Options'] = 'DENY'
-        response['X-XSS-Protection'] = '1; mode=block'
-        response['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-        
-        # Add HSTS header for HTTPS
-        if request.is_secure():
-            response['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
-        
+        # Add security headers with safe defaults while respecting any pre-set values.
+        response.setdefault('X-Content-Type-Options', 'nosniff')
+        response.setdefault('X-Frame-Options', 'DENY')
+
+        header_map = response.headers if hasattr(response, 'headers') else response
+        header_map.pop('X-XSS-Protection', None)  # Deprecated header; rely on CSP instead.
+
+        response.setdefault('Referrer-Policy', settings.SECURE_REFERRER_POLICY)
+
+        if getattr(settings, 'CONTENT_SECURITY_POLICY', ''):
+            response.setdefault('Content-Security-Policy', settings.CONTENT_SECURITY_POLICY)
+
+        if getattr(settings, 'PERMISSIONS_POLICY', ''):
+            response.setdefault('Permissions-Policy', settings.PERMISSIONS_POLICY)
+
+        response.setdefault('Cross-Origin-Opener-Policy', settings.CROSS_ORIGIN_OPENER_POLICY)
+        response.setdefault('Cross-Origin-Embedder-Policy', settings.CROSS_ORIGIN_EMBEDDER_POLICY)
+        response.setdefault('Cross-Origin-Resource-Policy', settings.CROSS_ORIGIN_RESOURCE_POLICY)
+
+        # Add HSTS header if configured/appropriate.
+        if (
+            getattr(settings, 'SECURE_HSTS_SECONDS', 0)
+            and (request.is_secure() or getattr(settings, 'SECURE_SSL_REDIRECT', False))
+        ):
+            hsts_value = f"max-age={settings.SECURE_HSTS_SECONDS}"
+            if getattr(settings, 'SECURE_HSTS_INCLUDE_SUBDOMAINS', False):
+                hsts_value += '; includeSubDomains'
+            if getattr(settings, 'SECURE_HSTS_PRELOAD', False):
+                hsts_value += '; preload'
+            response.setdefault('Strict-Transport-Security', hsts_value)
+
         return response
