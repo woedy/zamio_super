@@ -21,11 +21,12 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Pull & restart containers on server
+      - name: Pull latest & restart containers on server
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} '
-            cd /srv/myapp
+            set -e
+            cd /ABS/PATH/TO/zamio_backend
             git fetch --all
             git reset --hard origin/main
-            docker compose up -d --build --remove-orphans
+            docker compose -f docker-compose.local.yml up -d --build --remove-orphans
           '
