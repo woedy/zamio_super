@@ -25,7 +25,7 @@ jobs:
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} '
             set -e
-            cd /ABS/PATH/TO/zamio_backend
+            cd /root/ZamioProject/zamio_backend
             git fetch --all
             git reset --hard origin/main
             docker compose -f docker-compose.local.yml up -d --build --remove-orphans
