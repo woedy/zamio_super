@@ -32,7 +32,7 @@ urlpatterns = [
     path("api/auth/token/verify/", CustomTokenVerifyView.as_view(), name="token_verify"),
     
     # Error logging and monitoring endpoints
-    path("api/errors/log/", log_frontend_error, name="log_frontend_error"),
+    path("api/errors/log", log_frontend_error, name="log_frontend_error"),
     path("api/errors/<str:trace_id>/", get_error_by_trace_id, name="get_error_by_trace_id"),
     path("api/errors/metrics/", get_error_metrics, name="get_error_metrics"),
     path("api/health/", api_health_check, name="api_health_check"),

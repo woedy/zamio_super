@@ -57,31 +57,42 @@ const KYCStep: React.FC<OnboardingStepProps> = ({ onNext, onSkip, onBack }) => {
   const [kycStatus, setKycStatus] = useState<string>('pending');
 
   useEffect(() => {
-    loadKYCStatus();
-  }, []);
+    // Only load KYC status if we don't have artistData from parent
+    // The parent component should provide the data via props or context
+    if (!artistData) {
+      loadKYCStatus();
+    }
+  }, [artistData]);
 
   const loadKYCStatus = async () => {
     try {
       const response = await api.get(`api/accounts/artist-onboarding-status/${getArtistId()}/`);
       const data = response.data.data;
-      
-      setKycStatus(data.kyc_status);
-      
-      // Update document statuses based on existing KYC documents
-      if (data.kyc_documents) {
-        setDocuments(prev => prev.map(doc => {
-          const existingDoc = data.kyc_documents[doc.type];
-          if (existingDoc) {
-            return {
-              ...doc,
-              status: existingDoc.status || 'uploaded'
-            };
-          }
-          return doc;
-        }));
+
+      if (data) {
+        setKycStatus(data.kyc_status || 'pending');
+
+        // Update document statuses based on existing KYC documents
+        if (data.kyc_documents) {
+          setDocuments(prev => prev.map(doc => {
+            const existingDoc = data.kyc_documents[doc.type];
+            if (existingDoc) {
+              return {
+                ...doc,
+                status: existingDoc.status || 'uploaded'
+              };
+            }
+            return doc;
+          }));
+        }
+      } else {
+        // Set default values to prevent crashes
+        setKycStatus('pending');
       }
     } catch (error) {
       console.error('Failed to load KYC status:', error);
+      // Set default values to prevent crashes
+      setKycStatus('pending');
     }
   };
 

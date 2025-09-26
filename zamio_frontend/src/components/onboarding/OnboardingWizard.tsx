@@ -48,6 +48,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
   const CurrentStepComponent = currentStep?.component;
 
   const goToStep = (index: number) => {
+    if (index === currentStepIndex) return; // Prevent unnecessary updates
     setCurrentStepIndex(index);
     const step = steps[index];
     if (step && onStepChange) {
@@ -156,7 +157,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
           <div className="w-full bg-gray-200 rounded-full h-2 mb-4">
             <div
               className="h-2 rounded-full transition-all duration-300"
-              style={{ 
+              style={{
                 backgroundColor: theme.colors.primary,
                 width: `${((currentStepIndex + 1) / steps.length) * 100}%`
               }}

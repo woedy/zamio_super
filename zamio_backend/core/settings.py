@@ -287,9 +287,8 @@ CHANNEL_LAYERS = {
     },
 }
 
-# CORS configuration: allow all in DEBUG; otherwise configure via env
-CORS_ALLOW_ALL_ORIGINS = DEBUG
-CORS_ALLOWED_ORIGINS = _split_env_list(os.environ.get('CORS_ALLOWED_ORIGINS', ''))
+# APPEND_SLASH setting - disable for API endpoints to prevent POST redirect issues
+APPEND_SLASH = False
 
 CORS_ALLOW_CREDENTIALS = True
 

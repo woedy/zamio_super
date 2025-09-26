@@ -14,20 +14,26 @@ const EnhancedArtistOnboarding: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [artistData, setArtistData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [initialStepId, setInitialStepId] = useState<string | undefined>(undefined);
+  const [isLoadingData, setIsLoadingData] = useState(true);
+  const [hasLoadedData, setHasLoadedData] = useState(false);
 
   useEffect(() => {
     loadArtistData();
   }, []);
 
   const loadArtistData = async () => {
+    // Prevent multiple simultaneous calls
+    if (isLoadingData || hasLoadedData) return;
+
+    setIsLoadingData(true);
     try {
       const response = await api.get(`api/accounts/artist-onboarding-status/${getArtistId()}/`);
       setArtistData(response.data.data);
+      setHasLoadedData(true);
     } catch (error) {
       console.error('Failed to load artist data:', error);
     } finally {
+      setIsLoadingData(false);
       setLoading(false);
     }
   };
@@ -84,7 +90,7 @@ const EnhancedArtistOnboarding: React.FC = () => {
   ]), [artistData]);
 
   useEffect(() => {
-    if (loading) {
+    if (isLoadingData) {
       return;
     }
 
@@ -110,14 +116,29 @@ const EnhancedArtistOnboarding: React.FC = () => {
     }
 
     if (!targetStepId) {
-      const firstIncomplete = steps.find(step => !step.isCompleted);
-      targetStepId = firstIncomplete?.id || steps[steps.length - 1].id;
+      // If artistData is not loaded yet, default to welcome step
+      if (!artistData) {
+        targetStepId = 'welcome';
+      } else {
+        // Only look for incomplete steps if we have artist data
+        const firstIncomplete = steps.find(step => !step.isCompleted);
+        if (firstIncomplete) {
+          // Never default to KYC step - always prefer profile or other steps
+          if (firstIncomplete.id === 'kyc') {
+            targetStepId = 'profile'; // Skip KYC and go to profile instead
+          } else {
+            targetStepId = firstIncomplete.id;
+          }
+        } else {
+          targetStepId = steps[0].id; // Default to first step if all are completed
+        }
+      }
     }
 
     if (targetStepId !== initialStepId) {
       setInitialStepId(targetStepId);
     }
-  }, [artistData, initialStepId, loading, location.search, steps]);
+  }, [artistData, initialStepId, isLoadingData, location.search, steps]);
 
   const handleStepComplete = async () => {
     await loadArtistData();
