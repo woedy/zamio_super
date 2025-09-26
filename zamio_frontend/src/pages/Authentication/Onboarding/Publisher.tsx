@@ -1,200 +1,227 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { BuildingOfficeIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
+import { useTheme } from '../../../contexts/ThemeContext';
+import { OnboardingStepProps } from '../../../components/onboarding/OnboardingWizard';
 import api from '../../../lib/api';
 import { getArtistId } from '../../../lib/auth';
 import ButtonLoader from '../../../common/button_loader';
-import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 
-const Publisher = () => {
+interface PublisherOption {
+  publisher_id: string;
+  company_name: string;
+}
+
+interface PublisherProps extends OnboardingStepProps {}
+
+const Publisher: React.FC<PublisherProps> = ({ onNext, onSkip, onBack }) => {
+  const { theme } = useTheme();
   const [publisherId, setPublisherId] = useState('');
-  const [publishers, setPublishers] = useState<{ publisher_id: string; company_name: string }[]>([]);
-  const [isChecked, setIsChecked] = useState(false);
-  const [inputError, setInputError] = useState('');
+  const [publishers, setPublishers] = useState<PublisherOption[]>([]);
+  const [isSelfPublished, setIsSelfPublished] = useState(false);
+  const [inputError, setInputError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const navigate = useNavigate();
-
   useEffect(() => {
-    // Fetch available publishers for selection
-    const load = async () => {
+    const loadPublishers = async () => {
       try {
-        const res = await api.get('api/accounts/list-publishers/');
-        const list = res?.data?.data?.publishers || [];
+        const response = await api.get('api/accounts/list-publishers/');
+        const list = response?.data?.data?.publishers || [];
         setPublishers(list);
-      } catch (e) {
-        // Non-blocking; keep manual input fallback if needed
+      } catch (error) {
+        // Non blocking - we still allow manual selection/self publish
+        console.warn('Failed to load publishers list:', error);
       }
     };
-    load();
+
+    loadPublishers();
   }, []);
 
-  const handleChange = (e) => {
-    setIsChecked(e.target.checked);
-  };
+  const handleSubmit = async () => {
+    setInputError(null);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
-    // Clear any previous error
-    setInputError('');
-
-    // Frontend validations
-    if (isChecked === false) {
-      if (publisherId === '') {
-        setInputError('Publisher required.');
-        return;
-      }
+    if (!isSelfPublished && !publisherId) {
+      setInputError('Select a publisher or mark yourself as self-published.');
+      return;
     }
 
-    // Prepare FormData for file upload
-    const formData = new FormData();
-    formData.append('artist_id', getArtistId());
-    formData.append('publisher_id', publisherId);
-    formData.append('self_publish', isChecked);
-
-    const url = 'api/accounts/complete-artist-publisher/';
+    const payload = new FormData();
+    payload.append('artist_id', getArtistId());
+    payload.append('self_publish', isSelfPublished ? 'true' : 'false');
+    if (!isSelfPublished) {
+      payload.append('publisher_id', publisherId);
+    }
 
     try {
       setLoading(true);
-      const response = await api.post(url, formData, {
+      const response = await api.post('api/accounts/complete-artist-publisher/', payload, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
 
-      // Move to next onboarding step (backend returns this)
-      const nextStep = response.data?.data?.next_step;
-
-      switch (nextStep) {
-        case 'profile':
-          navigate('/onboarding/profile');
-          break;
-        case 'social-media':
-          navigate('/onboarding/social-media');
-          break;
-        case 'payment':
-          navigate('/onboarding/payment');
-          break;
-        case 'publisher':
-          navigate('/onboarding/publisher');
-          break;
-        case 'track':
-          navigate('/dashboard', { replace: true });
-          window.location.reload();
-          break;
-        case 'done':
-          navigate('/dashboard', { replace: true });
-          window.location.reload();
-          break;
-        default:
-          navigate('/dashboard', { replace: true }); // fallback
-          window.location.reload();
+      if (response.status >= 200 && response.status < 300) {
+        await onNext();
       }
     } catch (error: any) {
       const data = error?.response?.data;
       if (data?.errors) {
-        const msgs = Object.values(data.errors).flat() as string[];
-        setInputError(msgs.join('\n'));
+        const messages = Object.values(data.errors).flat() as string[];
+        setInputError(messages.join('\n'));
       } else {
-        console.error('Error updating profile:', error?.message);
-        setInputError(data?.message || 'Failed to update publisher.');
+        setInputError(data?.message || 'Failed to save publisher preference.');
       }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSkip = async (e) => {
-    e.preventDefault();
-    try {
-      await api.post('api/accounts/skip-artist-onboarding/', {
-        artist_id: getArtistId(),
-        // Keep resume point on this step so user returns here next time
-        step: 'publisher',
-      });
-    } catch (err) {
-      // non-blocking
-    } finally {
-      navigate('/dashboard', { replace: true });
+  const handleSkip = async () => {
+    if (onSkip) {
+      await onSkip();
     }
   };
 
   return (
-    <div className="h-screen bg-gradient-to-br from-[#1a2a6c] via-[#b21f1f] to-[#fdbb2d] flex items-center justify-center">
-      <div className="w-full max-w-2xl px-6">
-      
-        <h2 className="text-5xl font-bold text-white text-center mb-8">
-          ZamIO
+    <div className="max-w-2xl mx-auto">
+      <div className="text-center mb-8">
+        <div
+          className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center"
+          style={{ backgroundColor: theme.colors.primary + '20' }}
+        >
+          <BuildingOfficeIcon className="w-8 h-8" style={{ color: theme.colors.primary }} />
+        </div>
+        <h2 className="text-2xl font-bold mb-2" style={{ color: theme.colors.text }}>
+          Publishing Preferences
         </h2>
+        <p style={{ color: theme.colors.textSecondary }}>
+          Tell us if you are partnering with a publisher or handling your catalog independently.
+        </p>
+      </div>
 
-        {inputError && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-3">
-            <strong className="font-bold">Error!</strong>
-            <span className="block sm:inline"> {inputError}</span>
-          </div>
-        )}
-
-        <div className="bg-white/10 p-10 rounded-2xl backdrop-blur-md w-full border border-white/10 shadow-xl">
-          <h2 className="text-4xl font-bold text-white text-center mb-4">
-            🎧 Add Publisher
-          </h2>
-          <p className=" text-white text-center mb-8">
-            Add your publishing affiliation here
+      {inputError && (
+        <div
+          className="mb-6 p-4 rounded-lg border-l-4"
+          style={{
+            backgroundColor: theme.colors.error + '10',
+            borderLeftColor: theme.colors.error,
+          }}
+        >
+          <p className="text-sm" style={{ color: theme.colors.error }}>
+            {inputError}
           </p>
+        </div>
+      )}
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+      <div className="space-y-6">
+        <div>
+          <label className="flex items-center space-x-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={isSelfPublished}
+              onChange={(e) => {
+                setIsSelfPublished(e.target.checked);
+                if (e.target.checked) {
+                  setPublisherId('');
+                }
+              }}
+              className="h-5 w-5 rounded border"
+              style={{ borderColor: theme.colors.border }}
+              disabled={loading}
+            />
+            <span className="text-sm font-medium" style={{ color: theme.colors.text }}>
+              I distribute as a self-published artist
+            </span>
+          </label>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-2" style={{ color: theme.colors.text }}>
+            Select Publisher
+          </label>
+          <select
+            value={publisherId}
+            onChange={(e) => setPublisherId(e.target.value)}
+            disabled={isSelfPublished || loading}
+            className="w-full px-4 py-3 rounded-lg border transition-colors"
+            style={{
+              borderColor: theme.colors.border,
+              backgroundColor: theme.colors.surface,
+              color: theme.colors.text,
+            }}
+          >
+            <option value="">Choose a publisher</option>
+            {publishers.map((publisher) => (
+              <option key={publisher.publisher_id} value={publisher.publisher_id}>
+                {publisher.company_name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div
+          className="p-4 rounded-lg border-l-4"
+          style={{
+            backgroundColor: theme.colors.info + '10',
+            borderLeftColor: theme.colors.info,
+          }}
+        >
+          <div className="flex items-start space-x-3">
+            <InformationCircleIcon className="w-5 h-5 mt-0.5" style={{ color: theme.colors.info }} />
             <div>
-              <label className="block text-white mb-2">Select Publisher</label>
-              <select
-                name="publisher_id"
-                value={publisherId}
-                onChange={(e) => setPublisherId(e.target.value)}
-                disabled={isChecked}
-                className="w-full px-6 py-3 bg-white/20 backdrop-blur-md border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-400"
-              >
-                <option value="" className="bg-[#1a2a6c]">-- Choose a publisher --</option>
-                {publishers.map((p) => (
-                  <option key={p.publisher_id} value={p.publisher_id} className="bg-[#1a2a6c]">
-                    {p.company_name}
-                  </option>
-                ))}
-              </select>
+              <h4 className="text-sm font-medium mb-1" style={{ color: theme.colors.text }}>
+                Need a publisher?
+              </h4>
+              <p className="text-xs" style={{ color: theme.colors.textSecondary }}>
+                ZamIO has trusted publishing partners ready to help with global collections. Select one from the list or continue as self-published and update later.
+              </p>
             </div>
-            <div className="flex">
-              <input
-                type="checkbox"
-                checked={isChecked}
-                onChange={handleChange}
-                className=" px-2 py-2 bg-white/20 backdrop-blur-md border border-white/10 rounded-lg text-white placeholder-white  focus:outline-none focus:ring-2 focus:ring-blue-400"
-              />
-
-              <p className="text-white ml-3">Self-Published</p>
-            </div>
-
-            {/* Submit Button */}
-            {loading ? (
-              <ButtonLoader />
-            ) : (
-              <button
-                type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-700 transition text-white font-semibold py-4 rounded-lg mt-6 "
-              >
-                Add Publisher
-              </button>
-            )}
-          </form>
-
-          {/* Link to Register */}
-          <div className="flex gap-3 items-center justify-center mt-8">
-            <button className="px-5 bg-blue-600 hover:bg-blue-700 transition text-white font-semibold py-2 rounded-lg mt-6 ">
-              Add Tracks
-            </button>
-            <button
-              className=" underline text-white hover:text-blue-200 mt-6 text-center"
-              onClick={handleSkip}
-            >
-              Skip
-            </button>
           </div>
         </div>
+      </div>
+
+      <div className="flex space-x-4 mt-8">
+        {onBack && (
+          <button
+            onClick={onBack}
+            className="px-6 py-3 rounded-lg font-medium border transition-colors"
+            style={{
+              borderColor: theme.colors.border,
+              color: theme.colors.textSecondary,
+              backgroundColor: 'transparent',
+            }}
+            disabled={loading}
+          >
+            Back
+          </button>
+        )}
+
+        {onSkip && (
+          <button
+            onClick={handleSkip}
+            className="flex-1 py-3 px-6 rounded-lg font-medium border transition-colors"
+            style={{
+              borderColor: theme.colors.border,
+              color: theme.colors.textSecondary,
+              backgroundColor: 'transparent',
+            }}
+            disabled={loading}
+          >
+            Skip for Now
+          </button>
+        )}
+
+        {loading ? (
+          <div className="flex-1">
+            <ButtonLoader />
+          </div>
+        ) : (
+          <button
+            onClick={handleSubmit}
+            className="flex-1 py-3 px-6 rounded-lg font-medium text-white transition-colors"
+            style={{ backgroundColor: theme.colors.primary }}
+            disabled={loading}
+          >
+            Save & Continue
+          </button>
+        )}
       </div>
     </div>
   );

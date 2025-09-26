@@ -138,12 +138,12 @@ const KYCStep: React.FC<OnboardingStepProps> = ({ onNext, onSkip, onBack }) => {
       }
     }
     
-    onNext();
+    await onNext();
   };
 
-  const handleSkip = () => {
+  const handleSkip = async () => {
     if (onSkip) {
-      onSkip();
+      await onSkip();
     }
   };
 

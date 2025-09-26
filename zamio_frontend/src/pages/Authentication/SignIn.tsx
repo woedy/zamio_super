@@ -74,29 +74,20 @@ const SignIn = () => {
         // Redirect based on onboarding step
         const onboardingStep = user.onboarding_step;
   
-        switch (onboardingStep) {
-          case 'profile':
-            navigate('/onboarding/profile');
-            break;
-          case 'social-media':
-            navigate('/onboarding/social-media');
-            break;
-          case 'payment':
-            navigate('/onboarding/payment');
-            break;
-          case 'publisher':
-            navigate('/onboarding/publisher');
-            break;
-          case 'track':
-            navigate('/dashboard', { replace: true });
-            window.location.reload();
-            break;
-          case 'done':
-          default:
-            navigate('/dashboard', { replace: true });
-            window.location.reload();
-
+        if (!onboardingStep || onboardingStep === 'done') {
+          navigate('/dashboard', { replace: true });
+          window.location.reload();
+          return;
         }
+
+        if (onboardingStep === 'track') {
+          navigate('/dashboard', { replace: true });
+          window.location.reload();
+          return;
+        }
+
+        navigate(`/onboarding?step=${onboardingStep}`);
+        return;
       }
     } catch (error: any) {
       const status = error?.response?.status;
@@ -118,7 +109,7 @@ const SignIn = () => {
           if (data?.errors?.token) {
             localStorage.setItem('token', data.errors.token);
           }
-          navigate('/onboarding/profile');
+          navigate('/onboarding?step=profile');
         }
       } else {
         // Network/blocked error

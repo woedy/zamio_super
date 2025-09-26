@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
 import { CheckIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { useTheme } from '../../contexts/ThemeContext';
 
@@ -13,8 +12,8 @@ export interface OnboardingStep {
 }
 
 export interface OnboardingStepProps {
-  onNext: () => void;
-  onSkip?: () => void;
+  onNext: (options?: { markComplete?: boolean }) => Promise<void> | void;
+  onSkip?: () => Promise<void> | void;
   onBack?: () => void;
   isLastStep: boolean;
   currentStep: number;
@@ -26,6 +25,10 @@ interface OnboardingWizardProps {
   onComplete: () => void;
   title: string;
   subtitle?: string;
+  initialStepId?: string;
+  onStepComplete?: (stepId: string) => Promise<void> | void;
+  onStepSkip?: (stepId: string) => Promise<void> | void;
+  onStepChange?: (stepId: string) => void;
 }
 
 const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
@@ -33,40 +36,100 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
   onComplete,
   title,
   subtitle,
+  initialStepId,
+  onStepComplete,
+  onStepSkip,
+  onStepChange,
 }) => {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const { theme } = useTheme();
-  const navigate = useNavigate();
 
   const currentStep = steps[currentStepIndex];
   const CurrentStepComponent = currentStep?.component;
 
-  const handleNext = () => {
-    if (currentStepIndex < steps.length - 1) {
-      setCurrentStepIndex(currentStepIndex + 1);
-    } else {
-      onComplete();
+  const goToStep = (index: number) => {
+    setCurrentStepIndex(index);
+    const step = steps[index];
+    if (step && onStepChange) {
+      onStepChange(step.id);
     }
+  };
+
+  const handleAdvance = async (
+    action: 'complete' | 'skip',
+    options?: { markComplete?: boolean }
+  ) => {
+    const step = steps[currentStepIndex];
+    if (!step) return;
+
+    if (action === 'complete' && (options?.markComplete ?? true)) {
+      if (onStepComplete) {
+        await onStepComplete(step.id);
+      }
+    }
+
+    if (action === 'skip') {
+      if (onStepSkip) {
+        await onStepSkip(step.id);
+      }
+    }
+
+    if (currentStepIndex < steps.length - 1) {
+      goToStep(currentStepIndex + 1);
+    } else {
+      await onComplete();
+    }
+  };
+
+  const handleNext = async (options?: { markComplete?: boolean }) => {
+    await handleAdvance('complete', options);
   };
 
   const handleBack = () => {
     if (currentStepIndex > 0) {
-      setCurrentStepIndex(currentStepIndex - 1);
+      goToStep(currentStepIndex - 1);
     }
   };
 
-  const handleSkip = () => {
-    handleNext();
-  };
-
-  const calculateProgress = () => {
-    const completedSteps = steps.filter(step => step.isCompleted).length;
-    return (completedSteps / steps.length) * 100;
+  const handleSkip = async () => {
+    await handleAdvance('skip');
   };
 
   if (!currentStep) {
     return null;
   }
+
+  const stepIds = useMemo(() => steps.map(step => step.id), [steps]);
+
+  useEffect(() => {
+    if (!steps.length) {
+      return;
+    }
+
+    const targetId = initialStepId && stepIds.includes(initialStepId)
+      ? initialStepId
+      : undefined;
+
+    if (targetId) {
+      const targetIndex = steps.findIndex(step => step.id === targetId);
+      if (targetIndex !== -1 && targetIndex !== currentStepIndex) {
+        goToStep(targetIndex);
+        return;
+      }
+    }
+
+    // Default to first incomplete step if provided index is invalid
+    const firstIncompleteIndex = steps.findIndex(step => !step.isCompleted);
+    if (firstIncompleteIndex !== -1 && firstIncompleteIndex !== currentStepIndex) {
+      goToStep(firstIncompleteIndex);
+      return;
+    }
+
+    // Otherwise ensure index is within bounds
+    if (currentStepIndex >= steps.length) {
+      goToStep(steps.length - 1);
+    }
+  }, [initialStepId, stepIds, steps, currentStepIndex]);
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: theme.colors.background }}>

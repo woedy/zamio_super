@@ -154,7 +154,7 @@ const ProfileStep: React.FC<OnboardingStepProps> = ({ onNext, onBack }) => {
         completed: true,
       });
 
-      onNext();
+      await onNext();
     } catch (error: any) {
       console.error('Failed to update profile:', error);
       const errorData = error?.response?.data;

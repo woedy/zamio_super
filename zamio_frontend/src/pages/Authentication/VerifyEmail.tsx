@@ -58,7 +58,7 @@ const VerifyEmail = () => {
       if(data.data.profile_completed === true){
         navigate('/dashboard', { replace: true });
       }else {
-        navigate('/onboarding/profile', { state: { successMessage: 'Email verified successfully!' }, replace: true });
+        navigate('/onboarding?step=profile', { state: { successMessage: 'Email verified successfully!' }, replace: true });
       }
 
 

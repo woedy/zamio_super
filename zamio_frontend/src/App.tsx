@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Route, Routes, useLocation } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 import Loader from './common/Loader';
 import PageTitle from './components/PageTitle';
@@ -31,10 +31,6 @@ import EducationSupport from './pages/TechSupport/HelpSupport';
 import FeedbackReviewsPage from './pages/FeedbackReview/FeedbackReview';
 import ArtistProfilePage from './pages/Profile/ArtistProfile';
 import AddAlbum from './pages/MusicUploadManagement/AddAlbum';
-import CompleteProfile from './pages/Authentication/Onboarding/CompleteProfile';
-import SocialMediaInfo from './pages/Authentication/Onboarding/SocialMediaInfo';
-import PaymentInfo from './pages/Authentication/Onboarding/PaymentInfo';
-import Publisher from './pages/Authentication/Onboarding/Publisher';
 import EnhancedArtistOnboarding from './pages/Authentication/Onboarding/EnhancedArtistOnboarding';
 import ComponentShowcase from './components/ComponentShowcase';
 import ComponentTest from './components/ComponentTest';
@@ -45,6 +41,7 @@ const hiddenOnRoutes = [
   '/sign-up',
   '/verify-email',
   '/sign-in',
+  '/onboarding',
   '/onboarding/profile',
   '/onboarding/social-media',
   '/onboarding/payment',
@@ -319,40 +316,33 @@ function App() {
           }
         />
         <Route
-          path="/onboarding/profile"
+          path="/onboarding"
           element={
             <>
-              <PageTitle title="Complete Profile | ZamIO-Artists" />
-              <CompleteProfile />
+              <PageTitle title="Artist Onboarding | ZamIO-Artists" />
+              <EnhancedArtistOnboarding />
             </>
           }
+        />
+        <Route
+          path="/onboarding/enhanced"
+          element={<Navigate to="/onboarding" replace />}
+        />
+        <Route
+          path="/onboarding/profile"
+          element={<Navigate to="/onboarding?step=profile" replace />}
         />
         <Route
           path="/onboarding/social-media"
-          element={
-            <>
-              <PageTitle title="Update Social Media | ZamIO-Artists" />
-              <SocialMediaInfo />
-            </>
-          }
+          element={<Navigate to="/onboarding?step=social-media" replace />}
         />
         <Route
           path="/onboarding/payment"
-          element={
-            <>
-              <PageTitle title="Update Social Media | ZamIO-Artists" />
-              <PaymentInfo />
-            </>
-          }
+          element={<Navigate to="/onboarding?step=payment" replace />}
         />
         <Route
           path="/onboarding/publisher"
-          element={
-            <>
-              <PageTitle title="Add publisher | ZamIO-Artists" />
-              <Publisher />
-            </>
-          }
+          element={<Navigate to="/onboarding?step=publisher" replace />}
         />
         <Route
           path="/forgot-password"

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import OnboardingWizard, { OnboardingStep } from '../../../components/onboarding/OnboardingWizard';
 import WelcomeStep from './steps/WelcomeStep';
 import ProfileStep from './steps/ProfileStep';
@@ -12,8 +12,10 @@ import { getArtistId } from '../../../lib/auth';
 
 const EnhancedArtistOnboarding: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [artistData, setArtistData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [initialStepId, setInitialStepId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     loadArtistData();
@@ -30,27 +32,13 @@ const EnhancedArtistOnboarding: React.FC = () => {
     }
   };
 
-  const updateArtistOnboardingStatus = async (step: string, completed: boolean) => {
-    try {
-      await api.post('api/accounts/update-onboarding-status/', {
-        artist_id: getArtistId(),
-        step,
-        completed,
-      });
-      // Reload artist data to get updated status
-      await loadArtistData();
-    } catch (error) {
-      console.error('Failed to update onboarding status:', error);
-    }
-  };
-
-  const steps: OnboardingStep[] = [
+  const steps: OnboardingStep[] = useMemo(() => ([
     {
       id: 'welcome',
       title: 'Welcome',
       description: 'Learn about ZamIO and your self-publishing setup',
       component: WelcomeStep,
-      isCompleted: true, // Welcome step is always completed once viewed
+      isCompleted: true,
       isRequired: true,
     },
     {
@@ -67,7 +55,7 @@ const EnhancedArtistOnboarding: React.FC = () => {
       description: 'Upload KYC documents for account verification',
       component: KYCStep,
       isCompleted: artistData?.kyc_status === 'verified' || artistData?.kyc_status === 'incomplete',
-      isRequired: false, // KYC can be skipped but is highly recommended
+      isRequired: false,
     },
     {
       id: 'social-media',
@@ -93,7 +81,70 @@ const EnhancedArtistOnboarding: React.FC = () => {
       isCompleted: artistData?.publisher_added || false,
       isRequired: false,
     },
-  ];
+  ]), [artistData]);
+
+  useEffect(() => {
+    if (loading) {
+      return;
+    }
+
+    if (!steps.length) {
+      return;
+    }
+
+    const availableStepIds = steps.map(step => step.id);
+    const searchParams = new URLSearchParams(location.search);
+    const requestedStep = searchParams.get('step');
+
+    let targetStepId: string | undefined;
+
+    if (requestedStep && availableStepIds.includes(requestedStep)) {
+      targetStepId = requestedStep;
+    }
+
+    if (!targetStepId) {
+      const recommendedStep = artistData?.next_recommended_step;
+      if (recommendedStep && availableStepIds.includes(recommendedStep)) {
+        targetStepId = recommendedStep;
+      }
+    }
+
+    if (!targetStepId) {
+      const firstIncomplete = steps.find(step => !step.isCompleted);
+      targetStepId = firstIncomplete?.id || steps[steps.length - 1].id;
+    }
+
+    if (targetStepId !== initialStepId) {
+      setInitialStepId(targetStepId);
+    }
+  }, [artistData, initialStepId, loading, location.search, steps]);
+
+  const handleStepComplete = async () => {
+    await loadArtistData();
+  };
+
+  const handleStepSkip = async (stepId: string) => {
+    try {
+      await api.post('api/accounts/skip-artist-onboarding/', {
+        artist_id: getArtistId(),
+        step: stepId,
+      });
+    } catch (error) {
+      console.error('Failed to update skip status:', error);
+    } finally {
+      await loadArtistData();
+    }
+  };
+
+  const handleStepChange = (stepId: string) => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('step') === stepId) {
+      return;
+    }
+    params.set('step', stepId);
+    const query = params.toString();
+    navigate(`/onboarding${query ? `?${query}` : ''}`, { replace: true });
+  };
 
   const handleOnboardingComplete = async () => {
     try {
@@ -132,6 +183,10 @@ const EnhancedArtistOnboarding: React.FC = () => {
       onComplete={handleOnboardingComplete}
       title="Artist Onboarding"
       subtitle="Let's get you set up to start earning from your music"
+      initialStepId={initialStepId}
+      onStepComplete={handleStepComplete}
+      onStepSkip={handleStepSkip}
+      onStepChange={handleStepChange}
     />
   );
 };

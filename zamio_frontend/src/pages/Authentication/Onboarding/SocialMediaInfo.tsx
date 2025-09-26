@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   ShareIcon,
   InformationCircleIcon
@@ -12,7 +11,7 @@ import ButtonLoader from '../../../common/button_loader';
 
 interface SocialMediaInfoProps extends OnboardingStepProps {}
 
-const SocialMediaInfo: React.FC<SocialMediaInfoProps> = ({ onNext, onSkip }) => {
+const SocialMediaInfo: React.FC<SocialMediaInfoProps> = ({ onNext, onSkip, onBack }) => {
   const { theme } = useTheme();
   const [facebook, setFacebook] = useState('');
   const [twitter, setTwitter] = useState('');
@@ -23,8 +22,6 @@ const SocialMediaInfo: React.FC<SocialMediaInfoProps> = ({ onNext, onSkip }) => 
 
   const [inputError, setInputError] = useState('');
   const [loading, setLoading] = useState(false);
-
-  const navigate = useNavigate();
 
   const validateUrl = (url: string) => {
     if (!url) return true; // Empty URLs are allowed
@@ -72,7 +69,7 @@ const SocialMediaInfo: React.FC<SocialMediaInfoProps> = ({ onNext, onSkip }) => 
       });
 
       if (response.status >= 200 && response.status < 300) {
-        onNext();
+        await onNext();
       }
     } catch (error: any) {
       const data = error?.response?.data;
@@ -89,16 +86,7 @@ const SocialMediaInfo: React.FC<SocialMediaInfoProps> = ({ onNext, onSkip }) => 
 
   const handleSkip = async () => {
     if (onSkip) {
-      try {
-        await api.post('api/accounts/skip-artist-onboarding/', {
-          artist_id: getArtistId(),
-          step: 'social-media',
-        });
-      } catch (err) {
-        // Non-blocking error
-      } finally {
-        onSkip();
-      }
+      await onSkip();
     }
   };
 
@@ -279,11 +267,26 @@ const SocialMediaInfo: React.FC<SocialMediaInfoProps> = ({ onNext, onSkip }) => 
 
       {/* Action Buttons */}
       <div className="flex space-x-4 mt-8">
+        {onBack && (
+          <button
+            onClick={onBack}
+            className="px-6 py-3 rounded-lg font-medium border transition-colors"
+            style={{
+              borderColor: theme.colors.border,
+              color: theme.colors.textSecondary,
+              backgroundColor: 'transparent'
+            }}
+            disabled={loading}
+          >
+            Back
+          </button>
+        )}
+
         {onSkip && (
           <button
             onClick={handleSkip}
             className="flex-1 py-3 px-6 rounded-lg font-medium border transition-colors"
-            style={{ 
+            style={{
               borderColor: theme.colors.border,
               color: theme.colors.textSecondary,
               backgroundColor: 'transparent'
@@ -293,7 +296,7 @@ const SocialMediaInfo: React.FC<SocialMediaInfoProps> = ({ onNext, onSkip }) => 
             Skip for Now
           </button>
         )}
-        
+
         {loading ? (
           <div className="flex-1">
             <ButtonLoader />
