@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  CheckCircleIcon, 
+import React, { useMemo } from 'react';
+import {
+  CheckCircleIcon,
   ExclamationTriangleIcon,
   ArrowRightIcon,
   RadioIcon,
@@ -10,74 +10,21 @@ import {
   SignalIcon
 } from '@heroicons/react/24/outline';
 import { useNavigate } from 'react-router-dom';
+import useStationOnboarding from '../../hooks/useStationOnboarding';
+import { getOnboardingRoute } from '../../utils/onboarding';
+import type { StationOnboardingStep } from '../../contexts/StationOnboardingContext';
 
 interface StationOnboardingProgressProps {
   className?: string;
   showActions?: boolean;
 }
 
-interface OnboardingStatus {
-  profile_completed: boolean;
-  staff_completed: boolean;
-  payment_info_added: boolean;
-  kyc_status: string;
-  profile_complete_percentage: number;
-  next_recommended_step: string;
-  compliance_setup: {
-    license_number: string;
-    station_class: string;
-    station_type: string;
-    compliance_complete: boolean;
-  };
-  stream_links: Array<{
-    id: number;
-    link: string;
-    active: boolean;
-  }>;
-}
-
-const StationOnboardingProgress: React.FC<StationOnboardingProgressProps> = ({ 
-  className = "", 
-  showActions = true 
+const StationOnboardingProgress: React.FC<StationOnboardingProgressProps> = ({
+  className = "",
+  showActions = true
 }) => {
   const navigate = useNavigate();
-  const [status, setStatus] = useState<OnboardingStatus | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    loadOnboardingStatus();
-  }, []);
-
-  const loadOnboardingStatus = async () => {
-    try {
-      // This would be replaced with actual API call
-      // const response = await api.get(`api/accounts/enhanced-station-onboarding-status/${getStationId()}/`);
-      // setStatus(response.data.data);
-      
-      // Mock data for now
-      setStatus({
-        profile_completed: true,
-        staff_completed: false,
-        payment_info_added: false,
-        kyc_status: 'pending',
-        profile_complete_percentage: 33,
-        next_recommended_step: 'staff',
-        compliance_setup: {
-          license_number: 'GH-FM-001',
-          station_class: 'class_b',
-          station_type: 'commercial',
-          compliance_complete: true
-        },
-        stream_links: [
-          { id: 1, link: 'https://stream.example.com/live', active: true }
-        ]
-      });
-    } catch (error) {
-      console.error('Failed to load onboarding status:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { status, loading } = useStationOnboarding();
 
   const getStepIcon = (stepKey: string) => {
     const icons = {
@@ -91,14 +38,12 @@ const StationOnboardingProgress: React.FC<StationOnboardingProgressProps> = ({
 
   const getStepStatus = (stepKey: string) => {
     if (!status) return 'pending';
-    
+
     switch (stepKey) {
       case 'profile':
         return status.profile_completed ? 'completed' : 'pending';
       case 'staff':
         return status.staff_completed ? 'completed' : 'pending';
-      case 'compliance':
-        return status.compliance_setup.compliance_complete ? 'completed' : 'pending';
       case 'payment':
         return status.payment_info_added ? 'completed' : 'pending';
       default:
@@ -130,17 +75,11 @@ const StationOnboardingProgress: React.FC<StationOnboardingProgressProps> = ({
     }
   };
 
-  const steps = [
+  const steps = useMemo(() => ([
     {
       key: 'profile',
       title: 'Station Profile',
       description: 'Complete your station profile and basic information',
-      isRequired: true
-    },
-    {
-      key: 'compliance',
-      title: 'Compliance Setup',
-      description: 'Configure licensing and regulatory information',
       isRequired: true
     },
     {
@@ -155,14 +94,15 @@ const StationOnboardingProgress: React.FC<StationOnboardingProgressProps> = ({
       description: 'Add payment details for transactions',
       isRequired: false
     }
-  ];
+  ]), []);
 
   const handleContinueOnboarding = () => {
-    navigate('/onboarding');
+    const nextStep = status?.next_recommended_step || status?.onboarding_step;
+    navigate(getOnboardingRoute(nextStep as StationOnboardingStep));
   };
 
   const handleCompleteStep = (stepKey: string) => {
-    navigate(`/onboarding?step=${stepKey}`);
+    navigate(getOnboardingRoute(stepKey as StationOnboardingStep));
   };
 
   if (loading) {
@@ -282,7 +222,7 @@ const StationOnboardingProgress: React.FC<StationOnboardingProgressProps> = ({
       </div>
 
       {/* Stream Links Status */}
-      {status.stream_links.length > 0 && (
+      {status.stream_links && status.stream_links.length > 0 && (
         <div className="mt-6 p-4 bg-blue-50 border-l-4 border-blue-400 rounded-lg">
           <div className="flex items-start space-x-3">
             <SignalIcon className="w-5 h-5 text-blue-400 mt-0.5" />
@@ -299,7 +239,7 @@ const StationOnboardingProgress: React.FC<StationOnboardingProgressProps> = ({
       )}
 
       {/* Compliance Status */}
-      {status.compliance_setup.compliance_complete && (
+      {status.compliance_setup?.compliance_complete && (
         <div className="mt-4 p-4 bg-green-50 border-l-4 border-green-400 rounded-lg">
           <div className="flex items-start space-x-3">
             <CheckCircleIcon className="w-5 h-5 text-green-400 mt-0.5" />
@@ -308,9 +248,9 @@ const StationOnboardingProgress: React.FC<StationOnboardingProgressProps> = ({
                 Compliance Setup Complete
               </p>
               <p className="text-sm text-green-700">
-                License: {status.compliance_setup.license_number} | 
-                Class: {status.compliance_setup.station_class} | 
-                Type: {status.compliance_setup.station_type}
+                License: {status.compliance_setup.license_number || 'Pending'} |
+                Class: {status.compliance_setup.station_class || 'Pending'} |
+                Type: {status.compliance_setup.station_type || 'Pending'}
               </p>
             </div>
           </div>

@@ -1,27 +1,34 @@
-import React, { useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import {  baseUrl } from '../../../constants';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { getStationId } from '../../../lib/auth';
 import api from '../../../lib/api';
 import ButtonLoader from '../../../common/button_loader';
-import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
+import useStationOnboarding from '../../../hooks/useStationOnboarding';
+import { getOnboardingRoute } from '../../../utils/onboarding';
 
 const CompleteProfile = () => {
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-
   const [bio, setBio] = useState('');
   const [country, setCountry] = useState('');
   const [region, setRegion] = useState('');
   const [imagePreview, setImagePreview] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
 
-  const [email, setEmail] = useState('');
-
   const [inputError, setInputError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const navigate = useNavigate();
+  const { details, refresh } = useStationOnboarding();
+
+  useEffect(() => {
+    if (details) {
+      setBio(details.bio ?? '');
+      setCountry(details.country ?? '');
+      setRegion(details.region ?? '');
+      if (details.photo) {
+        setImagePreview(details.photo as unknown as string);
+      }
+    }
+  }, [details]);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -60,21 +67,23 @@ const CompleteProfile = () => {
       return;
     }
   
-    if (selectedFile === null) {
-      setInputError('Profile Photo required.');
+    if (!selectedFile && !details?.photo) {
+      setInputError('Profile photo required.');
       return;
     }
-  
+
     // Prepare FormData for file upload
     const formData = new FormData();
     formData.append('station_id', getStationId());
     formData.append('bio', bio);
     formData.append('country', country);
     formData.append('region', region);
-    formData.append('photo', selectedFile);
-  
+    if (selectedFile) {
+      formData.append('photo', selectedFile);
+    }
+
     const url = 'api/accounts/complete-station-profile/';
-  
+
     try {
       setLoading(true);
       const resp = await api.post(url, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
@@ -82,28 +91,23 @@ const CompleteProfile = () => {
       if (!nextStep || nextStep === 'profile') {
         nextStep = 'staff';
       }
-  
+      await refresh();
+
       switch (nextStep) {
         case 'profile':
-          navigate('/onboarding/profile');
+          navigate(getOnboardingRoute('profile'));
           break;
         case 'staff':
-          navigate('/onboarding/staff');
-          break;
-        case 'report':
-          navigate('/onboarding/payment');
+          navigate(getOnboardingRoute('staff'));
           break;
         case 'payment':
-          navigate('/onboarding/payment');
+          navigate(getOnboardingRoute('payment'));
           break;
         case 'done':
-          navigate('/dashboard');
-          window.location.reload();
+          navigate(getOnboardingRoute('done'));
           break;
         default:
-          navigate('/dashboard'); // fallback
-          window.location.reload();
-
+          navigate(getOnboardingRoute(nextStep as any));
       }
     } catch (error) {
       console.error('Error updating profile:', error.message);
@@ -224,8 +228,9 @@ const CompleteProfile = () => {
                     station_id: getStationId(),
                     step: 'staff',
                   });
+                  await refresh();
                 } catch {}
-                navigate('/onboarding/report');
+                navigate(getOnboardingRoute('staff'));
               }}
             >
               Skip

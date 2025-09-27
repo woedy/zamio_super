@@ -1,367 +1,726 @@
-import { useEffect, useState } from 'react';
-import { Music, TrendingUp, MapPin, Activity, Settings, Bell, Search, Globe, Zap, Radio, Volume2, Eye, Target } from 'lucide-react';
-import { baseUrl, stationID, userToken } from '../../constants';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Activity,
+  AlertTriangle,
+  Bell,
+  CircleDollarSign,
+  Download,
+  Globe,
+  MapPin,
+  Music,
+  Radio,
+  Search,
+  Settings,
+  ShieldAlert,
+  Target,
+  TrendingUp,
+  Volume2,
+} from 'lucide-react';
+import api from '../../lib/api';
+import { getStationId } from '../../lib/auth';
+import { useStationOnboardingContext } from '../../contexts/StationOnboardingContext';
+
+const PERIOD_OPTIONS = ['daily', 'weekly', 'monthly', 'all-time'] as const;
+type DashboardPeriod = (typeof PERIOD_OPTIONS)[number];
+
+type DashboardTopSong = {
+  title: string;
+  artist: string;
+  plays: number;
+  confidence: number;
+};
+
+type DashboardAirplay = {
+  day: string;
+  plays: number;
+};
+
+type DashboardRegional = {
+  region: string;
+  plays: number;
+  growth: number;
+};
+
+type DashboardTrend = {
+  date: string;
+  plays: number;
+};
+
+type DashboardDisputeSummary = {
+  total: number;
+  disputed: number;
+  undisputed: number;
+};
+
+type StationDashboardData = {
+  stationName: string;
+  period: DashboardPeriod | 'custom';
+  totalSongs: number;
+  totalPlays: number;
+  confidenceScore: number;
+  activeRegions: number;
+  totalRoyalties: number;
+  topSongs: DashboardTopSong[];
+  airplayData: DashboardAirplay[];
+  regionalData: DashboardRegional[];
+  disputeSummary: DashboardDisputeSummary;
+  trendData: DashboardTrend[];
+};
+
+const safeNumber = (value: unknown, fallback = 0): number => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : fallback;
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+  return fallback;
+};
+
+const safeString = (value: unknown, fallback = ''): string => {
+  if (typeof value === 'string') {
+    return value.trim();
+  }
+  return fallback;
+};
+
+const ensureArray = <T,>(value: unknown, mapper: (item: any, index: number) => T | null): T[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const result: T[] = [];
+  value.forEach((item, index) => {
+    const mapped = mapper(item, index);
+    if (mapped) {
+      result.push(mapped);
+    }
+  });
+  return result;
+};
+
+const normalizeDashboardPayload = (
+  raw: any,
+  fallbackStationName: string,
+  period: DashboardPeriod,
+): StationDashboardData => {
+  const totalSongs = Math.max(0, Math.round(safeNumber(raw?.totalSongs)));
+  const totalPlays = Math.max(0, Math.round(safeNumber(raw?.totalPlays)));
+  const confidenceScoreRaw = safeNumber(raw?.confidenceScore);
+  const confidenceScore = Math.max(0, Math.min(100, Math.round(confidenceScoreRaw * 10) / 10));
+  const activeRegions = Math.max(0, Math.round(safeNumber(raw?.activeRegions)));
+  const totalRoyalties = Math.max(0, safeNumber(raw?.totalRoyalties));
+
+  const topSongs = ensureArray<DashboardTopSong>(raw?.topSongs, (item) => {
+    const title = safeString(item?.title, 'Untitled Record');
+    const artist = safeString(item?.artist, 'Unknown Artist');
+    const plays = Math.max(0, Math.round(safeNumber(item?.plays)));
+    const confidence = Math.max(0, Math.min(100, Math.round(safeNumber(item?.confidence))));
+
+    if (!title && !artist && plays === 0) {
+      return null;
+    }
+
+    return {
+      title,
+      artist,
+      plays,
+      confidence,
+    };
+  });
+
+  const airplayData = ensureArray<DashboardAirplay>(raw?.airplayData, (item) => {
+    const day = safeString(item?.day, '');
+    if (!day) {
+      return null;
+    }
+    const plays = Math.max(0, Math.round(safeNumber(item?.plays)));
+    return { day, plays };
+  });
+
+  const regionalData = ensureArray<DashboardRegional>(raw?.regionalData, (item) => {
+    const region = safeString(item?.region, 'Unclassified');
+    const plays = Math.max(0, Math.round(safeNumber(item?.plays)));
+    const growth = Math.round(safeNumber(item?.growth) * 10) / 10;
+    return { region, plays, growth };
+  });
+
+  const disputeSummaryRaw = raw?.disputeSummary ?? {};
+  const disputeSummary: DashboardDisputeSummary = {
+    total: Math.max(0, Math.round(safeNumber(disputeSummaryRaw?.total))),
+    disputed: Math.max(0, Math.round(safeNumber(disputeSummaryRaw?.disputed))),
+    undisputed: Math.max(0, Math.round(safeNumber(disputeSummaryRaw?.undisputed))),
+  };
+
+  const trendData = ensureArray<DashboardTrend>(raw?.trendData, (item) => {
+    const date = safeString(item?.date, '');
+    if (!date) {
+      return null;
+    }
+    const plays = Math.max(0, Math.round(safeNumber(item?.plays)));
+    return { date, plays };
+  });
+
+  return {
+    stationName: safeString(raw?.stationName, fallbackStationName) || fallbackStationName,
+    period: safeString(raw?.period, period) as StationDashboardData['period'],
+    totalSongs,
+    totalPlays,
+    confidenceScore,
+    activeRegions,
+    totalRoyalties,
+    topSongs,
+    airplayData,
+    regionalData,
+    disputeSummary,
+    trendData,
+  };
+};
+
+const formatNumber = (value: number, options?: Intl.NumberFormatOptions): string => {
+  if (!Number.isFinite(value)) {
+    return '0';
+  }
+  return new Intl.NumberFormat('en-US', {
+    maximumFractionDigits: 1,
+    ...options,
+  }).format(value);
+};
+
+const formatDateLabel = (value: string): string => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+  });
+};
 
 const Dashboard = () => {
-  const [selectedPeriod, setSelectedPeriod] = useState('monthly');
-  const [activeTab, setActiveTab] = useState('overview');
+  const [selectedPeriod, setSelectedPeriod] = useState<DashboardPeriod>('monthly');
+  const [data, setData] = useState<StationDashboardData | null>(null);
+  const [dashboardLoading, setDashboardLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const [selectedCategory, setSelectedCategory] = useState('all');
+  const { details, status, loading: onboardingLoading } = useStationOnboardingContext();
 
-  const [totalSongs, setTotalSongs] = useState('');
-  const [totalPlays, setTotalPlays] = useState('');
-  const [confidenceScore, setConfidenceScore] = useState('');
-  const [activeRegions, setActiveRegions] = useState('');
-  const [stationName, setStationName] = useState('');
-  const [topSongs, setTopSongs] = useState([]);
-  const [airplayData, setAirplayData] = useState([]);
-  const [regionalData, setRegionalData] = useState([]);
+  const [stationIdentifier, setStationIdentifier] = useState<string>(() => safeString(getStationId(), ''));
 
-  const [loading, setLoading] = useState(false);
+  const fallbackStationName = useMemo(() => {
+    const nameFromDetails = safeString(details?.name, '');
+    const nameFromStatus = safeString(status?.station_name, '');
+    return nameFromDetails || nameFromStatus || 'Your Station';
+  }, [details?.name, status?.station_name]);
 
-  // Sample data
-  const totalSongs22 = 2847;
-  const monthlyPlays22 = 15429;
-  const confidenceScore22 = 87.9;
-  const activeRegions77 = 8;
-  const topSongs222 = [
-    { title: "Sika Aba Fie", artist: "Sarkodie", plays: 1245, confidence: 98 },
-    { title: "Thunder Fire You", artist: "Shatta Wale", plays: 1121, confidence: 96 },
-    { title: "Enjoyment", artist: "Kuami Eugene", plays: 987, confidence: 94 },
-    { title: "Kpoo Keke", artist: "Camidoh", plays: 845, confidence: 92 },
-    { title: "Party", artist: "Dancegod Lloyd", plays: 723, confidence: 89 }
-  ];
-
-  const airplayData222 = [
-    { day: 'Mon', plays: 2134 },
-    { day: 'Tue', plays: 2856 },
-    { day: 'Wed', plays: 3124 },
-    { day: 'Thu', plays: 2734 },
-    { day: 'Fri', plays: 3456 },
-    { day: 'Sat', plays: 4123 },
-    { day: 'Sun', plays: 3876 }
-  ];
-
-  const regionalData222 = [
-    { region: 'Greater Accra', plays: 8234, growth: 12.5 },
-    { region: 'Ashanti', plays: 6543, growth: 8.3 },
-    { region: 'Northern', plays: 3456, growth: 15.2 },
-    { region: 'Western', plays: 2876, growth: 6.7 },
-    { region: 'Central', plays: 2234, growth: 9.1 }
-  ];
-
-  const maxPlays = Math.max(...airplayData.map(d => d.plays));
-  const maxRegionalPlays = Math.max(...regionalData.map(d => d.plays));
-
-
+  const resolvedStationId = useMemo(() => {
+    if (stationIdentifier) {
+      return stationIdentifier;
+    }
+    const fromContext = safeString(status?.station_id, '');
+    return fromContext;
+  }, [stationIdentifier, status?.station_id]);
 
   useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
+    const idFromContext = safeString(status?.station_id, '');
+    if (!stationIdentifier && idFromContext) {
+      setStationIdentifier(idFromContext);
       try {
-        const response = await fetch(
-          baseUrl + `api/stations/dashboard/?station_id=${stationID}&period=${selectedPeriod}`,          
-          {
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Token ${userToken}`,
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error('Network response was not ok');
-        }
-
-        const data = await response.json();
-        setTotalSongs(data.data.totalSongs);
-        setTotalPlays(data.data.totalPlays);
-        setConfidenceScore(data.data.confidenceScore);
-        setActiveRegions(data.data.activeRegions);
-        setTopSongs(data.data.topSongs);
-        setAirplayData(data.data.airplayData);
-        setRegionalData(data.data.regionalData);
-        setStationName(data.data.stationName);
-    
-      } catch (error) {
-        console.error('Error fetching data:', error);
-      } finally {
-        setLoading(false);
+        localStorage.setItem('station_id', idFromContext);
+      } catch {
+        /* noop */
       }
-    };
+    }
+  }, [stationIdentifier, status?.station_id]);
 
-    fetchData();
-  }, [selectedPeriod]);
+  const fetchDashboard = useCallback(async () => {
+    const stationId = safeString(resolvedStationId, '');
 
+    if (!stationId) {
+      return;
+    }
 
+    if (!stationIdentifier && stationId) {
+      setStationIdentifier(stationId);
+      try {
+        localStorage.setItem('station_id', stationId);
+      } catch {
+        /* noop */
+      }
+    }
 
+    setDashboardLoading(true);
+    setError(null);
 
+    try {
+      const response = await api.get('api/stations/dashboard/', {
+        params: {
+          station_id: stationId,
+          period: selectedPeriod,
+        },
+      });
 
-  return (
-    <div className="min-h-screen">
-      {/* Header */}
-      <header className="bg-black/20 border-b border-white/10 dark:backdrop-blur-md dark:bg-black/20">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="bg-gradient-to-r from-yellow-400 to-orange-500 p-3 rounded-xl">
-                <Radio className="w-8 h-8 text-white" />
+      const payload = response?.data?.data ?? {};
+      const normalized = normalizeDashboardPayload(payload, fallbackStationName, selectedPeriod);
+      setData(normalized);
+    } catch (err: any) {
+      const message = err?.response?.data?.message || err?.message || 'Unable to load dashboard data.';
+      setError(message);
+      setData(null);
+    } finally {
+      setDashboardLoading(false);
+    }
+  }, [fallbackStationName, resolvedStationId, selectedPeriod, stationIdentifier]);
+
+  useEffect(() => {
+    if (onboardingLoading) {
+      return;
+    }
+    if (!resolvedStationId) {
+      setData(null);
+      if (!onboardingLoading) {
+        setError('We could not determine your station ID. Please sign in again.');
+      }
+      return;
+    }
+
+    fetchDashboard();
+  }, [fetchDashboard, onboardingLoading, resolvedStationId]);
+
+  const stationName = data?.stationName || fallbackStationName;
+
+  const maxAirplay = useMemo(() => {
+    if (!data?.airplayData?.length) {
+      return 0;
+    }
+    return data.airplayData.reduce((max, day) => Math.max(max, day.plays), 0);
+  }, [data?.airplayData]);
+
+  const maxRegionalPlays = useMemo(() => {
+    if (!data?.regionalData?.length) {
+      return 0;
+    }
+    return data.regionalData.reduce((max, region) => Math.max(max, region.plays), 0);
+  }, [data?.regionalData]);
+
+  const disputeRate = useMemo(() => {
+    if (!data?.disputeSummary || data.disputeSummary.total === 0) {
+      return 0;
+    }
+    return Math.round((data.disputeSummary.disputed / data.disputeSummary.total) * 1000) / 10;
+  }, [data?.disputeSummary]);
+
+  const earningsPerPlay = useMemo(() => {
+    if (!data || data.totalPlays === 0) {
+      return 0;
+    }
+    return data.totalRoyalties / data.totalPlays;
+  }, [data]);
+
+  const renderSummaryCards = () => {
+    const cards = [
+      {
+        label: 'Total Songs',
+        value: data ? formatNumber(data.totalSongs, { maximumFractionDigits: 0 }) : '--',
+        description: 'Unique tracks detected',
+        icon: Music,
+        gradient: 'from-blue-500/20 to-purple-600/20',
+        iconAccent: 'bg-blue-500/20 text-blue-400',
+      },
+      {
+        label: 'Total Plays',
+        value: data ? formatNumber(data.totalPlays, { maximumFractionDigits: 0 }) : '--',
+        description: `${selectedPeriod === 'all-time' ? 'Lifetime' : 'Period'} airplay count`,
+        icon: Volume2,
+        gradient: 'from-green-500/20 to-emerald-600/20',
+        iconAccent: 'bg-green-500/20 text-emerald-400',
+      },
+      {
+        label: 'Avg Confidence',
+        value: data ? `${formatNumber(data.confidenceScore, { maximumFractionDigits: 1 })}%` : '--',
+        description: 'Detection accuracy',
+        icon: Target,
+        gradient: 'from-orange-500/20 to-red-500/20',
+        iconAccent: 'bg-orange-500/20 text-orange-400',
+      },
+      {
+        label: 'Active Regions',
+        value: data ? formatNumber(data.activeRegions, { maximumFractionDigits: 0 }) : '--',
+        description: 'Geographic reach',
+        icon: Globe,
+        gradient: 'from-purple-500/20 to-pink-500/20',
+        iconAccent: 'bg-purple-500/20 text-purple-400',
+      },
+      {
+        label: 'Total Royalties',
+        value: data ? `₵${formatNumber(data.totalRoyalties, { minimumFractionDigits: 2 })}` : '--',
+        description: 'Reported for this period',
+        icon: CircleDollarSign,
+        gradient: 'from-yellow-500/20 to-amber-500/20',
+        iconAccent: 'bg-yellow-500/20 text-yellow-400',
+      },
+    ];
+
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-6">
+        {cards.map(({ label, value, description, icon: Icon, gradient, iconAccent }) => (
+          <div
+            key={label}
+            className={`rounded-2xl border border-white/10 bg-gradient-to-br ${gradient} backdrop-blur-lg p-6 shadow-lg shadow-black/20`}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className={`p-3 rounded-xl ${iconAccent}`}>
+                <Icon className="w-6 h-6" />
               </div>
-              <div>
-                <h1 className="text-2xl font-bold text-white">{stationName}</h1>
-                <p className="text-gray-300 text-sm">Station Dashboard</p>
+              <span className="text-xs uppercase tracking-wide text-white/60">{label}</span>
+            </div>
+            <div className="text-2xl font-bold text-white">{value}</div>
+            <p className="mt-2 text-sm text-white/70">{description}</p>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderTopSongs = () => (
+    <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-xl font-semibold flex items-center text-white">
+          <TrendingUp className="w-5 h-5 mr-2 text-yellow-400" />
+          Top Played Songs
+        </h2>
+        <button
+          type="button"
+          className="flex items-center text-sm text-white/70 hover:text-white transition-colors"
+          onClick={fetchDashboard}
+        >
+          Refresh
+          <Download className="w-4 h-4 ml-2" />
+        </button>
+      </div>
+      {dashboardLoading && !data ? (
+        <div className="space-y-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="animate-pulse h-16 rounded-xl bg-white/10" />
+          ))}
+        </div>
+      ) : data?.topSongs.length ? (
+        <div className="space-y-4">
+          {data.topSongs.map((song, index) => (
+            <div
+              key={`${song.title}-${song.artist}-${index}`}
+              className="flex items-center justify-between rounded-xl border border-white/5 bg-white/10 p-4 backdrop-blur"
+            >
+              <div className="flex items-center space-x-4">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 text-white flex items-center justify-center font-semibold">
+                  {index + 1}
+                </div>
+                <div>
+                  <p className="font-semibold text-white">{song.title}</p>
+                  <p className="text-sm text-white/70">{song.artist}</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-white font-semibold">{formatNumber(song.plays, { maximumFractionDigits: 0 })}</p>
+                <p className="text-xs text-white/60">{song.confidence}% confidence</p>
               </div>
             </div>
-            <div className="flex items-center space-x-4">
-              <div className="relative">
-                <Search className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
-                <input 
-                  type="text" 
-                  placeholder="Search songs, artists..."
-                  className="bg-white/10 backdrop-blur-md text-white pl-10 pr-4 py-2 rounded-lg border border-white/20 focus:outline-none focus:ring-2 focus:ring-yellow-400"
-                />
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-white/70">No song activity yet for this period.</p>
+      )}
+    </div>
+  );
+
+  const renderAirplayTimeline = () => (
+    <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-xl font-semibold flex items-center text-white">
+          <Activity className="w-5 h-5 mr-2 text-blue-400" />
+          Airplay Activity
+        </h2>
+        <span className="text-xs text-white/60 uppercase">7-day view</span>
+      </div>
+      {data?.airplayData.length ? (
+        <div className="space-y-4">
+          {data.airplayData.map((day) => {
+            const width = maxAirplay === 0 ? 0 : Math.round((day.plays / maxAirplay) * 100);
+            return (
+              <div key={day.day} className="flex items-center space-x-4">
+                <div className="w-12 text-sm text-white/70">{day.day}</div>
+                <div className="flex-1 h-3 rounded-full bg-white/10 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-500"
+                    style={{ width: `${width}%` }}
+                  />
+                </div>
+                <div className="w-20 text-right text-white font-semibold">
+                  {formatNumber(day.plays, { maximumFractionDigits: 0 })}
+                </div>
               </div>
-              <button className="bg-white/10 backdrop-blur-md p-2 rounded-lg border border-white/20 hover:bg-white/20 transition-colors">
-                <Bell className="w-5 h-5 text-gray-300" />
+            );
+          })}
+        </div>
+      ) : (
+        <p className="text-sm text-white/70">No airplay data captured for this selection.</p>
+      )}
+    </div>
+  );
+
+  const renderTrendData = () => (
+    <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-xl font-semibold flex items-center text-white">
+          <TrendingUp className="w-5 h-5 mr-2 text-emerald-400" />
+          Daily Trend
+        </h2>
+        <span className="text-xs uppercase text-white/60">{selectedPeriod === 'all-time' ? 'All time' : selectedPeriod}</span>
+      </div>
+      {data?.trendData.length ? (
+        <div className="space-y-3">
+          {data.trendData.slice(-8).map((entry) => (
+            <div key={entry.date} className="flex items-center justify-between text-sm">
+              <span className="text-white/70">{formatDateLabel(entry.date)}</span>
+              <span className="font-medium text-white">{formatNumber(entry.plays, { maximumFractionDigits: 0 })}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-white/70">Trend data will appear once we collect plays over time.</p>
+      )}
+    </div>
+  );
+
+  const renderRegionalInsights = () => (
+    <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-xl font-semibold flex items-center text-white">
+          <MapPin className="w-5 h-5 mr-2 text-green-400" />
+          Regional Insights
+        </h2>
+        <span className="text-xs uppercase text-white/60">{data?.regionalData.length || 0} regions</span>
+      </div>
+      {data?.regionalData.length ? (
+        <div className="space-y-4">
+          {data.regionalData.map((region) => {
+            const width = maxRegionalPlays === 0 ? 0 : Math.round((region.plays / maxRegionalPlays) * 100);
+            return (
+              <div key={region.region} className="rounded-xl border border-white/5 bg-white/10 p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="font-semibold text-white">{region.region}</p>
+                  <span className="text-xs text-emerald-400">+{formatNumber(region.growth)}%</span>
+                </div>
+                <p className="text-sm text-white/70 mb-2">
+                  {formatNumber(region.plays, { maximumFractionDigits: 0 })} plays
+                </p>
+                <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-green-500"
+                    style={{ width: `${width}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="text-sm text-white/70">We will show regions once airplay is detected.</p>
+      )}
+    </div>
+  );
+
+  const renderDisputeSummary = () => (
+    <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-xl font-semibold flex items-center text-white">
+          <ShieldAlert className="w-5 h-5 mr-2 text-red-400" />
+          Dispute Overview
+        </h2>
+        <span className="text-xs uppercase text-white/60">{formatNumber(disputeRate)}% dispute rate</span>
+      </div>
+      {data?.disputeSummary ? (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-white/70">Total Playlogs</span>
+            <span className="text-white font-semibold">
+              {formatNumber(data.disputeSummary.total, { maximumFractionDigits: 0 })}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-red-300">Flagged for dispute</span>
+            <span className="text-white font-semibold">
+              {formatNumber(data.disputeSummary.disputed, { maximumFractionDigits: 0 })}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-emerald-300">Cleared</span>
+            <span className="text-white font-semibold">
+              {formatNumber(data.disputeSummary.undisputed, { maximumFractionDigits: 0 })}
+            </span>
+          </div>
+          <div className="mt-4 h-2 rounded-full bg-white/10 overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-red-500 to-orange-500"
+              style={{ width: `${Math.min(100, Math.max(0, disputeRate))}%` }}
+            />
+          </div>
+        </div>
+      ) : (
+        <p className="text-sm text-white/70">No dispute data is available for the selected range.</p>
+      )}
+    </div>
+  );
+
+  const renderRoyaltySummary = () => (
+    <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-xl font-semibold flex items-center text-white">
+          <CircleDollarSign className="w-5 h-5 mr-2 text-amber-300" />
+          Royalty Snapshot
+        </h2>
+        <button
+          type="button"
+          className="text-xs uppercase text-white/60 hover:text-white transition-colors"
+          onClick={fetchDashboard}
+        >
+          Sync
+        </button>
+      </div>
+      {data ? (
+        <div className="space-y-4">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-white/60">Total Royalties</p>
+            <p className="text-2xl font-semibold text-white">
+              ₵{formatNumber(data.totalRoyalties, { minimumFractionDigits: 2 })}
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="rounded-xl border border-white/10 bg-white/10 p-4">
+              <p className="text-white/70">Per play</p>
+              <p className="text-lg font-semibold text-white">₵{formatNumber(earningsPerPlay, { minimumFractionDigits: 4 })}</p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/10 p-4">
+              <p className="text-white/70">Playlogs</p>
+              <p className="text-lg font-semibold text-white">
+                {formatNumber(data.totalPlays, { maximumFractionDigits: 0 })}
+              </p>
+            </div>
+          </div>
+          <p className="text-xs text-white/60">
+            Royalty amounts reflect reconciled detection logs for the selected period.
+          </p>
+        </div>
+      ) : (
+        <p className="text-sm text-white/70">Sign in to view royalty performance.</p>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-black text-white">
+      <header className="border-b border-white/10 bg-black/30 backdrop-blur">
+        <div className="max-w-7xl mx-auto px-6 py-6">
+          <div className="flex flex-wrap items-center justify-between gap-6">
+            <div className="flex items-center gap-4">
+              <div className="rounded-2xl bg-gradient-to-br from-yellow-400 to-orange-500 p-4 shadow-lg shadow-yellow-500/40">
+                <Radio className="w-8 h-8 text-black" />
+              </div>
+              <div>
+                <p className="text-sm uppercase tracking-wide text-white/60">Station Dashboard</p>
+                <h1 className="text-2xl font-bold text-white">{stationName}</h1>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <input
+                  className="hidden md:block bg-white/10 border border-white/10 rounded-lg py-2 pl-10 pr-4 text-sm text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                  placeholder="Search dashboard"
+                  type="search"
+                />
+                <span className="pointer-events-none absolute inset-y-0 left-3 hidden items-center md:flex">
+                  <Search className="w-4 h-4 text-white/40" />
+                </span>
+              </div>
+              <button
+                type="button"
+                className="rounded-lg border border-white/10 bg-white/10 p-2 hover:bg-white/20 transition-colors"
+              >
+                <Bell className="w-5 h-5 text-white/70" />
               </button>
-              <button className="bg-white/10 backdrop-blur-md p-2 rounded-lg border border-white/20 hover:bg-white/20 transition-colors">
-                <Settings className="w-5 h-5 text-gray-300" />
+              <button
+                type="button"
+                className="rounded-lg border border-white/10 bg-white/10 p-2 hover:bg-white/20 transition-colors"
+              >
+                <Settings className="w-5 h-5 text-white/70" />
               </button>
             </div>
           </div>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* Period Selector */}
-        <div className="mb-8">
-          <div className="flex space-x-2 bg-white/10 backdrop-blur-md p-1 rounded-lg border border-white/20 w-fit">
-            {['daily', 'weekly', 'monthly', 'all-time'].map((period) => (
+      <main className="max-w-7xl mx-auto px-6 py-10 space-y-10">
+        <section className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 p-1 backdrop-blur">
+            {PERIOD_OPTIONS.map((period) => (
               <button
                 key={period}
+                type="button"
                 onClick={() => setSelectedPeriod(period)}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                className={`rounded-lg px-4 py-2 text-sm font-medium capitalize transition-all ${
                   selectedPeriod === period
-                    ? 'bg-gradient-to-r from-yellow-400 to-orange-500 text-white shadow-lg'
-                    : 'text-gray-300 hover:text-white hover:bg-white/10'
+                    ? 'bg-gradient-to-r from-yellow-400 to-orange-500 text-black shadow'
+                    : 'text-white/70 hover:text-white hover:bg-white/10'
                 }`}
               >
-                {period.charAt(0).toUpperCase() + period.slice(1)}
+                {period.replace('-', ' ')}
               </button>
             ))}
           </div>
-        </div>
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-gradient-to-br from-blue-500/20 to-purple-600/20 backdrop-blur-md rounded-2xl p-6 border border-white/10">
-            <div className="flex items-center justify-between mb-4">
-              <div className="bg-blue-500/20 p-3 rounded-xl">
-                <Music className="w-6 h-6 text-blue-400" />
-              </div>
-              <div className="text-right">
-                <div className="text-2xl font-bold text-white">{totalSongs.toLocaleString()}</div>
-                <div className="text-sm text-gray-300">Total Songs</div>
-              </div>
-            </div>
-            <div className="text-xs text-gray-400">Detected this period</div>
+          <div className="flex items-center gap-3 text-sm text-white/60">
+            {dashboardLoading ? 'Loading metrics…' : 'Updated just now'}
+            <span className="hidden sm:inline">•</span>
+            <span className="flex items-center gap-1 text-xs sm:text-sm">
+              <AlertTriangle className="w-4 h-4 text-yellow-400" />
+              ZamIO compliance grade monitoring active
+            </span>
           </div>
+        </section>
 
-          <div className="bg-gradient-to-br from-green-500/20 to-emerald-600/20 backdrop-blur-md rounded-2xl p-6 border border-white/10">
-            <div className="flex items-center justify-between mb-4">
-              <div className="bg-green-500/20 p-3 rounded-xl">
-                <Volume2 className="w-6 h-6 text-green-400" />
+        {error && (
+          <div className="rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-200">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4" />
+                <span>{error}</span>
               </div>
-              <div className="text-right">
-                <div className="text-2xl font-bold text-white">{totalPlays.toLocaleString()}</div>
-                <div className="text-sm text-gray-300">Monthly Plays</div>
-              </div>
+              <button
+                type="button"
+                className="rounded-lg border border-red-500/40 px-3 py-1 text-xs font-medium text-red-100 hover:bg-red-500/20"
+                onClick={fetchDashboard}
+              >
+                Retry
+              </button>
             </div>
-            <div className="text-xs text-green-400">↑ 12.5% from last month</div>
           </div>
+        )}
 
-          <div className="bg-gradient-to-br from-orange-500/20 to-red-600/20 backdrop-blur-md rounded-2xl p-6 border border-white/10">
-            <div className="flex items-center justify-between mb-4">
-              <div className="bg-orange-500/20 p-3 rounded-xl">
-                <Target className="w-6 h-6 text-orange-400" />
-              </div>
-              <div className="text-right">
-                <div className="text-2xl font-bold text-white">{confidenceScore}%</div>
-                <div className="text-sm text-gray-300">Avg Confidence</div>
-              </div>
-            </div>
-            <div className="text-xs text-orange-400">Detection accuracy</div>
-          </div>
+        {renderSummaryCards()}
 
-          <div className="bg-gradient-to-br from-purple-500/20 to-pink-600/20 backdrop-blur-md rounded-2xl p-6 border border-white/10">
-            <div className="flex items-center justify-between mb-4">
-              <div className="bg-purple-500/20 p-3 rounded-xl">
-                <Globe className="w-6 h-6 text-purple-400" />
-              </div>
-              <div className="text-right">
-                <div className="text-2xl font-bold text-white">{activeRegions}</div>
-                <div className="text-sm text-gray-300">Active Regions</div>
-              </div>
-            </div>
-            <div className="text-xs text-purple-400">Broadcasting coverage</div>
-          </div>
-        </div>
-
-        {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left Column */}
           <div className="lg:col-span-2 space-y-8">
-            {/* Top Played Songs */}
-            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-white flex items-center">
-                  <TrendingUp className="w-5 h-5 mr-2 text-yellow-400" />
-                  Top Played Songs
-                </h2>
-                <button className="text-sm text-gray-300 hover:text-white flex items-center">
-                  View All <Eye className="w-4 h-4 ml-1" />
-                </button>
-              </div>
-              <div className="space-y-4">
-                {topSongs.map((song, index) => (
-                  <div key={index} className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10 transition-colors">
-                    <div className="flex items-center space-x-4">
-                      <div className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold">
-                        {index + 1}
-                      </div>
-                      <div>
-                        <div className="font-semibold text-white">{song.title}</div>
-                        <div className="text-sm text-gray-300">{song.artist}</div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-white font-semibold">{song.plays.toLocaleString()}</div>
-                      <div className="text-xs text-gray-400 flex items-center">
-                        <Zap className="w-3 h-3 mr-1" />
-                        {song.confidence}% confidence
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Airplay Activity Timeline */}
-            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-white flex items-center">
-                  <Activity className="w-5 h-5 mr-2 text-blue-400" />
-                  Airplay Activity Timeline
-                </h2>
-                <div className="flex space-x-2">
-                  <button className="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-lg text-sm">7D</button>
-                  <button className="px-3 py-1 bg-white/10 text-gray-300 rounded-lg text-sm">30D</button>
-                </div>
-              </div>
-              <div className="space-y-4">
-                {airplayData.map((day, index) => (
-                  <div key={index} className="flex items-center space-x-4">
-                    <div className="w-12 text-sm text-gray-300">{day.day}</div>
-                    <div className="flex-1 bg-white/10 rounded-full h-6 overflow-hidden">
-                      <div 
-                        className="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-all duration-500"
-                        style={{ width: `${(day.plays / maxPlays) * 100}%` }}
-                      />
-                    </div>
-                    <div className="text-white font-semibold w-16 text-right">{day.plays.toLocaleString()}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            {renderTopSongs()}
+            {renderAirplayTimeline()}
+            {renderTrendData()}
           </div>
-
-          {/* Right Column */}
           <div className="space-y-8">
-            {/* Regional Insights */}
-            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-white flex items-center">
-                  <MapPin className="w-5 h-5 mr-2 text-green-400" />
-                  Regional Insights
-                </h2>
-              </div>
-              <div className="space-y-4">
-                {regionalData.map((region, index) => (
-                  <div key={index} className="p-4 bg-white/5 rounded-xl border border-white/10">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="font-semibold text-white">{region.region}</div>
-                      <div className="text-sm text-green-400">+{region.growth}%</div>
-                    </div>
-                    <div className="text-sm text-gray-300 mb-2">{region.plays.toLocaleString()} plays</div>
-                    <div className="w-full bg-white/10 rounded-full h-2">
-                      <div 
-                        className="h-full bg-gradient-to-r from-green-500 to-emerald-500 rounded-full"
-                        style={{ width: `${(region.plays / maxRegionalPlays) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Detection Confidence Rating */}
-            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-white flex items-center">
-                  <Target className="w-5 h-5 mr-2 text-orange-400" />
-                  Detection Confidence
-                </h2>
-              </div>
-              <div className="space-y-4">
-                <div className="text-center">
-                  <div className="text-4xl font-bold text-white mb-2">{confidenceScore}%</div>
-                  <div className="text-sm text-gray-300">Average Match Certainty</div>
-                </div>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-300">Excellent (90-100%)</span>
-                    <span className="text-green-400 font-semibold">78%</span>
-                  </div>
-                  <div className="w-full bg-white/10 rounded-full h-2">
-                    <div className="w-4/5 h-full bg-gradient-to-r from-green-500 to-emerald-500 rounded-full" />
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-300">Good (70-89%)</span>
-                    <span className="text-yellow-400 font-semibold">18%</span>
-                  </div>
-                  <div className="w-full bg-white/10 rounded-full h-2">
-                    <div className="w-1/5 h-full bg-gradient-to-r from-yellow-500 to-orange-500 rounded-full" />
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-300">Needs Review (&lt;70%)</span>
-                    <span className="text-red-400 font-semibold">4%</span>
-                  </div>
-                  <div className="w-full bg-white/10 rounded-full h-2">
-                    <div className="w-1/20 h-full bg-gradient-to-r from-red-500 to-pink-500 rounded-full" />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Quick Actions */}
-            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
-              <h2 className="text-xl font-bold text-white mb-4">Quick Actions</h2>
-              <div className="space-y-3">
-                <button className="w-full bg-gradient-to-r from-yellow-400 to-orange-500 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition-shadow">
-                  Generate Report
-                </button>
-                <button className="w-full bg-white/10 text-white py-3 rounded-xl font-semibold border border-white/20 hover:bg-white/20 transition-colors">
-                  Export Data
-                </button>
-                <button className="w-full bg-white/10 text-white py-3 rounded-xl font-semibold border border-white/20 hover:bg-white/20 transition-colors">
-                  Schedule Analysis
-                </button>
-              </div>
-            </div>
+            {renderRegionalInsights()}
+            {renderRoyaltySummary()}
+            {renderDisputeSummary()}
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 };

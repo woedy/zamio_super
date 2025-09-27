@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { baseUrl } from '../../constants';
 import api from '../../lib/api';
 import ButtonLoader from '../../common/button_loader';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
+import useStationOnboarding from '../../hooks/useStationOnboarding';
+import { getOnboardingRoute } from '../../utils/onboarding';
 
 const SignIn = () => {
   const [email, setEmail] = useState('');
@@ -20,6 +21,7 @@ const SignIn = () => {
   const [successMessage, setSuccessMessage] = useState(
     location.state?.successMessage || '',
   );
+  const { refresh } = useStationOnboarding();
 
   useEffect(() => {
     // Clear the message after 5 seconds (optional)
@@ -71,28 +73,9 @@ const SignIn = () => {
         localStorage.setItem('photo', user.photo);
         localStorage.setItem('token', user.token);
   
-        // Redirect based on onboarding step
-        const onboardingStep = user.onboarding_step;
-  
-        switch (onboardingStep) {
-          case 'profile':
-            navigate('/onboarding/profile');
-            break;
-          case 'staff':
-            navigate('/onboarding/staff');
-            break;
-          case 'report':
-            navigate('/onboarding/payment');
-            break;
-          case 'payment':
-            navigate('/onboarding/payment');
-            break;
-          case 'done':
-          default:
-            navigate('/dashboard');
-            window.location.reload();
-
-        }
+        await refresh();
+        const targetRoute = getOnboardingRoute(user.onboarding_step);
+        navigate(targetRoute);
       }
 
     } catch (err) {
@@ -116,7 +99,7 @@ const SignIn = () => {
           if (data?.errors?.token) {
             localStorage.setItem('token', data.errors.token);
           }
-          navigate('/onboarding/profile');
+          navigate(getOnboardingRoute('profile'));
         }
       } else {
         setEmailError('Network error. Ensure the API is running.');

@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { baseUrl, stationID } from '../../../constants';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { getStationId } from '../../../lib/auth';
 import api from '../../../lib/api';
 import ButtonLoader from '../../../common/button_loader';
-import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
+import useStationOnboarding from '../../../hooks/useStationOnboarding';
+import { getOnboardingRoute } from '../../../utils/onboarding';
 
 const PaymentInfo = () => {
   const [momo, setMomo] = useState('');
@@ -14,88 +14,76 @@ const PaymentInfo = () => {
   const [loading, setLoading] = useState(false);
 
   const navigate = useNavigate();
+  const { details, refresh } = useStationOnboarding();
 
+  useEffect(() => {
+    if (details) {
+      setMomo(details.momo_account ?? '');
+      setBankAccount(details.bank_account ?? '');
+    }
+  }, [details]);
 
-    const handleSubmit = async (e) => {
-      e.preventDefault();
-    
-      // Clear any previous error
-      setInputError('');
-    
-      // Frontend validations
-      if (momo === '') {
-        setInputError('Momo required.');
-        return;
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    setInputError('');
+
+    if (!momo.trim() && !bankAccount.trim()) {
+      setInputError('Provide at least one payout method.');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('station_id', getStationId());
+    formData.append('momo', momo);
+    formData.append('bankAccount', bankAccount);
+
+    const url = 'api/accounts/complete-station-payment/';
+
+    try {
+      setLoading(true);
+      const resp = await api.post(url, formData);
+      let nextStep = resp.data?.data?.next_step as string | undefined;
+      if (!nextStep || nextStep === 'payment') {
+        nextStep = 'done';
       }
-    
-      if (bankAccount === '') {
-        setInputError('Bank Account required.');
-        return;
+      await refresh();
+
+      switch (nextStep) {
+        case 'profile':
+          navigate(getOnboardingRoute('profile'));
+          break;
+        case 'staff':
+          navigate(getOnboardingRoute('staff'));
+          break;
+        case 'report':
+        case 'payment':
+          navigate(getOnboardingRoute('payment'));
+          break;
+        case 'done':
+          navigate(getOnboardingRoute('done'));
+          break;
+        default:
+          navigate(getOnboardingRoute(nextStep as any));
       }
-    
+    } catch (error) {
+      console.error('Error updating profile:', (error as any)?.message);
+      setInputError('An unexpected error occurred.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    
-      // Prepare FormData for file upload
-      const formData = new FormData();
-      formData.append('station_id', getStationId());
-      formData.append('momo', momo);
-      formData.append('bankAccount', bankAccount);
-    
-      const url = 'api/accounts/complete-station-payment/';
-    
-      try {
-        setLoading(true);
-        const resp = await api.post(url, formData);
-        let nextStep = resp.data?.data?.next_step as string | undefined;
-        if (!nextStep || nextStep === 'payment') {
-          nextStep = 'done';
-        }
-    
-        switch (nextStep) {
-          case 'profile':
-            navigate('/onboarding/profile');
-            break;
-          case 'staff':
-            navigate('/onboarding/staff');
-            break;
-          case 'report':
-            navigate('/onboarding/payment');
-            break;
-          case 'payment':
-            navigate('/onboarding/payment');
-            break;
-          case 'done':
-            navigate('/dashboard');
-            window.location.reload();
-            break;
-          default:
-            navigate('/dashboard'); // fallback
-            window.location.reload();
-
-        }
-    
-      } catch (error) {
-        console.error('Error updating profile:', error.message);
-        setInputError('An unexpected error occurred.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-
-    const handleSkip = async (e) => {
-      e.preventDefault();
-      try {
-        await api.post('api/accounts/skip-station-onboarding/', {
-          station_id: getStationId(),
-          step: 'payment',
-        });
-      } catch {}
-      navigate('/dashboard');
-      window.location.reload();
-    };
-  
-
+  const handleSkip = async (e) => {
+    e.preventDefault();
+    try {
+      await api.post('api/accounts/complete-station-onboarding/', {
+        station_id: getStationId(),
+      });
+      await refresh();
+    } catch {}
+    navigate(getOnboardingRoute('done'));
+  };
 
   return (
     <div className="h-screen bg-gradient-to-br from-[#1a2a6c] via-[#b21f1f] to-[#fdbb2d] flex items-center justify-center">
@@ -141,7 +129,6 @@ const PaymentInfo = () => {
               />
             </div>
 
-            {/* Submit Button */}
             {loading ? (
               <ButtonLoader />
             ) : (
@@ -154,9 +141,8 @@ const PaymentInfo = () => {
             )}
           </form>
 
-          {/* Link to Register */}
           <p className=" text-white mt-6 text-center">
-          <button
+            <button
               className=" underline text-white hover:text-blue-200 mt-6 text-center"
               onClick={handleSkip}
             >

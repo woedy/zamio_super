@@ -1,96 +1,87 @@
-import React, { useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { baseUrl, stationID } from '../../../constants';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { getStationId } from '../../../lib/auth';
 import api from '../../../lib/api';
 import ButtonLoader from '../../../common/button_loader';
-import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
+import useStationOnboarding from '../../../hooks/useStationOnboarding';
+import { getOnboardingRoute } from '../../../utils/onboarding';
 
 const AddStaff = () => {
-
   const [staff, setStaff] = useState<Array<{ name: string; email: string; role: string }>>([
     { name: '', email: '', role: '' },
   ]);
-
-
-
   const [inputError, setInputError] = useState('');
   const [loading, setLoading] = useState(false);
 
-
-
   const navigate = useNavigate();
+  const { status, refresh } = useStationOnboarding();
 
-    const handleSubmit = async (e) => {
-      e.preventDefault();
-    
-      // Clear any previous error
-      setInputError('');
-    
-      // Frontend validations
-      const cleaned = staff
-        .map((s) => ({ name: s.name.trim(), email: (s.email || '').trim(), role: s.role.trim() }))
-        .filter((s) => s.name && s.role);
-      if (cleaned.length === 0) {
-        setInputError('Please add at least one staff with a role.');
-        return;
+  useEffect(() => {
+    if (status?.staff_members && status.staff_members.length > 0) {
+      const mapped = status.staff_members.map((member) => ({
+        name: member.name || '',
+        email: member.email || '',
+        role: member.role || '',
+      }));
+      setStaff(mapped);
+    }
+  }, [status?.staff_members]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    setInputError('');
+
+    const cleaned = staff
+      .map((s) => ({ name: s.name.trim(), email: (s.email || '').trim(), role: s.role.trim() }))
+      .filter((s) => s.name && s.role);
+    if (cleaned.length === 0) {
+      setInputError('Please add at least one staff with a role.');
+      return;
+    }
+
+    const url = 'api/accounts/complete-add-staff/';
+
+    try {
+      setLoading(true);
+      const resp = await api.post(url, { station_id: getStationId(), staff: cleaned });
+      let nextStep = resp.data?.data?.next_step as string | undefined;
+      if (!nextStep || nextStep === 'staff') {
+        nextStep = 'payment';
       }
+      await refresh();
 
-    
-      const url = 'api/accounts/complete-add-staff/';
-    
-      try {
-        setLoading(true);
-        const resp = await api.post(url, { station_id: getStationId(), staff: cleaned });
-        let nextStep = resp.data?.data?.next_step as string | undefined;
-        if (!nextStep || nextStep === 'staff') {
-          nextStep = 'report';
-        }
-    
-        switch (nextStep) {
-          case 'profile':
-            navigate('/onboarding/profile');
-            break;
-          case 'staff':
-            navigate('/onboarding/staff');
-            break;
-          case 'report':
-            navigate('/onboarding/payment');
-            break;
-          case 'payment':
-            navigate('/onboarding/payment');
-            break;
-          case 'done':
-            navigate('/dashboard');
-            window.location.reload();
-            break;
-          default:
-            navigate('/dashboard'); // fallback
-            window.location.reload();
-        }
-    
-      } catch (error) {
-        console.error('Error updating profile:', error.message);
-        setInputError('An unexpected error occurred.');
-      } finally {
-        setLoading(false);
+      switch (nextStep) {
+        case 'profile':
+          navigate(getOnboardingRoute('profile'));
+          break;
+        case 'staff':
+          navigate(getOnboardingRoute('staff'));
+          break;
+        case 'report':
+        case 'payment':
+          navigate(getOnboardingRoute('payment'));
+          break;
+        case 'done':
+          navigate(getOnboardingRoute('done'));
+          break;
+        default:
+          navigate(getOnboardingRoute(nextStep as any));
       }
-    };
-
-
-
-
+    } catch (error) {
+      console.error('Error updating profile:', (error as any)?.message);
+      setInputError('An unexpected error occurred.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="h-screen bg-gradient-to-br from-[#1a2a6c] via-[#b21f1f] to-[#fdbb2d] flex items-center justify-center">
-
-
-
       <div className="w-full max-w-2xl px-6">
         <h2 className="text-5xl font-bold text-white text-center mb-8">
           ZamIO
         </h2>
-
 
         {inputError && (
           <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-3">
@@ -104,11 +95,10 @@ const AddStaff = () => {
             🎧 Add Staff
           </h2>
           <p className=" text-white text-center mb-8">
-          Add staff members (optional): Invite DJs, managers</p>
-
+            Add staff members (optional): Invite DJs, managers
+          </p>
 
           <form onSubmit={handleSubmit} className="space-y-6">
-         
             {staff.map((row, idx) => (
               <div key={idx} className="grid grid-cols-3 gap-2">
                 <input
@@ -158,9 +148,7 @@ const AddStaff = () => {
                 + Add another
               </button>
             </div>
-     
 
-            {/* Submit Button */}
             {loading ? (
               <ButtonLoader />
             ) : (
@@ -173,7 +161,6 @@ const AddStaff = () => {
             )}
           </form>
 
-          {/* Link to Register */}
           <p className=" text-white mt-6 text-center">
             <button
               className="underline text-white hover:text-blue-200"
@@ -184,8 +171,9 @@ const AddStaff = () => {
                     station_id: getStationId(),
                     step: 'payment',
                   });
+                  await refresh();
                 } catch {}
-                navigate('/onboarding/payment');
+                navigate(getOnboardingRoute('payment'));
               }}
             >
               Skip

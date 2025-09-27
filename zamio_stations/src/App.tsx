@@ -26,6 +26,7 @@ import DisputeDetails from './pages/MatchDisputeManagement/DisputeDetails';
 import CompleteProfile from './pages/Authentication/Onboarding/CompleteProfile';
 import PaymentInfo from './pages/Authentication/Onboarding/PaymentInfo';
 import AddStaff from './pages/Authentication/Onboarding/AddStaff';
+import RequireStationOnboarding from './components/auth/RequireStationOnboarding';
 
 const hiddenOnRoutes = [
   '/',
@@ -58,125 +59,125 @@ function App() {
   ) : shouldUseDefaultLayout ? (
     <DefaultLayout hiddenOnRoutes={hiddenOnRoutes}>
       <Routes>
-        <Route
-          path="/dashboard"
-          element={
-            <>
-              <PageTitle title="Station Dasboard | ZamIO Stations" />
-              <Dashboard />
-            </>
-          }
-        />
-        <Route
-          path="/match-logs"
-          element={
-            <>
-              <PageTitle title="Match Log | ZamIO Stations" />
-              <MatchLogViewer />
-            </>
-          }
-        />
-        <Route
-          path="/match-disputes"
-          element={
-            <>
-              <PageTitle title="All Match Disputes | ZamIO Stations" />
-              <AllDisputeMatches />
-            </>
-          }
-        />
-        <Route
-          path="/match-dispute-details"
-          element={
-            <>
-              <PageTitle title="Dispute Details | ZamIO Stations" />
-              <DisputeDetails />
-            </>
-          }
-        />
-        <Route
-          path="/profile"
-          element={
-            <>
-              <PageTitle title="Station Profile | ZamIO Stations" />
-              <StationProfilePage />
-            </>
-          }
-        />
-        <Route
-          path="/staff-management"
-          element={
-            <>
-              <PageTitle title="Staff Management | ZamIO Stations" />
-              <StationStaffManagement />
-            </>
-          }
-        />
-        <Route
-          path="/compliance"
-          element={
-            <>
-              <PageTitle title="Station Compliance | ZamIO Stations" />
-              <StationCompliance />
-            </>
-          }
-        />
-        <Route
-          path="/playlog-management"
-          element={
-            <>
-              <PageTitle title="Playlog Management | ZamIO Stations" />
-              <PlaylogManagement />
-            </>
-          }
-        />
-        <Route
-          path="/notifications"
-          element={
-            <>
-              <PageTitle title="Notification Center | ZamIO Stations" />
-              <NotificationCenter />
-            </>
-          }
-        />
-        <Route
-          path="/help"
-          element={
-            <>
-              <PageTitle title="Education & Support | ZamIO Stations" />
-              <EducationSupport />
-            </>
-          }
-        />
-        <Route
-          path="/radio-stream"
-          element={
-            <>
-              <PageTitle title="Radio Stream | ZamIO Stations" />
-              <RadioStreamMonitor />
-            </>
-          }
-        />
-        <Route
-          path="/audio-stream"
-          element={
-            <>
-              <PageTitle title="Audio Stream | ZamIO Stations" />
-              <AudioFileMatcher />
-            </>
-          }
-        />
-        <Route
-          path="/station-dashboard"
-          element={
-            <>
-              <PageTitle title="Station Dashboard | ZamIO Stations" />
-              <StationDashboard />
-            </>
-          }
-        />
-    
-    
+        <Route element={<RequireStationOnboarding />}>
+          <Route
+            path="/dashboard"
+            element={
+              <>
+                <PageTitle title="Station Dasboard | ZamIO Stations" />
+                <Dashboard />
+              </>
+            }
+          />
+          <Route
+            path="/match-logs"
+            element={
+              <>
+                <PageTitle title="Match Log | ZamIO Stations" />
+                <MatchLogViewer />
+              </>
+            }
+          />
+          <Route
+            path="/match-disputes"
+            element={
+              <>
+                <PageTitle title="All Match Disputes | ZamIO Stations" />
+                <AllDisputeMatches />
+              </>
+            }
+          />
+          <Route
+            path="/match-dispute-details"
+            element={
+              <>
+                <PageTitle title="Dispute Details | ZamIO Stations" />
+                <DisputeDetails />
+              </>
+            }
+          />
+          <Route
+            path="/profile"
+            element={
+              <>
+                <PageTitle title="Station Profile | ZamIO Stations" />
+                <StationProfilePage />
+              </>
+            }
+          />
+          <Route
+            path="/staff-management"
+            element={
+              <>
+                <PageTitle title="Staff Management | ZamIO Stations" />
+                <StationStaffManagement />
+              </>
+            }
+          />
+          <Route
+            path="/compliance"
+            element={
+              <>
+                <PageTitle title="Station Compliance | ZamIO Stations" />
+                <StationCompliance />
+              </>
+            }
+          />
+          <Route
+            path="/playlog-management"
+            element={
+              <>
+                <PageTitle title="Playlog Management | ZamIO Stations" />
+                <PlaylogManagement />
+              </>
+            }
+          />
+          <Route
+            path="/notifications"
+            element={
+              <>
+                <PageTitle title="Notification Center | ZamIO Stations" />
+                <NotificationCenter />
+              </>
+            }
+          />
+          <Route
+            path="/help"
+            element={
+              <>
+                <PageTitle title="Education & Support | ZamIO Stations" />
+                <EducationSupport />
+              </>
+            }
+          />
+          <Route
+            path="/radio-stream"
+            element={
+              <>
+                <PageTitle title="Radio Stream | ZamIO Stations" />
+                <RadioStreamMonitor />
+              </>
+            }
+          />
+          <Route
+            path="/audio-stream"
+            element={
+              <>
+                <PageTitle title="Audio Stream | ZamIO Stations" />
+                <AudioFileMatcher />
+              </>
+            }
+          />
+          <Route
+            path="/station-dashboard"
+            element={
+              <>
+                <PageTitle title="Station Dashboard | ZamIO Stations" />
+                <StationDashboard />
+              </>
+            }
+          />
+        </Route>
       </Routes>
     </DefaultLayout>
   ) : (
@@ -219,36 +220,35 @@ function App() {
             </>
           }
         />
-
-        <Route
-          path="/onboarding/profile"
-          element={
-            <>
-              <PageTitle title="Complete Profile | ZamIO-Station" />
-              <CompleteProfile />
-            </>
-          }
-        />
-        <Route
-          path="/onboarding/staff"
-          element={
-            <>
-              <PageTitle title="Complete Add Staff | ZamIO-Station" />
-              <AddStaff />
-            </>
-          }
-        />
-
-
-        <Route
-          path="/onboarding/payment"
-          element={
-            <>
-              <PageTitle title="Complete Payment | ZamIO-Station" />
-              <PaymentInfo />
-            </>
-          }
-        />
+        <Route element={<RequireStationOnboarding />}>
+          <Route
+            path="/onboarding/profile"
+            element={
+              <>
+                <PageTitle title="Complete Profile | ZamIO-Station" />
+                <CompleteProfile />
+              </>
+            }
+          />
+          <Route
+            path="/onboarding/staff"
+            element={
+              <>
+                <PageTitle title="Complete Add Staff | ZamIO-Station" />
+                <AddStaff />
+              </>
+            }
+          />
+          <Route
+            path="/onboarding/payment"
+            element={
+              <>
+                <PageTitle title="Complete Payment | ZamIO-Station" />
+                <PaymentInfo />
+              </>
+            }
+          />
+        </Route>
       </Routes>
     </>
   );

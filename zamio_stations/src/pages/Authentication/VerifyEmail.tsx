@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { baseUrl } from '../../constants';
+import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../../lib/api';
 import ButtonLoader from '../../common/button_loader';
+import useStationOnboarding from '../../hooks/useStationOnboarding';
+import { getOnboardingRoute } from '../../utils/onboarding';
 
 const VerifyEmail = () => {
   const [otp, setOtp] = useState(['', '', '', '']);
@@ -13,6 +14,7 @@ const VerifyEmail = () => {
   const email = location.state?.email;
 
   const navigate = useNavigate();
+  const { refresh } = useStationOnboarding();
 
   const handleChange = (value, index) => {
     if (value.length > 1) return;
@@ -45,24 +47,23 @@ const VerifyEmail = () => {
         email_token: code,
       });
 
-      const data = resp.data;
+      const payload = resp.data?.data ?? {};
 
-      localStorage.setItem('first_name', data.data.first_name);
-      localStorage.setItem('last_name', data.data.last_name);
-      localStorage.setItem('user_id', data.data.user_id);
-      localStorage.setItem('artist_id', data.data.artist_id);
-      localStorage.setItem('email', data.data.email);
-      localStorage.setItem('photo', data.data.photo);
-      localStorage.setItem('token', data.data.token);
+      localStorage.setItem('first_name', payload.first_name);
+      localStorage.setItem('last_name', payload.last_name);
+      localStorage.setItem('user_id', payload.user_id);
+      localStorage.setItem('station_id', payload.station_id);
+      localStorage.setItem('email', payload.email);
+      localStorage.setItem('photo', payload.photo);
+      localStorage.setItem('token', payload.token);
 
-      if(data.data.profile_completed === true){
-        navigate('/dashboard');
-        window.location.reload();
-      }else {
-        navigate('/onboarding/profile', { state: { successMessage: 'Email verified successfully!' } });
-        window.location.reload();
+      await refresh();
 
-      }
+      const nextRoute = payload.profile_completed
+        ? getOnboardingRoute('done')
+        : getOnboardingRoute(payload.next_step || 'profile');
+
+      navigate(nextRoute, { state: { successMessage: 'Email verified successfully!' } });
 
 
     } catch (err: any) {

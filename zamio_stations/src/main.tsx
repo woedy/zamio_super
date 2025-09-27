@@ -7,14 +7,17 @@ import './css/satoshi.css';
 import { ToastProvider } from './components/ui';
 import 'jsvectormap/dist/css/jsvectormap.css';
 import 'flatpickr/dist/flatpickr.min.css';
+import { StationOnboardingProvider } from './contexts/StationOnboardingContext';
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
     <ToastProvider position="top-right">
-        <Router>
-      <App />
-    </Router>
-      </ToastProvider>
+      <Router>
+        <StationOnboardingProvider>
+          <App />
+        </StationOnboardingProvider>
+      </Router>
+    </ToastProvider>
   </React.StrictMode>,
 
   
