@@ -242,20 +242,20 @@ export default function ZamIOLandingPage() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-slate-950 text-white">
+    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 text-white">
       <div className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute inset-0 bg-gradient-to-br from-indigo-950 via-slate-950 to-black" />
-        <div className="absolute left-1/2 top-0 h-[640px] w-[640px] -translate-x-1/2 rounded-full bg-indigo-600/30 blur-[160px]" />
-        <div className="absolute bottom-[-200px] right-[-120px] h-[420px] w-[420px] rounded-full bg-violet-500/20 blur-[180px]" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-indigo-900/20 via-slate-900 to-slate-900" />
+        <div className="absolute left-1/2 top-0 h-[800px] w-[800px] -translate-x-1/2 rounded-full bg-indigo-600/10 blur-3xl" />
+        <div className="absolute -bottom-40 -right-40 h-[600px] w-[600px] rounded-full bg-violet-500/10 blur-3xl" />
       </div>
 
       <header className="relative">
         <nav className="container mx-auto flex items-center justify-between px-4 py-6">
-          <a href="/" className="flex items-center space-x-2">
-            <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-500/20 text-indigo-300">
+          <a href="/" className="flex items-center space-x-3">
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow-lg shadow-indigo-500/20">
               <Music className="h-5 w-5" />
             </span>
-            <span className="text-2xl font-semibold tracking-tight">Zamio</span>
+            <span className="text-2xl font-bold bg-gradient-to-r from-indigo-200 to-violet-200 bg-clip-text text-transparent">Zamio</span>
           </a>
 
           <div className="hidden items-center space-x-10 md:flex">
@@ -273,15 +273,15 @@ export default function ZamIOLandingPage() {
           <div className="hidden items-center space-x-3 md:flex">
             <a
               href="/sign-in"
-              className="rounded-full border border-white/20 px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-indigo-400 hover:text-white"
+              className="rounded-full border border-white/10 px-4 py-2 text-sm font-medium text-slate-200 transition-colors duration-200 hover:border-indigo-500 hover:bg-white/5 hover:text-white"
             >
               Sign in
             </a>
             <a
               href="/sign-up"
-              className="inline-flex items-center rounded-full bg-indigo-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-400"
+              className="inline-flex items-center rounded-full bg-gradient-to-r from-indigo-600 to-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-indigo-500/20 transition-all duration-200 hover:from-indigo-500 hover:to-violet-500 hover:shadow-lg hover:shadow-indigo-500/30"
             >
-              Request demo
+              Sign Up
               <ArrowRight className="ml-2 h-4 w-4" />
             </a>
           </div>
@@ -337,7 +337,7 @@ export default function ZamIOLandingPage() {
                 href="/sign-up"
                 className="inline-flex items-center justify-center rounded-full bg-indigo-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-400"
               >
-                Request demo
+                Sign Up
                 <ArrowRight className="ml-2 h-4 w-4" />
               </a>
             </div>
@@ -346,49 +346,49 @@ export default function ZamIOLandingPage() {
       </header>
 
       <main className="relative">
-        <section className="container mx-auto grid gap-12 px-4 pb-20 pt-10 lg:grid-cols-[minmax(0,1fr)_520px] lg:pb-28 lg:pt-20">
-          <div>
-            <div className="inline-flex items-center space-x-3 rounded-full border border-white/20 bg-white/5 px-4 py-2 text-xs font-medium uppercase tracking-widest text-slate-200">
+        <section className="container mx-auto grid gap-12 px-4 pb-20 pt-16 lg:grid-cols-[minmax(0,1fr)_520px] lg:pb-32 lg:pt-28">
+          <div className="relative z-10">
+            <div className="inline-flex items-center space-x-3 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-4 py-2 text-xs font-medium uppercase tracking-widest text-indigo-200 backdrop-blur-sm">
               <ShieldCheck className="h-4 w-4" />
               <span>Royalty intelligence for Ghana & beyond</span>
             </div>
-            <h1 className="mt-6 text-4xl font-semibold leading-tight sm:text-5xl lg:text-6xl">
+            <h1 className="mt-6 bg-gradient-to-br from-white to-slate-300 bg-clip-text text-4xl font-bold leading-tight tracking-tight text-transparent sm:text-5xl lg:text-6xl">
               Present a PRO-ready royalty platform artists and societies trust.
             </h1>
-            <p className="mt-6 max-w-xl text-lg text-slate-300">
+            <p className="mt-6 max-w-xl text-lg leading-relaxed text-slate-300">
               Zamio unifies detection, reconciliation, payouts, and compliance so Ghanaian and international catalogs receive every cedi they are owed.
             </p>
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center">
               <a
                 href="/sign-up"
-                className="inline-flex items-center justify-center rounded-full bg-indigo-500 px-6 py-3 text-base font-semibold text-white transition hover:bg-indigo-400"
+                className="group inline-flex items-center justify-center rounded-full bg-gradient-to-r from-indigo-600 to-violet-600 px-6 py-3.5 text-base font-semibold text-white shadow-lg shadow-indigo-500/20 transition-all duration-200 hover:from-indigo-500 hover:to-violet-500 hover:shadow-xl hover:shadow-indigo-500/30"
               >
                 Launch artist portal
-                <ArrowRight className="ml-2 h-5 w-5" />
+                <ArrowRight className="ml-2 h-5 w-5 transition-transform duration-200 group-hover:translate-x-1" />
               </a>
               <a
                 href="/contact"
-                className="inline-flex items-center justify-center rounded-full border border-white/20 px-6 py-3 text-base font-semibold text-slate-200 transition hover:border-indigo-400 hover:text-white"
+                className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-6 py-3.5 text-base font-semibold text-slate-200 backdrop-blur-sm transition-all duration-200 hover:border-indigo-500/30 hover:bg-white/10 hover:text-white"
               >
                 Talk to our team
               </a>
             </div>
-            <ul className="mt-10 grid max-w-lg gap-4 text-sm text-slate-300">
-              <li className="flex items-start space-x-3">
-                <span className="mt-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-indigo-500/30 text-indigo-200">
+            <ul className="mt-12 grid max-w-lg gap-4 text-sm text-slate-300">
+              <li className="group flex items-start space-x-4 rounded-2xl p-4 transition-all duration-200 hover:bg-white/5">
+                <span className="mt-0.5 inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-indigo-500/20 text-indigo-200">
                   <AudioWaveform className="h-3.5 w-3.5" />
                 </span>
                 <span>Granular logs across FM, TV, and streaming feeds with dispute-ready evidence.</span>
               </li>
-              <li className="flex items-start space-x-3">
-                <span className="mt-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-indigo-500/30 text-indigo-200">
-                  <AudioWaveform className="h-3.5 w-3.5" />
+              <li className="group flex items-start space-x-4 rounded-2xl p-4 transition-all duration-200 hover:bg-white/5">
+                <span className="mt-0.5 inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-indigo-500/20 text-indigo-200">
+                  <FileChartColumnIncreasing className="h-3.5 w-3.5" />
                 </span>
                 <span>Automated royalty statements tuned to PRO partner formats and regulatory expectations.</span>
               </li>
-              <li className="flex items-start space-x-3">
-                <span className="mt-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-indigo-500/30 text-indigo-200">
-                  <AudioWaveform className="h-3.5 w-3.5" />
+              <li className="group flex items-start space-x-4 rounded-2xl p-4 transition-all duration-200 hover:bg-white/5">
+                <span className="mt-0.5 inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-indigo-500/20 text-indigo-200">
+                  <Users className="h-3.5 w-3.5" />
                 </span>
                 <span>Integrated payouts to mobile money and banks with multi-level approvals.</span>
               </li>
@@ -396,8 +396,8 @@ export default function ZamIOLandingPage() {
           </div>
 
           <div className="relative">
-            <div className="absolute -left-10 -top-10 h-32 w-32 rounded-full bg-indigo-500/20 blur-3xl" />
-            <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-slate-900/60 shadow-2xl backdrop-blur">
+            <div className="absolute -left-10 -top-10 h-64 w-64 rounded-full bg-indigo-500/10 blur-3xl" />
+            <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-slate-800/50 to-slate-900/50 shadow-2xl backdrop-blur-lg">
               <div className="absolute inset-x-10 -top-20 h-52 rounded-full bg-indigo-500/30 blur-3xl" />
               <img
                 src={cover}
