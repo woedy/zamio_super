@@ -207,6 +207,9 @@ const Dashboard = () => {
   const [dashboardLoading, setDashboardLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
+  // ADD DEBUG STATE
+  const [debugInfo, setDebugInfo] = useState<string>('');
+
   const { details, status, loading: onboardingLoading, refresh: refreshOnboarding } = useStationOnboardingContext();
 
   const [stationId, setStationId] = useState<string>(() => safeString(getStationId(), ''));
@@ -214,15 +217,36 @@ const Dashboard = () => {
   const attemptedRefresh = useRef(false);
   const requestCounter = useRef(0);
 
+  // ADD DEBUG LOGGING
+  useEffect(() => {
+    const debugData = {
+      stationId,
+      contextStationId: safeString(status?.station_id, '') || safeString((details as any)?.station_id, '') || safeString((details as any)?.id, ''),
+      onboardingLoading,
+      details: details ? 'Present' : 'Missing',
+      status: status ? 'Present' : 'Missing',
+      pendingRefresh: pendingRefresh.current,
+      attemptedRefresh: attemptedRefresh.current,
+    };
+    setDebugInfo(JSON.stringify(debugData, null, 2));
+    console.log('Dashboard Debug Info:', debugData);
+  }, [stationId, details, status, onboardingLoading]);
+
   const setStationIdentifier = useCallback(
     (candidate: unknown): string => {
       const trimmed = safeString(candidate, '');
+      console.log('setStationIdentifier called with:', candidate, 'trimmed:', trimmed);
       if (!trimmed) {
         return '';
       }
 
       persistStationId(trimmed);
-      setStationId((prev) => (prev === trimmed ? prev : trimmed));
+      setStationId((prev) => {
+        if (prev !== trimmed) {
+          console.log('Station ID changed from', prev, 'to', trimmed);
+        }
+        return prev === trimmed ? prev : trimmed;
+      });
       return trimmed;
     },
     [],
@@ -232,59 +256,71 @@ const Dashboard = () => {
     const directStationId = safeString(status?.station_id, '');
     const profileStationId = safeString((details as any)?.station_id, '');
     const profileId = safeString((details as any)?.id, '');
-    return directStationId || profileStationId || profileId;
+    const result = directStationId || profileStationId || profileId;
+    console.log('contextStationId computed:', { directStationId, profileStationId, profileId, result });
+    return result;
   }, [(details as any)?.id, (details as any)?.station_id, status?.station_id]);
 
   const availableStationId = useMemo(() => {
-    if (stationId) {
-      return stationId;
-    }
-
-    if (contextStationId) {
-      return contextStationId;
-    }
-
-    return '';
+    const result = stationId || contextStationId || '';
+    console.log('availableStationId computed:', result, { stationId, contextStationId });
+    return result;
   }, [contextStationId, stationId]);
 
   useEffect(() => {
+    console.log('contextStationId effect triggered:', contextStationId);
     if (!contextStationId) {
       return;
     }
-
     setStationIdentifier(contextStationId);
   }, [contextStationId, setStationIdentifier]);
 
   const fallbackStationName = useMemo(() => {
     const nameFromDetails = safeString(details?.name, '');
     const nameFromStatus = safeString(status?.station_name, '');
-    return nameFromDetails || nameFromStatus || 'Your Station';
+    const result = nameFromDetails || nameFromStatus || 'Your Station';
+    console.log('fallbackStationName computed:', result, { nameFromDetails, nameFromStatus });
+    return result;
   }, [details?.name, status?.station_name]);
 
   const loadDashboard = useCallback(
     async (targetStationId: string) => {
+      console.log('loadDashboard called with targetStationId:', targetStationId);
+      
       const normalizedStationId = safeString(targetStationId, '') || safeString(getStationId(), '');
+      console.log('normalizedStationId:', normalizedStationId);
 
       if (!normalizedStationId) {
-        setError('We could not determine your station ID. Please sign in again.');
+        const errorMsg = 'We could not determine your station ID. Please sign in again.';
+        console.error(errorMsg);
+        setError(errorMsg);
         setData(null);
         return;
       }
 
       const currentStationId = setStationIdentifier(normalizedStationId);
+      console.log('currentStationId after setStationIdentifier:', currentStationId);
 
       if (!currentStationId) {
-        setError('We could not determine your station ID. Please sign in again.');
+        const errorMsg = 'We could not determine your station ID. Please sign in again.';
+        console.error(errorMsg);
+        setError(errorMsg);
         setData(null);
         return;
       }
 
       const requestId = ++requestCounter.current;
+      console.log('Starting request with ID:', requestId);
 
       setDashboardLoading(true);
       setError(null);
 
       try {
+        console.log('Making API request to:', 'api/stations/dashboard/', 'with params:', {
+          station_id: currentStationId,
+          period: selectedPeriod,
+        });
+        
         const response = await api.get('api/stations/dashboard/', {
           params: {
             station_id: currentStationId,
@@ -292,23 +328,35 @@ const Dashboard = () => {
           },
         });
 
+        console.log('API response received:', response);
+
         if (requestId !== requestCounter.current) {
+          console.log('Request outdated, ignoring response');
           return;
         }
 
         const payload = response?.data?.data ?? {};
+        console.log('Payload extracted:', payload);
+        
         const normalized = normalizeDashboardPayload(payload, fallbackStationName, selectedPeriod);
+        console.log('Normalized data:', normalized);
+        
         setData(normalized);
       } catch (err: any) {
+        console.error('API request failed:', err);
+        
         if (requestId !== requestCounter.current) {
+          console.log('Request outdated, ignoring error');
           return;
         }
 
         const message = err?.response?.data?.message || err?.message || 'Unable to load dashboard data.';
+        console.error('Setting error message:', message);
         setError(message);
         setData(null);
       } finally {
         if (requestId === requestCounter.current) {
+          console.log('Setting loading to false');
           setDashboardLoading(false);
         }
       }
@@ -317,50 +365,72 @@ const Dashboard = () => {
   );
 
   useEffect(() => {
+    console.log('Main useEffect triggered');
     const storedStationId = safeString(getStationId(), '');
     const candidateStationId = availableStationId || storedStationId;
+    
+    console.log('Effect values:', {
+      storedStationId,
+      availableStationId,
+      candidateStationId,
+      onboardingLoading,
+      pendingRefresh: pendingRefresh.current,
+      attemptedRefresh: attemptedRefresh.current,
+    });
 
     if (candidateStationId) {
+      console.log('Found candidateStationId, proceeding with load');
       pendingRefresh.current = false;
       attemptedRefresh.current = false;
 
       const normalized = setStationIdentifier(candidateStationId);
       if (!normalized) {
+        console.error('setStationIdentifier returned empty string');
         setError('We could not determine your station ID. Please sign in again.');
         setData(null);
         return;
       }
 
+      console.log('Calling loadDashboard with normalized ID:', normalized);
       void loadDashboard(normalized);
       return;
     }
 
     if (onboardingLoading) {
+      console.log('Onboarding is loading, clearing error and waiting');
       setError(null);
       return;
     }
 
     if (pendingRefresh.current) {
+      console.log('Refresh is pending, returning early');
       return;
     }
 
     if (attemptedRefresh.current) {
+      console.log('Already attempted refresh, setting error');
       setError('We could not determine your station ID. Please sign in again.');
       return;
     }
 
+    console.log('Attempting refresh');
     attemptedRefresh.current = true;
     pendingRefresh.current = true;
     void refreshOnboarding({ silent: true }).finally(() => {
+      console.log('Refresh completed');
       pendingRefresh.current = false;
       const refreshed = safeString(getStationId(), '');
       if (refreshed) {
+        console.log('Found refreshed station ID:', refreshed);
         setStationIdentifier(refreshed);
+      } else {
+        console.log('No station ID found after refresh');
       }
     });
   }, [availableStationId, onboardingLoading, loadDashboard, refreshOnboarding, selectedPeriod, setStationIdentifier]);
 
   const handleManualRefresh = useCallback(() => {
+    console.log('Manual refresh triggered');
     const identifier = availableStationId || safeString(getStationId(), '');
     if (!identifier) {
       setError('We could not determine your station ID. Please sign in again.');
@@ -750,6 +820,20 @@ const Dashboard = () => {
       </header>
 
       <main className="max-w-7xl mx-auto px-6 py-10 space-y-10">
+        {/* DEBUG SECTION - REMOVE AFTER DEBUGGING */}
+        <div className="rounded-2xl border border-yellow-500/40 bg-yellow-500/10 p-4 text-sm text-yellow-200">
+          <details>
+            <summary className="cursor-pointer font-semibold mb-2">Debug Information</summary>
+            <pre className="whitespace-pre-wrap text-xs overflow-x-auto">{debugInfo}</pre>
+            <div className="mt-4 space-y-2">
+              <div>Loading States: dashboard={dashboardLoading.toString()}, onboarding={onboardingLoading.toString()}</div>
+              <div>Station ID Sources: stored={safeString(getStationId(), '') || 'empty'}, available={availableStationId || 'empty'}</div>
+              <div>Error: {error || 'none'}</div>
+              <div>Data: {data ? 'present' : 'null'}</div>
+            </div>
+          </details>
+        </div>
+
         <section className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 p-1 backdrop-blur">
             {PERIOD_OPTIONS.map((period) => (
