@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import api from '../../lib/api';
+import { persistStationId } from '../../lib/auth';
 import ButtonLoader from '../../common/button_loader';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import useStationOnboarding from '../../hooks/useStationOnboarding';
@@ -68,7 +69,7 @@ const SignIn = () => {
         localStorage.setItem('first_name', user.first_name);
         localStorage.setItem('last_name', user.last_name);
         localStorage.setItem('user_id', user.user_id);
-        localStorage.setItem('station_id', user.station_id);
+        persistStationId(user.station_id);
         localStorage.setItem('email', user.email);
         localStorage.setItem('photo', user.photo);
         localStorage.setItem('token', user.token);

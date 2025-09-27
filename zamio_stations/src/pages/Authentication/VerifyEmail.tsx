@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../../lib/api';
+import { persistStationId } from '../../lib/auth';
 import ButtonLoader from '../../common/button_loader';
 import useStationOnboarding from '../../hooks/useStationOnboarding';
 import { getOnboardingRoute } from '../../utils/onboarding';
@@ -52,7 +53,7 @@ const VerifyEmail = () => {
       localStorage.setItem('first_name', payload.first_name);
       localStorage.setItem('last_name', payload.last_name);
       localStorage.setItem('user_id', payload.user_id);
-      localStorage.setItem('station_id', payload.station_id);
+      persistStationId(payload.station_id);
       localStorage.setItem('email', payload.email);
       localStorage.setItem('photo', payload.photo);
       localStorage.setItem('token', payload.token);

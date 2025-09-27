@@ -1,9 +1,19 @@
 import axios from 'axios';
 import { baseUrl } from '../constants';
+import { clearStationId } from './auth';
 
-// Use same-origin by default via Vite proxy or fall back to baseUrl
+const env = (import.meta as any)?.env ?? {};
+
+const resolveBaseUrl = (): string => {
+  const candidate = env.VITE_API_BASE || env.VITE_API_URL || baseUrl || '/';
+  if (typeof candidate === 'string' && candidate.length > 0) {
+    return candidate;
+  }
+  return '/';
+};
+
 const api = axios.create({
-  baseURL: (import.meta as any)?.env?.VITE_API_BASE || '/',
+  baseURL: resolveBaseUrl(),
 });
 
 // Attach auth token from storage
@@ -24,7 +34,7 @@ api.interceptors.response.use(
       try {
         localStorage.removeItem('token');
         sessionStorage.removeItem('token');
-        localStorage.removeItem('station_id');
+        clearStationId();
         localStorage.removeItem('user_id');
       } catch {}
       if (typeof window !== 'undefined' && window.location.pathname !== '/sign-in') {
