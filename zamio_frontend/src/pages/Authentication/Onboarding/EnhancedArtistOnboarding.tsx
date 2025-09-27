@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import OnboardingWizard, { OnboardingStep } from '../../../components/onboarding/OnboardingWizard';
 import WelcomeStep from './steps/WelcomeStep';
@@ -14,29 +14,33 @@ const EnhancedArtistOnboarding: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [artistData, setArtistData] = useState<any>(null);
-  const [isLoadingData, setIsLoadingData] = useState(true);
-  const [hasLoadedData, setHasLoadedData] = useState(false);
+  const [isLoadingData, setIsLoadingData] = useState(false);
+  const [activeStepId, setActiveStepId] = useState<string>('welcome');
+  const [loading, setLoading] = useState(true);
+  const isFetchingRef = useRef(false);
 
-  useEffect(() => {
-    loadArtistData();
-  }, []);
+  const loadArtistData = useCallback(async () => {
+    if (isFetchingRef.current) {
+      return;
+    }
 
-  const loadArtistData = async () => {
-    // Prevent multiple simultaneous calls
-    if (isLoadingData || hasLoadedData) return;
-
+    isFetchingRef.current = true;
     setIsLoadingData(true);
     try {
       const response = await api.get(`api/accounts/artist-onboarding-status/${getArtistId()}/`);
       setArtistData(response.data.data);
-      setHasLoadedData(true);
     } catch (error) {
       console.error('Failed to load artist data:', error);
     } finally {
+      isFetchingRef.current = false;
       setIsLoadingData(false);
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadArtistData();
+  }, [loadArtistData]);
 
   const steps: OnboardingStep[] = useMemo(() => ([
     {
@@ -102,43 +106,47 @@ const EnhancedArtistOnboarding: React.FC = () => {
     const searchParams = new URLSearchParams(location.search);
     const requestedStep = searchParams.get('step');
 
+    if (requestedStep && availableStepIds.includes(requestedStep)) {
+      if (activeStepId !== requestedStep) {
+        setActiveStepId(requestedStep);
+      }
+      return;
+    }
+
     let targetStepId: string | undefined;
 
-    if (requestedStep && availableStepIds.includes(requestedStep)) {
-      targetStepId = requestedStep;
+    const recommendedStep = artistData?.next_recommended_step;
+    if (recommendedStep && availableStepIds.includes(recommendedStep)) {
+      targetStepId = recommendedStep;
     }
 
     if (!targetStepId) {
-      const recommendedStep = artistData?.next_recommended_step;
-      if (recommendedStep && availableStepIds.includes(recommendedStep)) {
-        targetStepId = recommendedStep;
+      const firstNonKYCIncomplete = steps.find(step => !step.isCompleted && step.id !== 'kyc');
+      if (firstNonKYCIncomplete) {
+        targetStepId = firstNonKYCIncomplete.id;
       }
     }
 
     if (!targetStepId) {
-      // If artistData is not loaded yet, default to welcome step
-      if (!artistData) {
-        targetStepId = 'welcome';
-      } else {
-        // Only look for incomplete steps if we have artist data
-        const firstIncomplete = steps.find(step => !step.isCompleted);
-        if (firstIncomplete) {
-          // Never default to KYC step - always prefer profile or other steps
-          if (firstIncomplete.id === 'kyc') {
-            targetStepId = 'profile'; // Skip KYC and go to profile instead
-          } else {
-            targetStepId = firstIncomplete.id;
-          }
-        } else {
-          targetStepId = steps[0].id; // Default to first step if all are completed
-        }
-      }
+      const firstIncomplete = steps.find(step => !step.isCompleted);
+      targetStepId = firstIncomplete ? firstIncomplete.id : steps[0].id;
     }
 
-    if (targetStepId !== initialStepId) {
-      setInitialStepId(targetStepId);
+    if (!targetStepId) {
+      return;
     }
-  }, [artistData, initialStepId, isLoadingData, location.search, steps]);
+
+    if (activeStepId !== targetStepId) {
+      setActiveStepId(targetStepId);
+    }
+
+    const params = new URLSearchParams(location.search);
+    if (params.get('step') !== targetStepId) {
+      params.set('step', targetStepId);
+      const query = params.toString();
+      navigate(`/onboarding${query ? `?${query}` : ''}`, { replace: true });
+    }
+  }, [activeStepId, artistData, isLoadingData, location.search, navigate, steps]);
 
   const handleStepComplete = async () => {
     await loadArtistData();
@@ -158,13 +166,16 @@ const EnhancedArtistOnboarding: React.FC = () => {
   };
 
   const handleStepChange = (stepId: string) => {
-    const params = new URLSearchParams(location.search);
-    if (params.get('step') === stepId) {
-      return;
+    if (activeStepId !== stepId) {
+      setActiveStepId(stepId);
     }
-    params.set('step', stepId);
-    const query = params.toString();
-    navigate(`/onboarding${query ? `?${query}` : ''}`, { replace: true });
+
+    const params = new URLSearchParams(location.search);
+    if (params.get('step') !== stepId) {
+      params.set('step', stepId);
+      const query = params.toString();
+      navigate(`/onboarding${query ? `?${query}` : ''}`, { replace: true });
+    }
   };
 
   const handleOnboardingComplete = async () => {
@@ -204,7 +215,8 @@ const EnhancedArtistOnboarding: React.FC = () => {
       onComplete={handleOnboardingComplete}
       title="Artist Onboarding"
       subtitle="Let's get you set up to start earning from your music"
-      initialStepId={initialStepId}
+      initialStepId="welcome"
+      currentStepId={activeStepId}
       onStepComplete={handleStepComplete}
       onStepSkip={handleStepSkip}
       onStepChange={handleStepChange}

@@ -253,9 +253,13 @@ html:not(.dark) .app-shell .text-white {
 }
 
 /* Glass panels and subtle borders should be solid/light in light mode */
+html:not(.dark) .app-shell .bg-white\/15,
 html:not(.dark) .app-shell .bg-white\/10,
 html:not(.dark) .app-shell .bg-white\/5 {
   background-color: #e9eef5 !important; /* card/section surface */
+}
+html:not(.dark) .app-shell .bg-white\/20 {
+  background-color: #e2e8f4 !important; /* elevated surface */
 }
 /* Page sub-headers should be transparent in light mode */
 html:not(.dark) .app-shell header.bg-black\/20 {
@@ -265,8 +269,10 @@ html:not(.dark) .app-shell header.bg-black\/20 {
   backdrop-filter: none !important;
 }
 html:not(.dark) .app-shell .border-white\/10,
+html:not(.dark) .app-shell .border-white\/12,
+html:not(.dark) .app-shell .border-white\/15,
 html:not(.dark) .app-shell .border-white\/20 {
-  border-color: #e5e7eb !important; /* gray-200 */
+  border-color: #e1e7f0 !important; /* gray-200 softened */
 }
 
 /* Inputs/buttons using translucent whites become proper light UI */
@@ -278,6 +284,23 @@ html:not(.dark) .app-shell .hover\:bg-white\/20:hover {
 /* Muted text colors for light mode */
 html:not(.dark) .app-shell .text-gray-300 {
   color: #475569 !important; /* slate-600 */
+}
+html:not(.dark) .app-shell .text-white\/90 {
+  color: rgba(15, 23, 42, 0.9) !important;
+}
+html:not(.dark) .app-shell .text-white\/80 {
+  color: rgba(15, 23, 42, 0.82) !important;
+}
+html:not(.dark) .app-shell .text-white\/70 {
+  color: rgba(15, 23, 42, 0.72) !important;
+}
+html:not(.dark) .app-shell .text-white\/60 {
+  color: rgba(15, 23, 42, 0.6) !important;
+}
+html:not(.dark) .app-shell .text-white\/50,
+html:not(.dark) .app-shell .text-white\/40,
+html:not(.dark) .app-shell .text-white\/30 {
+  color: rgba(15, 23, 42, 0.45) !important;
 }
 html:not(.dark) .app-shell .text-gray-400 {
   color: #64748b !important; /* slate-500 */

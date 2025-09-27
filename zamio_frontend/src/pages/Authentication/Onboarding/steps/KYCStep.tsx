@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   ShieldCheckIcon, 
   DocumentIcon,
@@ -55,19 +55,23 @@ const KYCStep: React.FC<OnboardingStepProps> = ({ onNext, onSkip, onBack }) => {
   ]);
   const [loading, setLoading] = useState(false);
   const [kycStatus, setKycStatus] = useState<string>('pending');
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
-    // Only load KYC status if we don't have artistData from parent
-    // The parent component should provide the data via props or context
-    if (!artistData) {
-      loadKYCStatus();
-    }
-  }, [artistData]);
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
-  const loadKYCStatus = async () => {
+  const loadKYCStatus = useCallback(async () => {
     try {
       const response = await api.get(`api/accounts/artist-onboarding-status/${getArtistId()}/`);
       const data = response.data.data;
+
+      if (!isMountedRef.current) {
+        return;
+      }
 
       if (data) {
         setKycStatus(data.kyc_status || 'pending');
@@ -86,15 +90,19 @@ const KYCStep: React.FC<OnboardingStepProps> = ({ onNext, onSkip, onBack }) => {
           }));
         }
       } else {
-        // Set default values to prevent crashes
         setKycStatus('pending');
       }
     } catch (error) {
       console.error('Failed to load KYC status:', error);
-      // Set default values to prevent crashes
-      setKycStatus('pending');
+      if (isMountedRef.current) {
+        setKycStatus('pending');
+      }
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadKYCStatus();
+  }, [loadKYCStatus]);
 
   const handleDocumentUpload = async (documentId: string, file: File) => {
     setLoading(true);
@@ -115,6 +123,8 @@ const KYCStep: React.FC<OnboardingStepProps> = ({ onNext, onSkip, onBack }) => {
       ));
 
       setKycStatus(response.data.data.kyc_status);
+
+      await loadKYCStatus();
     } catch (error: any) {
       console.error('Failed to upload document:', error);
       // Handle error - you might want to show a toast notification
@@ -124,8 +134,8 @@ const KYCStep: React.FC<OnboardingStepProps> = ({ onNext, onSkip, onBack }) => {
   };
 
   const handleDocumentRemove = (documentId: string) => {
-    setDocuments(prev => prev.map(doc => 
-      doc.id === documentId 
+    setDocuments(prev => prev.map(doc =>
+      doc.id === documentId
         ? { ...doc, file: undefined, status: 'pending' }
         : doc
     ));

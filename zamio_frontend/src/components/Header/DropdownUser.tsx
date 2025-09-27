@@ -1,12 +1,25 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import UserOne from '../../images/user/user-01.png';
-import { baseUrlMedia, firstName, userEmail, username, userPhoto } from '../../constants';
+import { baseUrlMedia, firstName, userEmail, userPhoto } from '../../constants';
+import { logoutArtist } from '../../lib/auth';
 import ClickOutside from '../Sidebar/ClickOutside';
 
 const DropdownUser = () => {
-  console.log(username);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    if (isLoggingOut) return;
+
+    setIsLoggingOut(true);
+    setDropdownOpen(false);
+
+    try {
+      await logoutArtist();
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
 
   return (
     <ClickOutside onClick={() => setDropdownOpen(false)} className="relative">
@@ -19,7 +32,7 @@ const DropdownUser = () => {
           <span className="block text-sm font-medium text-black dark:text-white">
             {`${firstName}`}
           </span>
-          <span className="block text-xs">{userEmail}</span>
+          <span className="block text-xs text-text-secondary">{userEmail}</span>
         </span>
 
         <span className="block h-12 w-12 rounded-full overflow-hidden">
@@ -104,7 +117,12 @@ const DropdownUser = () => {
               </Link>
             </li>
           </ul>
-          <button className="flex items-center gap-3.5 px-6 py-4 text-sm font-medium duration-300 ease-in-out hover:text-primary lg:text-base">
+          <button
+            type="button"
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            className="flex items-center gap-3.5 px-6 py-4 text-sm font-medium text-left text-text transition-colors duration-300 ease-in-out hover:text-primary disabled:cursor-not-allowed disabled:opacity-60 lg:text-base"
+          >
             <svg
               className="fill-current"
               width="22"
@@ -122,7 +140,7 @@ const DropdownUser = () => {
                 fill=""
               />
             </svg>
-            Log Out
+            {isLoggingOut ? 'Logging out…' : 'Log Out'}
           </button>
         </div>
       )}

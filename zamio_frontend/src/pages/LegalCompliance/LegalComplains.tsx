@@ -1,71 +1,70 @@
 import { FileText, ShieldCheck, AlertCircle } from 'lucide-react';
+import { PageBody, PageContainer, PageHeader, PageSection } from '../../components/ui';
+
+const legalData = {
+  termsAcceptedDate: '2025-05-12',
+  agreements: [
+    { name: "Split Sheet - 'Afro Fire'", url: '/docs/splits-afrofire.pdf' },
+    { name: 'Platform Terms (v2.1)', url: '/docs/terms-v2.1.pdf' },
+    { name: 'Radio Royalty Compliance Guide', url: '/docs/compliance.pdf' },
+  ],
+};
 
 export default function LegalCompliancePage() {
-  const legalData = {
-    termsAcceptedDate: '2025-05-12',
-    agreements: [
-      { name: "Split Sheet - 'Afro Fire'", url: '/docs/splits-afrofire.pdf' },
-      { name: 'Platform Terms (v2.1)', url: '/docs/terms-v2.1.pdf' },
-      { name: 'Radio Royalty Compliance Guide', url: '/docs/compliance.pdf' },
-    ],
-  };
-
   return (
-    <div className="min-h-screen bg-whiten text-black dark:bg-slate-950 dark:text-white px-6 py-10">
-      <div className="max-w-5xl mx-auto space-y-10">
-        {/* Terms Acceptance */}
-        <section className="bg-white dark:bg-slate-800 p-6 rounded-lg">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <ShieldCheck size={18} /> Terms & Policy Acceptance
-          </h2>
-          <p className="text-sm text-slate-700 dark:text-white/80 mt-2">
-            Last accepted on:{' '}
-            <span className="font-medium text-slate-900 dark:text-white">
-              {legalData.termsAcceptedDate}
-            </span>
-          </p>
-          <p className="text-slate-600 dark:text-white/60 text-sm mt-2">
-            You are required to accept new terms on major updates. We’ll notify
-            you in-app and via email.
-          </p>
-        </section>
+    <PageContainer bleed padding="none">
+      <PageBody className="max-w-5xl">
+        <PageHeader
+          title="Legal & Compliance"
+          subtitle="Manage your agreements, policies, and dispute readiness."
+          icon={<ShieldCheck className="h-6 w-6" />}
+        />
 
-        {/* Agreements & Downloads */}
-        <section className="bg-white dark:bg-slate-800 p-6 rounded-lg">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <FileText size={18} /> Download Agreements
+        <PageSection padding="lg">
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900 dark:text-white">
+            <ShieldCheck className="h-5 w-5 text-emerald-300" /> Terms &amp; Policy Acceptance
+          </h2>
+          <p className="mt-3 text-sm text-slate-600 dark:text-white/70">
+            Last accepted on{' '}
+            <span className="font-medium text-slate-900 dark:text-white">{legalData.termsAcceptedDate}</span>
+          </p>
+          <p className="mt-2 text-sm text-slate-600 dark:text-white/70">
+            You’ll be prompted to accept new terms whenever we release major updates. We’ll notify you in-app and via email so you never miss important changes.
+          </p>
+        </PageSection>
+
+        <PageSection padding="lg">
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900 dark:text-white">
+            <FileText className="h-5 w-5 text-fuchsia-300" /> Download Agreements
           </h2>
           <ul className="mt-4 space-y-3">
-            {legalData.agreements.map((doc, idx) => (
+            {legalData.agreements.map((doc) => (
               <li
-                key={idx}
-                className="flex items-center justify-between bg-gray-100 dark:bg-slate-700 px-4 py-3 rounded text-sm border border-stroke dark:border-white/10"
+                key={doc.name}
+                className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 text-sm text-slate-900 shadow-[0_20px_45px_rgba(15,23,42,0.12)] transition dark:border-white/15 dark:bg-white/10 dark:text-white dark:shadow-[0_20px_45px_rgba(6,10,32,0.45)] dark:backdrop-blur-xl"
               >
-                <span className="text-slate-800 dark:text-white">{doc.name}</span>
+                <span className="font-medium text-slate-900 dark:text-white">{doc.name}</span>
                 <a
                   href={doc.url}
                   download
-                  className="text-indigo-600 dark:text-indigo-400 hover:underline font-medium"
+                  className="text-sm font-semibold text-fuchsia-600 transition-colors hover:text-fuchsia-500 dark:text-fuchsia-200 dark:hover:text-fuchsia-100"
                 >
                   Download
                 </a>
               </li>
             ))}
           </ul>
-        </section>
+        </PageSection>
 
-        {/* Dispute Center - Future */}
-        <section className="bg-white dark:bg-slate-800 p-6 rounded-lg border border-yellow-400/30">
-          <h2 className="text-lg font-semibold flex items-center gap-2 text-yellow-700 dark:text-yellow-300">
-            <AlertCircle size={18} /> Dispute Claim Center (Coming Soon)
+        <PageSection padding="lg" className="border-amber-300/60 bg-amber-50 dark:border-amber-400/40 dark:bg-amber-500/15">
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-amber-700 dark:text-amber-200">
+            <AlertCircle className="h-5 w-5" /> Dispute Claim Center (Coming Soon)
           </h2>
-          <p className="text-sm text-slate-600 dark:text-white/70 mt-2">
-            You’ll soon be able to file claims for misattributed airplay,
-            incorrect matches, or payment issues. Stay tuned for this feature in
-            upcoming updates.
+          <p className="mt-2 text-sm text-amber-900/80 dark:text-white/70">
+            Soon you’ll be able to file claims for misattributed airplay, incorrect matches, or payment issues directly from this dashboard. We’re polishing the experience to make it quick, transparent, and trackable.
           </p>
-        </section>
-      </div>
-    </div>
+        </PageSection>
+      </PageBody>
+    </PageContainer>
   );
 }

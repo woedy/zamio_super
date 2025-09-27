@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CheckIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { useTheme } from '../../contexts/ThemeContext';
 
@@ -26,6 +26,7 @@ interface OnboardingWizardProps {
   title: string;
   subtitle?: string;
   initialStepId?: string;
+  currentStepId?: string;
   onStepComplete?: (stepId: string) => Promise<void> | void;
   onStepSkip?: (stepId: string) => Promise<void> | void;
   onStepChange?: (stepId: string) => void;
@@ -37,12 +38,14 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
   title,
   subtitle,
   initialStepId,
+  currentStepId,
   onStepComplete,
   onStepSkip,
   onStepChange,
 }) => {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const { theme } = useTheme();
+  const hasInitializedRef = useRef(false);
 
   const currentStep = steps[currentStepIndex];
   const CurrentStepComponent = currentStep?.component;
@@ -107,30 +110,32 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
       return;
     }
 
-    const targetId = initialStepId && stepIds.includes(initialStepId)
-      ? initialStepId
-      : undefined;
+    let desiredStepId: string | undefined;
 
-    if (targetId) {
-      const targetIndex = steps.findIndex(step => step.id === targetId);
+    if (currentStepId && stepIds.includes(currentStepId)) {
+      desiredStepId = currentStepId;
+    } else if (!hasInitializedRef.current) {
+      if (initialStepId && stepIds.includes(initialStepId)) {
+        desiredStepId = initialStepId;
+      } else {
+        const firstIncomplete = steps.find(step => !step.isCompleted);
+        desiredStepId = firstIncomplete ? firstIncomplete.id : steps[0].id;
+      }
+      hasInitializedRef.current = true;
+    }
+
+    if (desiredStepId) {
+      const targetIndex = steps.findIndex(step => step.id === desiredStepId);
       if (targetIndex !== -1 && targetIndex !== currentStepIndex) {
         goToStep(targetIndex);
         return;
       }
     }
 
-    // Default to first incomplete step if provided index is invalid
-    const firstIncompleteIndex = steps.findIndex(step => !step.isCompleted);
-    if (firstIncompleteIndex !== -1 && firstIncompleteIndex !== currentStepIndex) {
-      goToStep(firstIncompleteIndex);
-      return;
-    }
-
-    // Otherwise ensure index is within bounds
     if (currentStepIndex >= steps.length) {
-      goToStep(steps.length - 1);
+      goToStep(Math.max(steps.length - 1, 0));
     }
-  }, [initialStepId, stepIds, steps, currentStepIndex]);
+  }, [currentStepId, initialStepId, stepIds, steps, currentStepIndex]);
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: theme.colors.background }}>

@@ -2,14 +2,23 @@
 
 // Core Components
 export { Button, buttonVariants, type ButtonProps } from './Button';
-export { 
-  Card, 
-  CardHeader, 
-  CardFooter, 
-  CardTitle, 
-  CardDescription, 
-  CardContent 
+export {
+  Card,
+  CardHeader,
+  CardFooter,
+  CardTitle,
+  CardDescription,
+  CardContent
 } from './Card';
+export {
+  PageContainer,
+  PageSection,
+  PageHeader,
+  PageBody,
+  type PageContainerProps,
+  type PageSectionProps,
+  type PageHeaderProps,
+} from './Page';
 export { Badge, badgeVariants, type BadgeProps } from './Badge';
 export { Alert, AlertTitle, AlertDescription, AlertIcon } from './Alert';
 export {

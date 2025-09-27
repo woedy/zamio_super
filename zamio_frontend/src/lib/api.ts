@@ -10,10 +10,24 @@ const api = axios.create({
 // Attach auth token from localStorage on each request
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+
   if (token) {
-    config.headers = config.headers ?? {};
-    (config.headers as Record<string, string>).Authorization = `Token ${token}`;
+    const url = (config.url ?? '').toString().toLowerCase();
+    const skipAuth = [
+      /\bapi\/accounts\/login/,
+      /\bapi\/accounts\/token/,
+      /\bapi\/accounts\/register/,
+      /\bapi\/accounts\/verify/,
+      /\bapi\/accounts\/forgot-password/,
+      /\bapi\/accounts\/resend/,
+    ].some((pattern) => pattern.test(url));
+
+    if (!skipAuth) {
+      config.headers = config.headers ?? {};
+      (config.headers as Record<string, string>).Authorization = `Token ${token}`;
+    }
   }
+
   return config;
 });
 
