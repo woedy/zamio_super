@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Search, Bell, Settings, User, HelpCircle, MessageSquare, Upload, Clock, CreditCard, MapPin, ReceiptPoundSterling, Receipt, ReceiptCent, HelpingHand, Radio, AudioWaveformIcon } from "lucide-react";
+import { Bell, Settings, User, HelpCircle, Clock, CreditCard, Radio, AudioWaveformIcon, BarChart2 } from "lucide-react";
 
 
 interface SidebarProps {
@@ -23,19 +23,22 @@ const Sidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
 
 
   const navigationItems = [
-    { name: "Dashboard", icon: <Settings className="w-5 h-5" />, route: "/dashboard"},
+    // Dashboards
+    { name: "Dashboard", icon: <BarChart2 className="w-5 h-5" />, route: "/dashboard" },
+    
+    // Monitoring
     { name: "Match Log Viewer", icon: <Clock className="w-5 h-5" />, route: "/match-logs" },
     { name: "Match Dispute Management", icon: <CreditCard className="w-5 h-5" />, route: "/match-disputes" },
-    { name: "Notifications", icon: <Bell className="w-5 h-5" /> , route: "/notifications"},
+    { name: "Notifications", icon: <Bell className="w-5 h-5" />, route: "/notifications" },
+    
+    // Tools
+    { name: "Radio Stream", icon: <Radio className="w-5 h-5" />, route: "/radio-stream" },
+    { name: "Audio File Match", icon: <AudioWaveformIcon className="w-5 h-5" />, route: "/audio-stream" },
+    
+    // Account
     { name: "Profile", icon: <User className="w-5 h-5" />, route: "/profile" },
-    { name: "Education & Support", icon: <HelpCircle className="w-5 h-5" /> , route: "/help"},
-    { name: "Settings", icon: <Settings className="w-5 h-5" />, route: "/settings" },
-
-    { name: "----------", icon: "" , route: "#"},
-    { name: "Radio Stream", icon: <Radio className="w-5 h-5" /> , route: "/radio-stream"},
-    { name: "Audio File Match", icon: <AudioWaveformIcon className="w-5 h-5" /> , route: "/audio-stream"},
-
-
+    { name: "Education & Support", icon: <HelpCircle className="w-5 h-5" />, route: "/help" },
+    { name: "Settings", icon: <Settings className="w-5 h-5" />, route: "/settings" }
   ];
 
   // close on click outside

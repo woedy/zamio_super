@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Activity,
   AlertTriangle,
@@ -17,7 +17,7 @@ import {
   Volume2,
 } from 'lucide-react';
 import api from '../../lib/api';
-import { getStationId, persistStationId } from '../../lib/auth';
+import { getStationId, persistStationId, getToken } from '../../lib/auth';
 import { useStationOnboardingContext } from '../../contexts/StationOnboardingContext';
 
 const PERIOD_OPTIONS = ['daily', 'weekly', 'monthly', 'all-time'] as const;
@@ -180,14 +180,38 @@ const normalizeDashboardPayload = (
   };
 };
 
-const formatNumber = (value: number, options?: Intl.NumberFormatOptions): string => {
+const formatNumber = (value: number, options: Intl.NumberFormatOptions = {}): string => {
   if (!Number.isFinite(value)) {
     return '0';
   }
-  return new Intl.NumberFormat('en-US', {
-    maximumFractionDigits: 1,
-    ...options,
-  }).format(value);
+  
+  // Create safe options with defaults
+  const safeOptions: Intl.NumberFormatOptions = { ...options };
+  
+  // Ensure minimumFractionDigits is valid (0-20)
+  if (safeOptions.minimumFractionDigits !== undefined) {
+    safeOptions.minimumFractionDigits = Math.max(0, Math.min(20, Number(safeOptions.minimumFractionDigits) || 0));
+  }
+  
+  // Ensure maximumFractionDigits is valid (0-20)
+  if (safeOptions.maximumFractionDigits !== undefined) {
+    safeOptions.maximumFractionDigits = Math.max(0, Math.min(20, Number(safeOptions.maximumFractionDigits) || 0));
+  }
+  
+  // If both min and max are set, ensure max >= min
+  if (safeOptions.minimumFractionDigits !== undefined && safeOptions.maximumFractionDigits !== undefined) {
+    safeOptions.maximumFractionDigits = Math.max(
+      safeOptions.maximumFractionDigits,
+      safeOptions.minimumFractionDigits
+    );
+  }
+  
+  // If no fraction digits specified, use default of 0-1 decimal places
+  if (safeOptions.minimumFractionDigits === undefined && safeOptions.maximumFractionDigits === undefined) {
+    safeOptions.maximumFractionDigits = 1;
+  }
+  
+  return new Intl.NumberFormat('en-US', safeOptions).format(value);
 };
 
 const formatDateLabel = (value: string): string => {
@@ -201,251 +225,84 @@ const formatDateLabel = (value: string): string => {
   });
 };
 
-const Dashboard = () => {
+const Dashboard2 = () => {
   const [selectedPeriod, setSelectedPeriod] = useState<DashboardPeriod>('monthly');
   const [data, setData] = useState<StationDashboardData | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // ADD DEBUG STATE
-  const [debugInfo, setDebugInfo] = useState<string>('');
-
   const { details, status, loading: onboardingLoading, refresh: refreshOnboarding } = useStationOnboardingContext();
 
-  const [stationId, setStationId] = useState<string>(() => safeString(getStationId(), ''));
-  const pendingRefresh = useRef(false);
-  const attemptedRefresh = useRef(false);
-  const requestCounter = useRef(0);
-
-  // ADD DEBUG LOGGING
-  useEffect(() => {
-    const debugData = {
-      stationId,
-      contextStationId: safeString(status?.station_id, '') || safeString((details as any)?.station_id, '') || safeString((details as any)?.id, ''),
-      onboardingLoading,
-      details: details ? 'Present' : 'Missing',
-      status: status ? 'Present' : 'Missing',
-      pendingRefresh: pendingRefresh.current,
-      attemptedRefresh: attemptedRefresh.current,
-    };
-    setDebugInfo(JSON.stringify(debugData, null, 2));
-    console.log('Dashboard Debug Info:', debugData);
-  }, [stationId, details, status, onboardingLoading]);
-
-  const setStationIdentifier = useCallback(
-    (candidate: unknown): string => {
-      const trimmed = safeString(candidate, '');
-      console.log('setStationIdentifier called with:', candidate, 'trimmed:', trimmed);
-      if (!trimmed) {
-        return '';
-      }
-
-      persistStationId(trimmed);
-      setStationId((prev) => {
-        if (prev !== trimmed) {
-          console.log('Station ID changed from', prev, 'to', trimmed);
-        }
-        return prev === trimmed ? prev : trimmed;
-      });
-      return trimmed;
-    },
-    [],
-  );
-
-  const contextStationId = useMemo(() => {
-    const directStationId = safeString(status?.station_id, '');
-    const profileStationId = safeString((details as any)?.station_id, '');
-    const profileId = safeString((details as any)?.id, '');
-    const result = directStationId || profileStationId || profileId;
-    console.log('contextStationId computed:', { directStationId, profileStationId, profileId, result });
-    return result;
-  }, [(details as any)?.id, (details as any)?.station_id, status?.station_id]);
-
-  const availableStationId = useMemo(() => {
-    const result = stationId || contextStationId || '';
-    console.log('availableStationId computed:', result, { stationId, contextStationId });
-    return result;
-  }, [contextStationId, stationId]);
-
-  useEffect(() => {
-    console.log('contextStationId effect triggered:', contextStationId);
-    if (!contextStationId) {
-      return;
-    }
-    setStationIdentifier(contextStationId);
-  }, [contextStationId, setStationIdentifier]);
+  // Get station ID from various sources
+  const stationId = useMemo(() => {
+    const storedId = getStationId();
+    const contextId = safeString(status?.station_id, '') || safeString((details as any)?.station_id, '') || safeString((details as any)?.id, '');
+    return storedId || contextId;
+  }, [status?.station_id, details]);
 
   const fallbackStationName = useMemo(() => {
     const nameFromDetails = safeString(details?.name, '');
     const nameFromStatus = safeString(status?.station_name, '');
-    const result = nameFromDetails || nameFromStatus || 'Your Station';
-    console.log('fallbackStationName computed:', result, { nameFromDetails, nameFromStatus });
-    return result;
+    return nameFromDetails || nameFromStatus || 'Your Station';
   }, [details?.name, status?.station_name]);
 
   const loadDashboard = useCallback(
     async (targetStationId: string) => {
-      console.log('loadDashboard called with targetStationId:', targetStationId);
-      
-      const normalizedStationId = safeString(targetStationId, '') || safeString(getStationId(), '');
-      console.log('normalizedStationId:', normalizedStationId);
-
-      if (!normalizedStationId) {
-        const errorMsg = 'We could not determine your station ID. Please sign in again.';
-        console.error(errorMsg);
-        setError(errorMsg);
+      if (!targetStationId) {
+        setError('Station ID is required. Please sign in again.');
         setData(null);
         return;
       }
-
-      const currentStationId = setStationIdentifier(normalizedStationId);
-      console.log('currentStationId after setStationIdentifier:', currentStationId);
-
-      if (!currentStationId) {
-        const errorMsg = 'We could not determine your station ID. Please sign in again.';
-        console.error(errorMsg);
-        setError(errorMsg);
-        setData(null);
-        return;
-      }
-
-      const requestId = ++requestCounter.current;
-      console.log('Starting request with ID:', requestId);
 
       setDashboardLoading(true);
       setError(null);
 
       try {
-        console.log('Making API request to:', 'api/stations/dashboard/', 'with params:', {
-          station_id: currentStationId,
-          period: selectedPeriod,
-        });
+        console.log('Loading dashboard for station:', targetStationId);
         
         const response = await api.get('api/stations/dashboard/', {
           params: {
-            station_id: currentStationId,
+            station_id: targetStationId,
             period: selectedPeriod,
           },
         });
 
-        console.log('API response received:', response);
-
-        if (requestId !== requestCounter.current) {
-          console.log('Request outdated, ignoring response');
-          return;
-        }
+        console.log('Dashboard API response:', response.data);
 
         const payload = response?.data?.data ?? {};
-        console.log('Payload extracted:', payload);
-        
         const normalized = normalizeDashboardPayload(payload, fallbackStationName, selectedPeriod);
-        console.log('Normalized data:', normalized);
         
         setData(normalized);
       } catch (err: any) {
-        console.error('API request failed:', err);
-        
-        if (requestId !== requestCounter.current) {
-          console.log('Request outdated, ignoring error');
-          return;
-        }
-
+        console.error('Dashboard API error:', err);
         const message = err?.response?.data?.message || err?.message || 'Unable to load dashboard data.';
-        console.error('Setting error message:', message);
         setError(message);
         setData(null);
       } finally {
-        if (requestId === requestCounter.current) {
-          console.log('Setting loading to false');
-          setDashboardLoading(false);
-        }
+        setDashboardLoading(false);
       }
     },
-    [fallbackStationName, selectedPeriod, setStationIdentifier],
+    [fallbackStationName, selectedPeriod],
   );
 
+  // Load dashboard when station ID is available
   useEffect(() => {
-    console.log('Main useEffect triggered');
-    const storedStationId = safeString(getStationId(), '');
-    const candidateStationId = availableStationId || storedStationId;
-    
-    console.log('Effect values:', {
-      storedStationId,
-      availableStationId,
-      candidateStationId,
-      onboardingLoading,
-      pendingRefresh: pendingRefresh.current,
-      attemptedRefresh: attemptedRefresh.current,
-    });
-
-    if (candidateStationId) {
-      console.log('Found candidateStationId, proceeding with load');
-      pendingRefresh.current = false;
-      attemptedRefresh.current = false;
-
-      const normalized = setStationIdentifier(candidateStationId);
-      if (!normalized) {
-        console.error('setStationIdentifier returned empty string');
-        setError('We could not determine your station ID. Please sign in again.');
-        setData(null);
-        return;
-      }
-
-      console.log('Calling loadDashboard with normalized ID:', normalized);
-      void loadDashboard(normalized);
-      return;
+    if (stationId && !onboardingLoading) {
+      persistStationId(stationId);
+      loadDashboard(stationId);
+    } else if (!onboardingLoading && !stationId) {
+      // Try to refresh onboarding to get station ID
+      refreshOnboarding({ silent: true });
     }
-
-    if (onboardingLoading) {
-      console.log('Onboarding is loading, clearing error and waiting');
-      setError(null);
-      return;
-    }
-
-    if (pendingRefresh.current) {
-      console.log('Refresh is pending, returning early');
-      return;
-    }
-
-    if (attemptedRefresh.current) {
-      console.log('Already attempted refresh, setting error');
-      setError('We could not determine your station ID. Please sign in again.');
-      return;
-    }
-
-    console.log('Attempting refresh');
-    attemptedRefresh.current = true;
-    pendingRefresh.current = true;
-    void refreshOnboarding({ silent: true }).finally(() => {
-      console.log('Refresh completed');
-      pendingRefresh.current = false;
-      const refreshed = safeString(getStationId(), '');
-      if (refreshed) {
-        console.log('Found refreshed station ID:', refreshed);
-        setStationIdentifier(refreshed);
-      } else {
-        console.log('No station ID found after refresh');
-      }
-    });
-  }, [availableStationId, onboardingLoading, loadDashboard, refreshOnboarding, selectedPeriod, setStationIdentifier]);
+  }, [stationId, onboardingLoading, loadDashboard, refreshOnboarding]);
 
   const handleManualRefresh = useCallback(() => {
-    console.log('Manual refresh triggered');
-    const identifier = availableStationId || safeString(getStationId(), '');
-    if (!identifier) {
-      setError('We could not determine your station ID. Please sign in again.');
-      return;
+    if (stationId) {
+      loadDashboard(stationId);
+    } else {
+      setError('Station ID not found. Please sign in again.');
     }
-
-    const normalized = setStationIdentifier(identifier);
-    if (!normalized) {
-      setError('We could not determine your station ID. Please sign in again.');
-      return;
-    }
-
-    attemptedRefresh.current = false;
-    void loadDashboard(normalized);
-  }, [availableStationId, loadDashboard, setStationIdentifier]);
+  }, [stationId, loadDashboard]);
 
   const stationName = data?.stationName || fallbackStationName;
 
@@ -777,6 +634,41 @@ const Dashboard = () => {
     </div>
   );
 
+  // Show loading state
+  if (onboardingLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-black text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-400 mx-auto mb-4"></div>
+          <p className="text-white/70">Loading station dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state if no station ID
+  if (!stationId && !onboardingLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-black text-white flex items-center justify-center">
+        <div className="text-center max-w-md">
+          <div className="rounded-2xl border border-red-500/40 bg-red-500/10 p-6">
+            <AlertTriangle className="w-12 h-12 text-red-400 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-white mb-2">Station Not Found</h2>
+            <p className="text-white/70 mb-4">
+              We couldn't find your station information. Please make sure you're signed in with a station account.
+            </p>
+            <button
+              onClick={() => window.location.href = '/sign-in'}
+              className="bg-gradient-to-r from-yellow-400 to-orange-500 text-black px-6 py-2 rounded-lg font-semibold hover:shadow-lg transition-all"
+            >
+              Sign In Again
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-black text-white">
       <header className="border-b border-white/10 bg-black/30 backdrop-blur">
@@ -820,20 +712,6 @@ const Dashboard = () => {
       </header>
 
       <main className="max-w-7xl mx-auto px-6 py-10 space-y-10">
-        {/* DEBUG SECTION - REMOVE AFTER DEBUGGING */}
-        <div className="rounded-2xl border border-yellow-500/40 bg-yellow-500/10 p-4 text-sm text-yellow-200">
-          <details>
-            <summary className="cursor-pointer font-semibold mb-2">Debug Information</summary>
-            <pre className="whitespace-pre-wrap text-xs overflow-x-auto">{debugInfo}</pre>
-            <div className="mt-4 space-y-2">
-              <div>Loading States: dashboard={dashboardLoading.toString()}, onboarding={onboardingLoading.toString()}</div>
-              <div>Station ID Sources: stored={safeString(getStationId(), '') || 'empty'}, available={availableStationId || 'empty'}</div>
-              <div>Error: {error || 'none'}</div>
-              <div>Data: {data ? 'present' : 'null'}</div>
-            </div>
-          </details>
-        </div>
-
         <section className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 p-1 backdrop-blur">
             {PERIOD_OPTIONS.map((period) => (
@@ -898,4 +776,4 @@ const Dashboard = () => {
   );
 };
 
-export default Dashboard;
+export default Dashboard2;

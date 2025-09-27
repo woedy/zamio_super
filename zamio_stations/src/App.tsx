@@ -12,8 +12,6 @@ import SignUp from './pages/Authentication/SignUp';
 import VerifyEmail from './pages/Authentication/VerifyEmail';
 import RadioStreamMonitor from './pages/PlayGround/RadioStreamMonitor';
 import AudioFileMatcher from './pages/PlayGround/AudioFileMatcher';
-import StationDashboard from './pages/PlayGround/StationDashboard';
-import Dashboard from './pages/Dashboard/Dashboard';
 import MatchLogViewer from './pages/MatchLogViewer/FullDetectionTable';
 import AllDisputeMatches from './pages/MatchDisputeManagement/AllDisputeMatch';
 import StationProfilePage from './pages/StationManagement/StationProfile';
@@ -27,6 +25,7 @@ import CompleteProfile from './pages/Authentication/Onboarding/CompleteProfile';
 import PaymentInfo from './pages/Authentication/Onboarding/PaymentInfo';
 import AddStaff from './pages/Authentication/Onboarding/AddStaff';
 import RequireStationOnboarding from './components/auth/RequireStationOnboarding';
+import StationDashboard2 from './pages/Dashboard/StationDashboard2';
 
 const hiddenOnRoutes = [
   '/',
@@ -53,22 +52,25 @@ function App() {
 
   // Determine if the current route should skip the layout
   const shouldUseDefaultLayout = !hiddenOnRoutes.includes(location.pathname);
+  
+  // Debug logging
+  console.log('Current path:', location.pathname);
+  console.log('Should use default layout:', shouldUseDefaultLayout);
+  console.log('Loading state:', loading);
 
   return loading ? (
     <Loader />
   ) : shouldUseDefaultLayout ? (
     <DefaultLayout hiddenOnRoutes={hiddenOnRoutes}>
       <Routes>
+        <Route path="/dashboard" element={
+          <>
+            <PageTitle title="Station Dashboard | ZamIO Stations" />
+            <StationDashboard2 />
+          </>
+        } />
+        
         <Route element={<RequireStationOnboarding />}>
-          <Route
-            path="/dashboard"
-            element={
-              <>
-                <PageTitle title="Station Dasboard | ZamIO Stations" />
-                <Dashboard />
-              </>
-            }
-          />
           <Route
             path="/match-logs"
             element={
@@ -168,15 +170,8 @@ function App() {
               </>
             }
           />
-          <Route
-            path="/station-dashboard"
-            element={
-              <>
-                <PageTitle title="Station Dashboard | ZamIO Stations" />
-                <StationDashboard />
-              </>
-            }
-          />
+      
+         
         </Route>
       </Routes>
     </DefaultLayout>
