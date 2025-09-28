@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import {  baseUrl, publisherID } from '../../../constants';
+import { useNavigate } from 'react-router-dom';
+import { baseUrl, getPublisherId, getUserToken } from '../../../constants';
 import ButtonLoader from '../../../common/button_loader';
-import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 
 const CompleteProfile = () => {
   const [firstName, setFirstName] = useState('');
@@ -20,6 +19,8 @@ const CompleteProfile = () => {
   const [loading, setLoading] = useState(false);
 
   const navigate = useNavigate();
+  const publisherId = getPublisherId();
+  const token = getUserToken();
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -63,22 +64,27 @@ const CompleteProfile = () => {
       return;
     }
   
+    if (!publisherId || !token) {
+      setInputError('Missing publisher session. Please sign in again.');
+      return;
+    }
+
     // Prepare FormData for file upload
     const formData = new FormData();
-    formData.append('publisher_id', publisherID);
+    formData.append('publisher_id', String(publisherId));
     formData.append('bio', bio);
     formData.append('country', country);
     formData.append('region', region);
     formData.append('photo', selectedFile);
   
-    const url = '/api/accounts/complete-publisher-profile/';
+    const url = `${baseUrl}api/accounts/complete-publisher-profile/`;
   
     try {
       setLoading(true);
       const response = await fetch(url, {
         method: 'POST',
         headers: {
-          Authorization: `Token ${localStorage.getItem('token')}`,
+          Authorization: `Token ${token}`,
         },
         body: formData,
       });
@@ -240,11 +246,15 @@ const CompleteProfile = () => {
             <button
               onClick={async (e) => {
                 e.preventDefault();
+                if (!publisherId || !token) {
+                  navigate('/sign-in');
+                  return;
+                }
                 try {
-                  await fetch('/api/accounts/skip-publisher-onboarding/', {
+                  await fetch(`${baseUrl}api/accounts/skip-publisher-onboarding/`, {
                     method: 'POST',
-                    headers: { Authorization: `Token ${localStorage.getItem('token')}` },
-                    body: new URLSearchParams({ publisher_id: String(publisherID), step: 'revenue-split' }),
+                    headers: { Authorization: `Token ${token}` },
+                    body: new URLSearchParams({ publisher_id: String(publisherId), step: 'revenue-split' }),
                   });
                 } catch {}
                 navigate('/onboarding/revenue-split');

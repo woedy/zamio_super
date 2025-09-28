@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { baseUrl, userToken, publisherID } from '../../constants';
+import { baseUrl, getUserToken, getPublisherId } from '../../constants';
 
 type Summary = {
   artist_id: string;
@@ -36,6 +36,8 @@ type RecentLog = { id: number; date: string | null; source: 'Radio'|'Streaming';
 
 export default function ArtistRoyaltiesDetail() {
   const { artistId } = useParams<{ artistId: string }>();
+  const token = getUserToken();
+  const publisherId = getPublisherId();
   const [summary, setSummary] = useState<Summary | null>(null);
   const [tracks, setTracks] = useState<TrackRow[]>([]);
   const [topStations, setTopStations] = useState<StationRow[]>([]);
@@ -49,11 +51,11 @@ export default function ArtistRoyaltiesDetail() {
   const query = useMemo(() => {
     const params = new URLSearchParams();
     if (artistId) params.set('artist_id', artistId);
-    if (publisherID) params.set('publisher_id', String(publisherID));
+    if (publisherId) params.set('publisher_id', String(publisherId));
     if (dateFrom) params.set('date_from', dateFrom);
     if (dateTo) params.set('date_to', dateTo);
     return params.toString();
-  }, [artistId, dateFrom, dateTo]);
+  }, [artistId, dateFrom, dateTo, publisherId]);
 
   useEffect(() => {
     if (!artistId) return;
@@ -61,8 +63,11 @@ export default function ArtistRoyaltiesDetail() {
     async function load() {
       setLoading(true);
       try {
+        if (!token) {
+          return;
+        }
         const res = await fetch(`${baseUrl}api/publishers/royalties/artist-details/?${query}`, {
-          headers: { Authorization: `Token ${userToken}` },
+          headers: { Authorization: `Token ${token}` },
         });
         const json = await res.json();
         if (!cancelled && res.ok) {
@@ -79,7 +84,7 @@ export default function ArtistRoyaltiesDetail() {
     }
     load();
     return () => { cancelled = true; };
-  }, [artistId, query]);
+  }, [artistId, query, token]);
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">

@@ -8,10 +8,12 @@ import {
   Clock,
   ChevronRight,
 } from 'lucide-react';
-import { baseUrl, publisherID, userToken } from '../../constants';
+import { baseUrl, getPublisherId, getUserToken } from '../../constants';
 
 
 const NotificationCenter = () => {
+  const publisherId = getPublisherId();
+  const token = getUserToken();
   const [search, setSearch] = useState('');
   const [orderNotifications, setOrderNotifications] = useState('');
   const [page, setPage] = useState(1);
@@ -24,16 +26,19 @@ const NotificationCenter = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
+      if (!token || !publisherId) {
+        throw new Error('Missing publisher session. Please sign in again.');
+      }
       const response = await fetch(
         `${baseUrl}api/notifications/get-all-publisher-notifications/?search=${encodeURIComponent(
           search,
         )}&publisher_id=${encodeURIComponent(
-          publisherID,
+          publisherId,
         )}&order_by=${encodeURIComponent(orderNotifications)}&page=${page}`,
         {
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Token ${userToken}`,
+            Authorization: `Token ${token}`,
           },
         },
       );
@@ -46,14 +51,12 @@ const NotificationCenter = () => {
       setNotifications(data.data.notifications);
       setTotalPages(data.data.pagination.total_pages);
       setItemCount(data.data.pagination.count);
-      console.log('Total Pages:', data.data.pagination.total_pages);
-      console.log('ppp:', data.data);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
     }
-  }, [baseUrl, search, page, userToken, orderNotifications]);
+  }, [baseUrl, search, page, token, orderNotifications, publisherId]);
 
   useEffect(() => {
     fetchData();

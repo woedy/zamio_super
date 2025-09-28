@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { baseUrl, publisherID } from '../../../constants';
+import { useNavigate } from 'react-router-dom';
+import { baseUrl, getPublisherId, getUserToken } from '../../../constants';
 import ButtonLoader from '../../../common/button_loader';
-import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 
 const RevenueSplit = () => {
 
@@ -26,6 +25,8 @@ const RevenueSplit = () => {
 
 
   const navigate = useNavigate();
+  const publisherId = getPublisherId();
+  const token = getUserToken();
 
     const handleSubmit = async (e) => {
       e.preventDefault();
@@ -59,20 +60,25 @@ const RevenueSplit = () => {
     
 
     
+      if (!publisherId || !token) {
+        setInputError('Missing publisher session. Please sign in again.');
+        return;
+      }
+
       // Prepare FormData for file upload
       const formData = new FormData();
-      formData.append('publisher_id', publisherID);
+      formData.append('publisher_id', String(publisherId));
       formData.append('writer_split', String(w));
       formData.append('publisher_split', String(p));
     
-      const url = '/api/accounts/complete-revenue-split/';
+      const url = `${baseUrl}api/accounts/complete-revenue-split/`;
     
       try {
         setLoading(true);
         const response = await fetch(url, {
           method: 'POST',
           headers: {
-            Authorization: `Token ${localStorage.getItem('token')}`,
+          Authorization: `Token ${token}`,
           },
           body: formData,
         });
@@ -198,10 +204,14 @@ const RevenueSplit = () => {
               onClick={async (e) => {
                 e.preventDefault();
                 try {
-                  await fetch('/api/accounts/skip-publisher-onboarding/', {
+                  if (!publisherId || !token) {
+                    navigate('/sign-in');
+                    return;
+                  }
+                  await fetch(`${baseUrl}api/accounts/skip-publisher-onboarding/`, {
                     method: 'POST',
-                    headers: { Authorization: `Token ${localStorage.getItem('token')}` },
-                    body: new URLSearchParams({ publisher_id: String(publisherID), step: 'link-artist' }),
+                    headers: { Authorization: `Token ${token}` },
+                    body: new URLSearchParams({ publisher_id: String(publisherId), step: 'link-artist' }),
                   });
                 } catch {}
                 navigate('/onboarding/link-artist');

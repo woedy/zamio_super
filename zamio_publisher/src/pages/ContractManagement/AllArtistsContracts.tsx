@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Activity, Search, FileText, Plus } from 'lucide-react';
-import { baseUrl, publisherID, userToken } from '../../constants';
+import { baseUrl, getPublisherId, getUserToken } from '../../constants';
 import { Link } from 'react-router-dom';
 
 type ContractRow = {
@@ -19,6 +19,8 @@ type ContractRow = {
 
 const AllArtistsContracts = () => {
   const [search, setSearch] = useState('');
+  const publisherId = getPublisherId();
+  const token = getUserToken();
   const [page, setPage] = useState(1);
   const [count, setCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -30,8 +32,11 @@ const AllArtistsContracts = () => {
     setLoading(true);
     setError(null);
     try {
-      const url = `${baseUrl}api/publishers/all-contracts/?search=${encodeURIComponent(search)}&publisher_id=${encodeURIComponent(String(publisherID || ''))}&page=${page}`;
-      const resp = await fetch(url, { headers: { 'Content-Type': 'application/json', Authorization: `Token ${userToken}` } });
+      if (!token || !publisherId) {
+        throw new Error('Missing publisher session. Please sign in again.');
+      }
+      const url = `${baseUrl}api/publishers/all-contracts/?search=${encodeURIComponent(search)}&publisher_id=${encodeURIComponent(String(publisherId || ''))}&page=${page}`;
+      const resp = await fetch(url, { headers: { 'Content-Type': 'application/json', Authorization: `Token ${token}` } });
       const json = await resp.json();
       if (!resp.ok) {
         const msg = json?.errors ? (Object.values(json.errors).flat() as string[]).join('\n') : json?.message || 'Failed to load';
@@ -46,7 +51,7 @@ const AllArtistsContracts = () => {
     } finally {
       setLoading(false);
     }
-  }, [search, page]);
+  }, [search, page, publisherId, token]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 

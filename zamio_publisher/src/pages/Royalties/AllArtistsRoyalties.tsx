@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Activity, Search, Logs, ChevronLeft, ChevronRight } from 'lucide-react';
-import { baseUrl, publisherID, userToken } from '../../constants';
+import { baseUrl, getPublisherId, getUserToken } from '../../constants';
 import { useNavigate } from 'react-router-dom';
 
 type ArtistRow = {
@@ -20,6 +20,8 @@ const PAGE_SIZE = 10;
 
 const AllArtistsRoyalties = () => {
   const navigate = useNavigate();
+  const publisherId = getPublisherId();
+  const token = getUserToken();
   const [search, setSearch] = useState('');
   const [orderBy, setOrderBy] = useState<'Royalties' | 'Plays' | 'Name'>('Royalties');
   const [dateFrom, setDateFrom] = useState<string>('');
@@ -35,18 +37,21 @@ const AllArtistsRoyalties = () => {
     p.set('page', String(page));
     p.set('page_size', String(PAGE_SIZE));
     p.set('order_by', orderBy);
-    if (publisherID) p.set('publisher_id', String(publisherID));
+    if (publisherId) p.set('publisher_id', String(publisherId));
     if (search.trim()) p.set('search', search.trim());
     if (dateFrom) p.set('date_from', dateFrom);
     if (dateTo) p.set('date_to', dateTo);
     return p.toString();
-  }, [page, orderBy, search, dateFrom, dateTo]);
+  }, [page, orderBy, search, dateFrom, dateTo, publisherId]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const url = `${baseUrl}api/publishers/royalties/artists/?${query}`;
-      const resp = await fetch(url, { headers: { Authorization: `Token ${userToken}` } });
+      if (!token) {
+        throw new Error('Missing publisher session. Please sign in again.');
+      }
+      const resp = await fetch(url, { headers: { Authorization: `Token ${token}` } });
       const json = await resp.json();
       if (!resp.ok) throw new Error(json?.message || 'Failed to load');
       const data = json.data;
@@ -58,7 +63,7 @@ const AllArtistsRoyalties = () => {
     } finally {
       setLoading(false);
     }
-  }, [query]);
+  }, [query, token]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 

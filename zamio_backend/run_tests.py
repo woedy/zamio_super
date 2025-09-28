@@ -24,8 +24,16 @@ def run_command(cmd, description):
     print(f"Command: {' '.join(cmd)}")
     print('='*60)
     
+    env = os.environ.copy()
+    existing_pythonpath = env.get("PYTHONPATH", "")
+    project_path = str(project_root.resolve())
+    if existing_pythonpath:
+        env["PYTHONPATH"] = f"{project_path}{os.pathsep}{existing_pythonpath}"
+    else:
+        env["PYTHONPATH"] = project_path
+
     try:
-        result = subprocess.run(cmd, check=True, capture_output=False)
+        result = subprocess.run(cmd, check=True, capture_output=False, env=env)
         print(f"✅ {description} completed successfully")
         return True
     except subprocess.CalledProcessError as e:

@@ -12,18 +12,26 @@ export const baseWsUrl = (import.meta as any)?.env?.VITE_WS_BASE || "ws://localh
 //export const baseUrl = "http://localhost:5050/";
 //export const baseWsUrl = "ws://localhost:5050/";
 
-//export const userToken = localStorage.getItem('token');
-export const userToken = localStorage.getItem('token');
-export const userID = localStorage.getItem('user_id');
-export const publisherID = localStorage.getItem('publisher_id');
+const getStoredValue = (key: string): string | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    return localStorage.getItem(key) ?? sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
 
-export const userEmail = localStorage.getItem('email');
-export const username = localStorage.getItem('username');
+export const getUserToken = () => getStoredValue('token');
+export const getUserId = () => getStoredValue('user_id');
+export const getPublisherId = () => getStoredValue('publisher_id');
+
+export const getUserEmail = () => getStoredValue('email');
+export const getUsername = () => getStoredValue('username');
 
 
-export const userPhoto = localStorage.getItem('photo');
-export const projectID = localStorage.getItem('projectID');
-export const project_name = localStorage.getItem('project_name');
+export const getUserPhoto = () => getStoredValue('photo');
+export const getProjectId = () => getStoredValue('projectID');
+export const getProjectName = () => getStoredValue('project_name');
 
 
 export const truncateText = (text, maxLength) => {

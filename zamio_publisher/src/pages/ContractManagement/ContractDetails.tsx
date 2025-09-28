@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { FileText, Download, CheckCircle, XCircle } from 'lucide-react';
-import { baseUrl, baseUrlMedia, userToken } from '../../constants';
+import { baseUrl, baseUrlMedia, getUserToken } from '../../constants';
 import { useLocation, useSearchParams } from 'react-router-dom';
 
 const ContractDetails = () => {
@@ -9,6 +9,7 @@ const ContractDetails = () => {
   const stateId = (location.state as any)?.contract_id as number | undefined;
   const qId = params.get('contract_id');
   const contractId = stateId || (qId ? Number(qId) : undefined);
+  const token = getUserToken();
 
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -19,8 +20,11 @@ const ContractDetails = () => {
       if (!contractId) { setError('Missing contract_id'); return; }
       setLoading(true); setError(null);
       try {
+        if (!token) {
+          throw new Error('Missing publisher session. Please sign in again.');
+        }
         const url = `${baseUrl}api/publishers/contract-details/?contract_id=${encodeURIComponent(String(contractId))}`;
-        const resp = await fetch(url, { headers: { 'Content-Type': 'application/json', Authorization: `Token ${userToken}` } });
+        const resp = await fetch(url, { headers: { 'Content-Type': 'application/json', Authorization: `Token ${token}` } });
         const json = await resp.json();
         if (!resp.ok) {
           const msg = json?.errors ? (Object.values(json.errors).flat() as string[]).join('\n') : json?.message || 'Failed to load';
@@ -34,7 +38,7 @@ const ContractDetails = () => {
       }
     };
     fetchData();
-  }, [contractId]);
+  }, [contractId, token]);
 
   const fileUrl = data?.contract_file ? (String(data.contract_file).startsWith('http') ? data.contract_file : `${baseUrlMedia}${data.contract_file}`) : null;
 

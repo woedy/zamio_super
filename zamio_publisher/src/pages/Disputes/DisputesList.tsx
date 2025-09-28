@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { baseUrl, publisherID, userToken } from '../../constants';
+import { baseUrl, getPublisherId, getUserToken } from '../../constants';
 import { Search } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -20,6 +20,8 @@ type DisputeRow = {
 
 const DisputesList = () => {
   const navigate = useNavigate();
+  const publisherId = getPublisherId();
+  const token = getUserToken();
 
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
@@ -41,7 +43,7 @@ const DisputesList = () => {
     setError(null);
     try {
       const params = new URLSearchParams();
-      if (publisherID) params.set('publisher_id', String(publisherID));
+      if (publisherId) params.set('publisher_id', String(publisherId));
       if (search) params.set('search', search);
       if (status) params.set('status', status);
       if (station) params.set('station', station);
@@ -52,7 +54,10 @@ const DisputesList = () => {
       params.set('page', String(page));
 
       const url = `${baseUrl}api/publishers/disputes/?${params.toString()}`;
-      const resp = await fetch(url, { headers: { Authorization: `Token ${userToken}` } });
+      if (!token) {
+        throw new Error('Missing publisher session. Please sign in again.');
+      }
+      const resp = await fetch(url, { headers: { Authorization: `Token ${token}` } });
       const json = await resp.json();
       if (!resp.ok) {
         const msg = json?.errors ? (Object.values(json.errors).flat() as string[]).join('\n') : json?.message || 'Failed to load';
@@ -67,7 +72,7 @@ const DisputesList = () => {
     } finally {
       setLoading(false);
     }
-  }, [search, status, station, dateFrom, dateTo, minConf, orderBy, page]);
+  }, [search, status, station, dateFrom, dateTo, minConf, orderBy, page, publisherId, token]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 

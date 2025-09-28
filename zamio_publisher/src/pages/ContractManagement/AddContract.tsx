@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { baseUrl, publisherID, userToken } from '../../constants';
+import { baseUrl, getPublisherId, getUserToken } from '../../constants';
 import { FileText, Upload, User, Music } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const AddContract = () => {
   const navigate = useNavigate();
+  const publisherId = getPublisherId();
+  const token = getUserToken();
 
   const [artists, setArtists] = useState<{ artist_id: string; stage_name: string }[]>([]);
   const [tracks, setTracks] = useState<{ id: number; title: string }[]>([]);
@@ -20,28 +22,34 @@ const AddContract = () => {
 
   const fetchArtists = useCallback(async () => {
     try {
-      const url = `${baseUrl}api/publishers/all-managed-artists/?publisher_id=${encodeURIComponent(String(publisherID || ''))}&page=1`;
-      const resp = await fetch(url, { headers: { Authorization: `Token ${userToken}` } });
+      if (!publisherId || !token) {
+        throw new Error('Missing publisher session. Please sign in again.');
+      }
+      const url = `${baseUrl}api/publishers/all-managed-artists/?publisher_id=${encodeURIComponent(String(publisherId || ''))}&page=1`;
+      const resp = await fetch(url, { headers: { Authorization: `Token ${token}` } });
       const json = await resp.json();
       if (!resp.ok) throw new Error(json?.message || 'Failed to load artists');
       setArtists(json?.data?.artists || []);
     } catch (e: any) {
       setError(e?.message || 'Failed to load artists');
     }
-  }, []);
+  }, [baseUrl, publisherId, token]);
 
   const fetchTracks = useCallback(async (aid: string) => {
     if (!aid) { setTracks([]); return; }
     try {
+      if (!token) {
+        throw new Error('Missing publisher session. Please sign in again.');
+      }
       const url = `${baseUrl}api/publishers/artist-tracks/?artist_id=${encodeURIComponent(aid)}`;
-      const resp = await fetch(url, { headers: { Authorization: `Token ${userToken}` } });
+      const resp = await fetch(url, { headers: { Authorization: `Token ${token}` } });
       const json = await resp.json();
       if (!resp.ok) throw new Error(json?.message || 'Failed to load tracks');
       setTracks(json?.data?.tracks || []);
     } catch (e: any) {
       setError(e?.message || 'Failed to load tracks');
     }
-  }, []);
+  }, [baseUrl, token]);
 
   useEffect(() => { fetchArtists(); }, [fetchArtists]);
   useEffect(() => { fetchTracks(artistId); }, [artistId, fetchTracks]);
@@ -57,7 +65,7 @@ const AddContract = () => {
     if (Math.abs((w + p) - 100) > 1e-6) { setError('Writer + Publisher must equal 100%'); return; }
 
     const form = new FormData();
-    form.append('publisher_id', String(publisherID || ''));
+    form.append('publisher_id', String(publisherId || ''));
     form.append('artist_id', artistId);
     form.append('track_id', trackId);
     form.append('writer_share', String(w));
@@ -67,7 +75,10 @@ const AddContract = () => {
     try {
       setLoading(true);
       const url = `${baseUrl}api/publishers/contracts/create/`;
-      const resp = await fetch(url, { method: 'POST', headers: { Authorization: `Token ${userToken}` }, body: form });
+      if (!token) {
+        throw new Error('Missing publisher session. Please sign in again.');
+      }
+      const resp = await fetch(url, { method: 'POST', headers: { Authorization: `Token ${token}` }, body: form });
       const json = await resp.json();
       if (!resp.ok) {
         const msg = json?.errors ? (Object.values(json.errors).flat() as string[]).join('\n') : json?.message || 'Failed to create contract';

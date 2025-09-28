@@ -9,7 +9,7 @@ import {
   Verified,
   Music,
 } from 'lucide-react';
-import { baseUrl, baseUrlMedia, userToken } from '../../constants';
+import { baseUrl, baseUrlMedia, getUserToken } from '../../constants';
 
 // Types aligned to backend publishers/managed-artist-details payload
 type ArtistData = {
@@ -71,6 +71,7 @@ const ArtistDetails = () => {
   const stateArtistId = (location.state as any)?.artist_id as string | undefined;
   const qpArtistId = params.get('artist_id') || undefined;
   const artistId = stateArtistId || qpArtistId;
+  const token = getUserToken();
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -91,11 +92,14 @@ const ArtistDetails = () => {
       setLoading(true);
       setError(null);
       try {
+        if (!token) {
+          throw new Error('Missing publisher session. Please sign in again.');
+        }
         const url = `${baseUrl}api/publishers/managed-artist-details/?artist_id=${encodeURIComponent(
           String(artistId),
         )}`;
         const resp = await fetch(url, {
-          headers: { 'Content-Type': 'application/json', Authorization: `Token ${userToken}` },
+          headers: { 'Content-Type': 'application/json', Authorization: `Token ${token}` },
         });
         const json = await resp.json();
         if (!resp.ok) {
@@ -117,7 +121,7 @@ const ArtistDetails = () => {
     return () => {
       cancelled = true;
     };
-  }, [artistId]);
+  }, [artistId, token]);
 
   const totalCatalogPlays = useMemo(() => songs.reduce((a, s) => a + (s.totalPlays || 0), 0), [songs]);
   const totalCatalogEarnings = useMemo(() => songs.reduce((a, s) => a + (s.totalEarnings || 0), 0), [songs]);

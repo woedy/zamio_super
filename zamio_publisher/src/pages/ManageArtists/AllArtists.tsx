@@ -1,6 +1,6 @@
 ﻿import { useCallback, useEffect, useState } from 'react';
 import { Activity, Search } from 'lucide-react';
-import { baseUrl, publisherID, userToken } from '../../constants';
+import { baseUrl, getPublisherId, getUserToken } from '../../constants';
 import { Link } from 'react-router-dom';
 
 type ArtistItem = {
@@ -13,6 +13,8 @@ type ArtistItem = {
 
 const AllArtists = () => {
   const [selectedPeriod, setSelectedPeriod] = useState('monthly');
+  const publisherId = getPublisherId();
+  const token = getUserToken();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [itemCount, setItemCount] = useState(0);
@@ -26,11 +28,14 @@ const AllArtists = () => {
     setLoading(true);
     setError(null);
     try {
-      const url = `${baseUrl}api/publishers/all-managed-artists/?search=${encodeURIComponent(search)}&publisher_id=${encodeURIComponent(String(publisherID || ''))}&page=${page}`;
+      if (!token || !publisherId) {
+        throw new Error('Missing publisher session. Please sign in again.');
+      }
+      const url = `${baseUrl}api/publishers/all-managed-artists/?search=${encodeURIComponent(search)}&publisher_id=${encodeURIComponent(String(publisherId || ''))}&page=${page}`;
       const resp = await fetch(url, {
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Token ${userToken}`,
+          Authorization: `Token ${token}`,
         },
       });
 
@@ -49,7 +54,7 @@ const AllArtists = () => {
     } finally {
       setLoading(false);
     }
-  }, [search, page]);
+  }, [search, page, publisherId, token]);
 
   useEffect(() => {
     fetchData();

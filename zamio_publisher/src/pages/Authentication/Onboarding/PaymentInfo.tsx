@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import {  baseUrl, publisherID } from '../../../constants';
+import { useNavigate } from 'react-router-dom';
+import { baseUrl, getPublisherId, getUserToken } from '../../../constants';
 import ButtonLoader from '../../../common/button_loader';
-import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 
 const PaymentInfo = () => {
   const [momo, setMomo] = useState('');
@@ -12,6 +11,8 @@ const PaymentInfo = () => {
   const [loading, setLoading] = useState(false);
 
   const navigate = useNavigate();
+  const publisherId = getPublisherId();
+  const token = getUserToken();
 
 
     const handleSubmit = async (e) => {
@@ -33,20 +34,25 @@ const PaymentInfo = () => {
     
 
     
+      if (!publisherId || !token) {
+        setInputError('Missing publisher session. Please sign in again.');
+        return;
+      }
+
       // Prepare FormData for file upload
       const formData = new FormData();
-      formData.append('publisher_id', publisherID);
+      formData.append('publisher_id', String(publisherId));
       formData.append('momo', momo);
       formData.append('bankAccount', bankAccount);
-    
-      const url = '/api/accounts/complete-publisher-payment/';
-    
+
+      const url = `${baseUrl}api/accounts/complete-publisher-payment/`;
+
       try {
         setLoading(true);
       const response = await fetch(url, {
         method: 'POST',
         headers: {
-          Authorization: `Token ${localStorage.getItem('token')}`,
+          Authorization: `Token ${token}`,
         },
         body: formData,
       });
@@ -105,15 +111,18 @@ const PaymentInfo = () => {
 
     const handleSkip = async (e) => {
       e.preventDefault();
+      if (!publisherId || !token) {
+        navigate('/sign-in');
+        return;
+      }
       try {
-        await fetch('/api/accounts/skip-publisher-onboarding/', {
+        await fetch(`${baseUrl}api/accounts/skip-publisher-onboarding/`, {
           method: 'POST',
-          headers: { Authorization: `Token ${localStorage.getItem('token')}` },
-          body: new URLSearchParams({ publisher_id: String(publisherID), step: 'done' }),
+          headers: { Authorization: `Token ${token}` },
+          body: new URLSearchParams({ publisher_id: String(publisherId), step: 'payment' }),
         });
       } catch {}
       navigate('/dashboard');
-      window.location.reload();
     };
 
 

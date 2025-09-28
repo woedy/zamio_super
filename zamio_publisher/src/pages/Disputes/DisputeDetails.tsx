@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState } from 'react';
-import { baseUrl, baseUrlMedia, userToken } from '../../constants';
+import { baseUrl, baseUrlMedia, getUserToken } from '../../constants';
 import { useLocation, useSearchParams } from 'react-router-dom';
 
 const DisputeDetails = () => {
@@ -8,6 +8,7 @@ const DisputeDetails = () => {
   const stateId = (location.state as any)?.dispute_id as number | undefined;
   const qId = params.get('dispute_id');
   const disputeId = stateId || (qId ? Number(qId) : undefined);
+  const token = getUserToken();
 
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
@@ -19,7 +20,10 @@ const DisputeDetails = () => {
     setLoading(true); setError(null);
     try{
       const url = `${baseUrl}api/music-monitor/match-dispute-details/?dispute_id=${encodeURIComponent(String(disputeId))}`;
-      const resp = await fetch(url, { headers: { Authorization: `Token ${userToken}` }});
+      if (!token) {
+        throw new Error('Missing publisher session. Please sign in again.');
+      }
+      const resp = await fetch(url, { headers: { Authorization: `Token ${token}` }});
       const json = await resp.json();
       if(!resp.ok){
         const msg = json?.errors ? (Object.values(json.errors).flat() as string[]).join('\n') : json?.message || 'Failed to load';
@@ -38,7 +42,10 @@ const DisputeDetails = () => {
       form.append('dispute_id', String(disputeId));
       form.append('comment', resolveNote || 'Resolved by publisher');
       const url = `${baseUrl}api/music-monitor/review-match-for-dispute/`;
-      const resp = await fetch(url, { method: 'POST', headers: { Authorization: `Token ${userToken}` }, body: form });
+      if (!token) {
+        throw new Error('Missing publisher session. Please sign in again.');
+      }
+      const resp = await fetch(url, { method: 'POST', headers: { Authorization: `Token ${token}` }, body: form });
       const json = await resp.json();
       if(!resp.ok){
         const msg = json?.errors ? (Object.values(json.errors).flat() as string[]).join('\n') : json?.message || 'Failed to resolve';

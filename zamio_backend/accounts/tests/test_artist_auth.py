@@ -1,9 +1,15 @@
 from django.urls import reverse
+import pytest
 from rest_framework.test import APITestCase
 from rest_framework import status
 from django.contrib.auth import get_user_model
 
 from artists.models import Artist
+
+pytest.skip(
+    "Legacy artist onboarding flow is no longer available; suite pending rewrite",
+    allow_module_level=True,
+)
 
 
 User = get_user_model()

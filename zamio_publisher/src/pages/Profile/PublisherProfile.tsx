@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle, Edit, MapPin, Shield, Wallet } from 'lucide-react';
-import { baseUrl, publisherID, userToken } from '../../constants';
+import { baseUrl, getPublisherId, getUserToken } from '../../constants';
 
 type Profile = {
   publisher_id: string;
@@ -34,15 +34,20 @@ const PublisherProfile = () => {
   const [stats, setStats] = useState<Dashboard | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [form, setForm] = useState({ companyName: '', region: '', city: '', country: '', taxId: '', bankAccount: '', momoAccount: '', writerSplit: 0, publisherSplit: 0 });
+  const publisherId = getPublisherId();
+  const token = getUserToken();
 
   const canSave = useMemo(() => form.writerSplit + form.publisherSplit === 100, [form]);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
+      if (!publisherId || !token) {
+        return;
+      }
       setLoading(true);
       try {
-        const p = await fetch(`${baseUrl}api/publishers/publisher-profile/?publisher_id=${publisherID}`, { headers: { Authorization: `Token ${userToken}` } });
+        const p = await fetch(`${baseUrl}api/publishers/publisher-profile/?publisher_id=${publisherId}`, { headers: { Authorization: `Token ${token}` } });
         const pj = await p.json();
         if (!cancelled && p.ok) {
           const pd: Profile = pj.data.publisherData;
@@ -59,7 +64,7 @@ const PublisherProfile = () => {
             publisherSplit: pd.publisherSplit || 0,
           });
         }
-        const d = await fetch(`${baseUrl}api/publishers/dashboard/?publisher_id=${publisherID}&period=all-time`, { headers: { Authorization: `Token ${userToken}` } });
+        const d = await fetch(`${baseUrl}api/publishers/dashboard/?publisher_id=${publisherId}&period=all-time`, { headers: { Authorization: `Token ${token}` } });
         const dj = await d.json();
         if (!cancelled && d.ok) {
           setStats({
@@ -76,13 +81,16 @@ const PublisherProfile = () => {
     }
     load();
     return () => { cancelled = true; };
-  }, []);
+  }, [baseUrl, publisherId, token]);
 
   const saveProfile = async () => {
+    if (!publisherId || !token) {
+      return;
+    }
     setSaving(true);
     try {
       const formData = new FormData();
-      formData.append('publisher_id', String(publisherID || ''));
+      formData.append('publisher_id', String(publisherId || ''));
       Object.entries({
         company_name: form.companyName,
         region: form.region,
@@ -97,7 +105,7 @@ const PublisherProfile = () => {
 
       const r = await fetch(`${baseUrl}api/publishers/publisher-profile/edit/`, {
         method: 'POST',
-        headers: { Authorization: `Token ${userToken}` },
+        headers: { Authorization: `Token ${token}` },
         body: formData,
       });
       if (r.ok) setEditOpen(false);

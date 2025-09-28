@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { baseUrl, userToken, publisherID } from '../../../constants';
+import { baseUrl, getPublisherId, getUserToken } from '../../../constants';
 import ButtonLoader from '../../../common/button_loader';
 
 type SearchResult = {
@@ -27,9 +27,15 @@ const LinkArtist = () => {
   const [inviteMsg, setInviteMsg] = useState('');
 
   const navigate = useNavigate();
+  const token = getUserToken();
+  const publisherId = getPublisherId();
 
   useEffect(() => {
     setError('');
+    if (!token) {
+      setResults([]);
+      return;
+    }
     if (!query.trim()) {
       setResults([]);
       return;
@@ -41,7 +47,7 @@ const LinkArtist = () => {
           `${baseUrl}api/publishers/link-artist/search/?q=${encodeURIComponent(query)}`,
           {
             headers: {
-              Authorization: `Token ${userToken}`,
+              Authorization: `Token ${token}`,
             },
           }
         );
@@ -61,18 +67,23 @@ const LinkArtist = () => {
     }, 350);
 
     return () => clearTimeout(handle);
-  }, [query, baseUrl, userToken]);
+  }, [query, baseUrl, token]);
 
   const linkArtist = async (artist_id: string) => {
     setError('');
     setInviteMsg('');
+    if (!token) {
+      setError('Missing publisher session. Please sign in again.');
+      navigate('/sign-in');
+      return;
+    }
     try {
       setLinkingId(artist_id);
       const resp = await fetch(`${baseUrl}api/publishers/link-artist/link/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Token ${userToken}`,
+          Authorization: `Token ${token}`,
         },
         body: JSON.stringify({ artist_id }),
       });
@@ -99,6 +110,11 @@ const LinkArtist = () => {
       setError('Email is required to send invite');
       return;
     }
+    if (!token || !publisherId) {
+      setError('Missing publisher session. Please sign in again.');
+      navigate('/sign-in');
+      return;
+    }
     try {
       setInviting(true);
       // Allow comma/space separated emails
@@ -114,7 +130,7 @@ const LinkArtist = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Token ${userToken}`,
+          Authorization: `Token ${token}`,
         },
         body: JSON.stringify(body),
       });
@@ -141,13 +157,18 @@ const LinkArtist = () => {
       setError('Select at least one artist to link');
       return;
     }
+    if (!token || !publisherId) {
+      setError('Missing publisher session. Please sign in again.');
+      navigate('/sign-in');
+      return;
+    }
     try {
       setLinkingId('bulk');
       const resp = await fetch(`${baseUrl}api/publishers/link-artist/link-multiple/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Token ${userToken}`,
+          Authorization: `Token ${token}`,
         },
         body: JSON.stringify({ artist_ids: ids }),
       });
@@ -174,11 +195,16 @@ const LinkArtist = () => {
   const completeStepAndContinue = async () => {
     // Mark link-artist step complete in backend, like artist onboarding does
     try {
+      if (!publisherId || !token) {
+        setError('Missing publisher session. Please sign in again.');
+        navigate('/sign-in');
+        return;
+      }
       const form = new FormData();
-      form.append('publisher_id', String(publisherID));
+      form.append('publisher_id', String(publisherId));
       const resp = await fetch(`${baseUrl}api/accounts/complete-link-artist/`, {
         method: 'POST',
-        headers: { Authorization: `Token ${userToken}` },
+        headers: { Authorization: `Token ${token}` },
         body: form,
       });
       const data = await resp.json();
@@ -205,10 +231,14 @@ const LinkArtist = () => {
 
   const handleSkip = async () => {
     try {
+      if (!publisherId || !token) {
+        navigate('/sign-in');
+        return;
+      }
       const resp = await fetch(`${baseUrl}api/accounts/skip-publisher-onboarding/`, {
         method: 'POST',
-        headers: { Authorization: `Token ${userToken}` },
-        body: new URLSearchParams({ publisher_id: String(publisherID), step: 'payment' }),
+        headers: { Authorization: `Token ${token}` },
+        body: new URLSearchParams({ publisher_id: String(publisherId), step: 'payment' }),
       });
     } catch {}
     navigate('/onboarding/payment');

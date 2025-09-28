@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Activity, Eye, Logs, Search } from 'lucide-react';
-import { baseUrl, publisherID, userToken } from '../../constants';
+import { baseUrl, getPublisherId, getUserToken } from '../../constants';
 import { useNavigate } from 'react-router-dom';
 
 const MatchLogViewer = () => {
   const navigate = useNavigate();
+  const publisherId = getPublisherId();
+  const token = getUserToken();
 
   const [activeTab, setActiveTab] = useState<'playlogs' | 'matchlogs'>('playlogs');
   const [search, setSearch] = useState('');
@@ -34,12 +36,15 @@ const MatchLogViewer = () => {
     const logPageState = activeTab === 'playlogs' ? 'playlog' : 'matchlog';
 
     try {
+      if (!token || !publisherId) {
+        throw new Error('Missing publisher session. Please sign in again.');
+      }
       const response = await fetch(
-        `${baseUrl}api/publishers/playlogs/?search=${encodeURIComponent(search)}&publisher_id=${publisherID}&page=${currentPage}&log_page_state=${logPageState}`,
+        `${baseUrl}api/publishers/playlogs/?search=${encodeURIComponent(search)}&publisher_id=${publisherId}&page=${currentPage}&log_page_state=${logPageState}`,
         {
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Token ${userToken}`,
+            Authorization: `Token ${token}`,
           },
         },
       );
@@ -63,7 +68,7 @@ const MatchLogViewer = () => {
     } finally {
       setLoading(false);
     }
-  }, [search, playPage, matchPage, activeTab]);
+  }, [search, playPage, matchPage, activeTab, publisherId, token]);
 
   useEffect(() => {
     fetchLogs();
@@ -107,9 +112,12 @@ const MatchLogViewer = () => {
       const form = new FormData();
       form.append('playlog_id', String(selectedPlaylogId));
       form.append('comment', flagComment || 'Flagged from Full Detection view');
+      if (!token) {
+        throw new Error('Missing publisher session. Please sign in again.');
+      }
       const resp = await fetch(`${baseUrl}api/music-monitor/flag-playlog/`, {
         method: 'POST',
-        headers: { Authorization: `Token ${userToken}` },
+        headers: { Authorization: `Token ${token}` },
         body: form,
       });
       const json = await resp.json();

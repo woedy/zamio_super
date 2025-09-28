@@ -19,7 +19,7 @@ import {
   Award,
   Smartphone,
 } from 'lucide-react';
-import { publisherID } from '../../constants';
+import { getPublisherId } from '../../constants';
 import api from '../../lib/api';
   import type {
     ApiEnvelope,
@@ -34,6 +34,7 @@ import api from '../../lib/api';
   } from '../../types/dashboard';
 
 const Dashboard = () => {
+  const publisherId = getPublisherId();
   const [selectedPeriod, setSelectedPeriod] = useState('monthly');
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedRegion, setSelectedRegion] = useState('all');
@@ -84,7 +85,7 @@ const Dashboard = () => {
   useEffect(() => {
     let cancelled = false;
     const fetchData = async () => {
-      if (!publisherID) {
+      if (!publisherId) {
         setError('Missing publisher ID');
         return;
       }
@@ -93,7 +94,7 @@ const Dashboard = () => {
       try {
         const { data } = await api.get<ApiEnvelope<PublisherDashboardData>>(
           'api/publishers/dashboard/',
-          { params: { publisher_id: publisherID, period: selectedPeriod } }
+          { params: { publisher_id: publisherId, period: selectedPeriod } }
         );
         if (cancelled) return;
         const d = data.data;
@@ -123,7 +124,7 @@ const Dashboard = () => {
     return () => {
       cancelled = true;
     };
-  }, [selectedPeriod, publisherID]);
+  }, [selectedPeriod, publisherId]);
 
   const formatDateTime = (iso?: string | null) => {
     if (!iso) return '—';
