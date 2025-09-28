@@ -1,14 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { baseUrl } from '../../constants';
+import { AxiosError } from 'axios';
 import ButtonLoader from '../../common/button_loader';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
+import {
+  fetchAdminOnboardingStatus,
+  loginAdmin,
+  type AdminAuthPayload,
+  type AdminAuthResponse,
+  type ApiErrorPayload,
+} from '../../services/authService';
 
 const SignIn = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [fcm_token, setFcmtoken] = useState('sddfdsfdsfsdf');
   const [showPassword, setShowPassword] = useState(false);
+  const fcm_token = 'web-admin';
 
   const navigate = useNavigate();
   const [emailError, setEmailError] = useState('');
@@ -26,7 +33,7 @@ const SignIn = () => {
     return () => clearTimeout(timer);
   }, []);
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     // Validation
@@ -51,51 +58,103 @@ const SignIn = () => {
 
     if (!isValid) return;
 
-    const url = baseUrl + 'api/accounts/login-admin/';
-    const data = {
+    setEmailError('');
+    setPasswordError('');
+    setLoading(true);
+    const payload: AdminAuthPayload = {
       email,
       password,
       fcm_token,
     };
 
-    setLoading(true);
-
     try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
+      const response = await loginAdmin(payload);
+      const authData: AdminAuthResponse | undefined = response.data?.data;
 
-      const responseData = await response.json();
-
-      if (response.status === 200) {
-        localStorage.setItem('first_name', responseData.data.first_name);
-        localStorage.setItem('last_name', responseData.data.last_name);
-        localStorage.setItem('user_id', responseData.data.user_id);
-        localStorage.setItem('admin_id', responseData.data.admin_id);
-        localStorage.setItem('email', responseData.data.email);
-        localStorage.setItem('photo', responseData.data.photo);
-        localStorage.setItem('token', responseData.data.token);
-
-        navigate('/dashboard');
-        window.location.reload();
-      } else if (response.status === 400) {
-        setEmailError(responseData.errors?.email?.[0] || '');
-        setPasswordError(responseData.errors?.password?.[0] || '');
-
-        if(responseData.errors?.email?.[0] === "Please check your email to confirm your account or resend confirmation email."){
-
-          navigate('/verify-email', { state: { email } });
+      if (authData) {
+        localStorage.setItem('first_name', authData.first_name ?? '');
+        localStorage.setItem('last_name', authData.last_name ?? '');
+        localStorage.setItem('user_id', authData.user_id ?? '');
+        if (authData.admin_id) {
+          localStorage.setItem('admin_id', String(authData.admin_id));
+        }
+        localStorage.setItem('email', authData.email ?? '');
+        if (authData.photo) {
+          localStorage.setItem('photo', authData.photo);
+        } else {
+          localStorage.removeItem('photo');
+        }
+        if (authData.token) {
+          localStorage.setItem('token', authData.token);
+          sessionStorage.setItem('token', authData.token);
+        }
+        if (authData.phone) {
+          localStorage.setItem('phone', authData.phone);
+        } else {
+          localStorage.removeItem('phone');
+        }
+        if (authData.country) {
+          localStorage.setItem('country', authData.country);
+        } else {
+          localStorage.removeItem('country');
         }
 
+        let nextStep = authData.next_step;
+        if (!nextStep) {
+          try {
+            const statusRes = await fetchAdminOnboardingStatus();
+            nextStep = statusRes.data?.data?.next_step;
+          } catch (statusError) {
+            console.error('Failed to fetch onboarding status', statusError);
+          }
+        }
 
-
-      } else {
-        console.error('Login failed:', responseData.message);
+        if (nextStep && nextStep !== 'done') {
+          navigate('/onboarding/profile', { replace: true });
+        } else {
+          navigate('/dashboard', { replace: true });
+        }
       }
     } catch (error) {
-      console.error('Error:', error.message);
+      let emailMessage = '';
+      let passwordMessage = '';
+
+      if (error instanceof AxiosError) {
+        const responsePayload = error.response?.data as ApiErrorPayload | undefined;
+        const errorBag = responsePayload?.errors;
+
+        const extractFirst = (value: string[] | string | undefined): string => {
+          if (Array.isArray(value)) {
+            return value[0] ?? '';
+          }
+          return value ?? '';
+        };
+
+        const rawEmail =
+          errorBag && typeof errorBag === 'object'
+            ? (errorBag as Record<string, string[] | string>)['email']
+            : undefined;
+        const rawPassword =
+          errorBag && typeof errorBag === 'object'
+            ? (errorBag as Record<string, string[] | string>)['password']
+            : undefined;
+
+        emailMessage = extractFirst(rawEmail as string[] | string | undefined);
+        passwordMessage = extractFirst(rawPassword as string[] | string | undefined);
+
+        if (!emailMessage && responsePayload?.message) {
+          emailMessage = responsePayload.message;
+        }
+
+        if (emailMessage === 'Please check your email to confirm your account or resend confirmation email.') {
+          navigate('/verify-email', { state: { email } });
+        }
+      } else {
+        emailMessage = 'An unexpected error occurred. Please try again.';
+      }
+
+      setEmailError(emailMessage);
+      setPasswordError(passwordMessage);
     } finally {
       setLoading(false);
     }
