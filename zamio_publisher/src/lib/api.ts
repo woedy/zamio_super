@@ -1,8 +1,9 @@
 import axios from 'axios';
+import { baseUrl } from '../constants';
 
-// Use same-origin by default via Vite proxy or fall back to env base
+// Use configured API base; falls back to same-origin for deployed environments
 const api = axios.create({
-  baseURL: (import.meta as any)?.env?.VITE_API_BASE || '/',
+  baseURL: baseUrl,
 });
 
 // Attach auth token from storage
