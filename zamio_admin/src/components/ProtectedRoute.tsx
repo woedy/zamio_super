@@ -1,6 +1,7 @@
 import { Navigate, Outlet } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import api from '../lib/api';
+import { AxiosError } from 'axios';
+import { fetchAdminOnboardingStatus } from '../services/authService';
 
 const isAuthed = () => !!(localStorage.getItem('token') || sessionStorage.getItem('token'));
 
@@ -14,15 +15,18 @@ const ProtectedRoute: React.FC = () => {
       return;
     }
     // Check admin onboarding status and redirect if not complete
-    api
-      .get('api/accounts/admin-onboarding-status/')
+    fetchAdminOnboardingStatus()
       .then((res) => {
         const next = res?.data?.data?.next_step;
         if (next && next !== 'done' && window.location.pathname !== '/onboarding/profile') {
           setRedirect('/onboarding/profile');
         }
       })
-      .catch(() => {})
+      .catch((error) => {
+        if (error instanceof AxiosError && error.response?.status === 404) {
+          setRedirect('/onboarding/profile');
+        }
+      })
       .finally(() => setChecking(false));
   }, []);
 

@@ -1,137 +1,77 @@
-import React, { useState } from 'react';
+import React, { FormEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { baseUrl, getPublisherId, getUserToken } from '../../../constants';
+import { getPublisherId } from '../../../constants';
 import ButtonLoader from '../../../common/button_loader';
+import api from '../../../lib/api';
+import {
+  extractApiErrorMessage,
+  navigateToOnboardingStep,
+  skipPublisherOnboarding,
+} from '../../../utils/onboarding';
 
 const PaymentInfo = () => {
   const [momo, setMomo] = useState('');
   const [bankAccount, setBankAccount] = useState('');
-
   const [inputError, setInputError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const navigate = useNavigate();
   const publisherId = getPublisherId();
-  const token = getUserToken();
 
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setInputError('');
 
-    const handleSubmit = async (e) => {
-      e.preventDefault();
-    
-      // Clear any previous error
-      setInputError('');
-    
-      // Frontend validations
-      if (momo === '') {
-        setInputError('Momo required.');
-        return;
-      }
-    
-      if (bankAccount === '') {
-        setInputError('Bank Account required.');
-        return;
-      }
-    
+    if (!momo.trim()) {
+      setInputError('Mobile money account required.');
+      return;
+    }
+    if (!bankAccount.trim()) {
+      setInputError('Bank account required.');
+      return;
+    }
+    if (!publisherId) {
+      setInputError('Missing publisher session. Please sign in again.');
+      return;
+    }
 
-    
-      if (!publisherId || !token) {
-        setInputError('Missing publisher session. Please sign in again.');
-        return;
-      }
-
-      // Prepare FormData for file upload
-      const formData = new FormData();
-      formData.append('publisher_id', String(publisherId));
-      formData.append('momo', momo);
-      formData.append('bankAccount', bankAccount);
-
-      const url = `${baseUrl}api/accounts/complete-publisher-payment/`;
-
-      try {
-        setLoading(true);
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          Authorization: `Token ${token}`,
-        },
-        body: formData,
+    try {
+      setLoading(true);
+      const response = await api.post('api/accounts/complete-publisher-payment/', {
+        publisher_id: publisherId,
+        momo,
+        bankAccount,
       });
-    
-        const data = await response.json();
-    
-        if (!response.ok) {
-          if (data.errors) {
-            const errorMessages = Object.values(data.errors).flat();
-            setInputError(errorMessages.join('\n'));
-          } else {
-            setInputError(data.message || 'Failed to update social.');
-          }
-          return;
-        }
-    
-        // ✅ Successful submission
-        console.log('Payment updated successfully');
-    
-        // Move to next onboarding step (backend returns this)
-        const nextStep = data.data.next_step;
-    
-        switch (nextStep) {
-          case 'profile':
-            navigate('/onboarding/profile');
-            break;
-          case 'social-media':
-            navigate('/onboarding/social-media');
-            break;
-          case 'payment':
-            navigate('/onboarding/payment');
-            break;
-          case 'publisher':
-            navigate('/onboarding/publisher');
-            break;
-          case 'track':
-            navigate('/onboarding/track');
-            break;
-          case 'done':
-            navigate('/dashboard');
-            window.location.reload();
-            break;
-          default:
-            navigate('/dashboard'); // fallback
-            window.location.reload();
 
-        }
-    
-      } catch (error) {
-        console.error('Error updating profile:', error.message);
-        setInputError('An unexpected error occurred.');
-      } finally {
-        setLoading(false);
-      }
-    };
+      const nextStep = response.data?.data?.next_step as string | undefined;
+      navigateToOnboardingStep(navigate, nextStep);
+    } catch (error) {
+      console.error('Error updating payment info:', error);
+      setInputError(extractApiErrorMessage(error));
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    const handleSkip = async (e) => {
-      e.preventDefault();
-      if (!publisherId || !token) {
-        navigate('/sign-in');
-        return;
-      }
-      try {
-        await fetch(`${baseUrl}api/accounts/skip-publisher-onboarding/`, {
-          method: 'POST',
-          headers: { Authorization: `Token ${token}` },
-          body: new URLSearchParams({ publisher_id: String(publisherId), step: 'payment' }),
-        });
-      } catch {}
-      navigate('/dashboard');
-    };
-
+  const handleSkip = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    if (!publisherId) {
+      navigate('/sign-in');
+      return;
+    }
+    try {
+      const { redirect_step } = await skipPublisherOnboarding(publisherId, 'done');
+      navigateToOnboardingStep(navigate, redirect_step, { reloadOnDone: false });
+    } catch (error) {
+      console.error('Failed to skip payment step:', error);
+      setInputError(extractApiErrorMessage(error));
+    }
+  };
 
   return (
     <div className="h-screen bg-gradient-to-br from-[#1a2a6c] via-[#b21f1f] to-[#fdbb2d] flex items-center justify-center">
       <div className="w-full max-w-2xl px-6">
-        <h2 className="text-5xl font-bold text-white text-center mb-8">
-          ZamIO
-        </h2>
+        <h2 className="text-5xl font-bold text-white text-center mb-8">ZamIO</h2>
 
         {inputError && (
           <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-3">
@@ -141,36 +81,31 @@ const PaymentInfo = () => {
         )}
 
         <div className="bg-white/10 p-10 rounded-2xl backdrop-blur-md w-full border border-white/20 shadow-xl">
-          <h2 className="text-4xl font-bold text-white text-center mb-4">
-            🎧 Payment Info
-          </h2>
-          <p className=" text-white text-center mb-8">
-            Update your payment information here
-          </p>
+          <h2 className="text-4xl font-bold text-white text-center mb-4">🎧 Payment Info</h2>
+          <p className=" text-white text-center mb-8">Update your payment information here</p>
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="">
+            <div>
               <input
                 type="text"
                 name="momo"
-                placeholder="Momo No."
+                placeholder="Mobile Money Account"
                 value={momo}
                 onChange={(e) => setMomo(e.target.value)}
                 className="w-full px-6 py-4 bg-white/20 backdrop-blur-md border border-white/30 rounded-lg text-white placeholder-white  focus:outline-none focus:ring-2 focus:ring-blue-400"
               />
             </div>
-            <div className="">
+            <div>
               <input
                 type="text"
                 name="bankAccount"
-                placeholder="Bank Account No."
+                placeholder="Bank Account Number"
                 value={bankAccount}
                 onChange={(e) => setBankAccount(e.target.value)}
                 className="w-full px-6 py-4 bg-white/20 backdrop-blur-md border border-white/30 rounded-lg text-white placeholder-white  focus:outline-none focus:ring-2 focus:ring-blue-400"
               />
             </div>
 
-            {/* Submit Button */}
             {loading ? (
               <ButtonLoader />
             ) : (
@@ -183,9 +118,8 @@ const PaymentInfo = () => {
             )}
           </form>
 
-          {/* Link to Register */}
           <p className=" text-white mt-6 text-center">
-          <button
+            <button
               className=" underline text-white hover:text-blue-200 mt-6 text-center"
               onClick={handleSkip}
             >
