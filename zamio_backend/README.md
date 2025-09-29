@@ -74,6 +74,11 @@ docker-compose -f docker-compose.local.yml up -d
 # Django: http://localhost:9001
 # PostgreSQL: localhost:9003
 # Redis: localhost:9004
+
+> **Heads up:** The React/Vite frontends read `VITE_API_URL` at build time to know where to call the Django API. The Docker
+> Compose file now defaults this to `http://localhost:9001` so local browsers keep working. When you run the stack on a remote
+> host, export a public URL before booting (for example `export VITE_API_URL=http://31.97.156.207:9001 && docker-compose -f
+> docker-compose.local.yml up -d`).
 ```
 
 ### **Django Commands**
