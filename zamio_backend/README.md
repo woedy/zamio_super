@@ -76,9 +76,10 @@ docker-compose -f docker-compose.local.yml up -d
 # Redis: localhost:9004
 
 > **Heads up:** The React/Vite frontends read `VITE_API_URL` at build time to know where to call the Django API. The Docker
-> Compose file now defaults this to `http://localhost:9001` so local browsers keep working. When you run the stack on a remote
-> host, export a public URL before booting (for example `export VITE_API_URL=http://31.97.156.207:9001 && docker-compose -f
-> docker-compose.local.yml up -d`).
+> Compose file now defaults this to the internal service URL (`http://zamio_app:8000`) so every container can always reach the
+> backend without extra configuration. If you're serving the frontend directly from a CDN or static host, override
+> `VITE_API_URL` with the public API endpoint before building (for example
+> `export VITE_API_URL=https://api.example.com && npm run build`).
 ```
 
 ### **Django Commands**

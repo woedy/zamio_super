@@ -131,7 +131,7 @@ services:
       - /zamio_frontend_pro/node_modules
     environment:
       - CHOKIDAR_USEPOLLING=true
-      - VITE_API_URL=${VITE_API_URL:-http://localhost:9001}
+      - VITE_API_URL=${VITE_API_URL:-http://zamio_app:8000}
     depends_on:
       - zamio_app
     networks:
@@ -150,7 +150,7 @@ services:
       - /zamio_stations_pro/node_modules
     environment:
       - CHOKIDAR_USEPOLLING=true
-      - VITE_API_URL=${VITE_API_URL:-http://localhost:9001}
+      - VITE_API_URL=${VITE_API_URL:-http://zamio_app:8000}
     depends_on:
       - zamio_app
     networks:
@@ -168,7 +168,7 @@ services:
       - /zamio_publishers_pro/node_modules
     environment:
       - CHOKIDAR_USEPOLLING=true
-      - VITE_API_URL=${VITE_API_URL:-http://localhost:9001}
+      - VITE_API_URL=${VITE_API_URL:-http://zamio_app:8000}
     depends_on:
       - zamio_app
     networks:
@@ -186,7 +186,7 @@ services:
       - /zamio_admin_pro/node_modules
     environment:
       - CHOKIDAR_USEPOLLING=true
-      - VITE_API_URL=${VITE_API_URL:-http://localhost:9001}
+      - VITE_API_URL=${VITE_API_URL:-http://zamio_app:8000}
     depends_on:
       - zamio_app
     networks:

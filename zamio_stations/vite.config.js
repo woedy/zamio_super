@@ -7,6 +7,8 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   // Prefer real env (e.g., from Docker Compose), then .env files, then fallback
   const target = process.env.VITE_API_URL || env.VITE_API_URL || 'http://localhost:8000'
+  const { hostname } = new URL(target)
+  const changeOrigin = !hostname.includes('_')
 
   return {
     plugins: [react()],
@@ -14,8 +16,8 @@ export default defineConfig(({ mode }) => {
       host: '0.0.0.0',
       port: 4174,
       proxy: {
-        '/api': { target, changeOrigin: true, secure: false },
-        '/media': { target, changeOrigin: true, secure: false },
+        '/api': { target, changeOrigin, secure: false },
+        '/media': { target, changeOrigin, secure: false },
       },
     },
   }
