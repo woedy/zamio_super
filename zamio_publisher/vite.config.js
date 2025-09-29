@@ -6,14 +6,16 @@ import react from '@vitejs/plugin-react'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const target = process.env.VITE_API_URL || env.VITE_API_URL || 'http://localhost:8000'
+  const { hostname } = new URL(target)
+  const changeOrigin = !hostname.includes('_')
   return {
     plugins: [react()],
     server: {
       host: '0.0.0.0',
       port: 4175,
       proxy: {
-        '/api': { target, changeOrigin: true, secure: false },
-        '/media': { target, changeOrigin: true, secure: false },
+        '/api': { target, changeOrigin, secure: false },
+        '/media': { target, changeOrigin, secure: false },
       },
     },
   }
