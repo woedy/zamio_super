@@ -749,11 +749,18 @@ def skip_publisher_onboarding_view(request):
         payload['errors'] = errors
         return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
-    publisher.onboarding_step = step
-    publisher.save()
+    # Always persist the earliest required step so the user returns there next login
+    next_required_step = publisher.get_next_onboarding_step()
+    publisher.onboarding_step = next_required_step
+    publisher.save(update_fields=['onboarding_step'])
+
+    redirect_step = step if (step in valid_steps or step == 'done') else next_required_step
 
     data['publisher_id'] = publisher.publisher_id
-    data['next_step'] = publisher.onboarding_step
+    data['next_step'] = next_required_step
+    data['redirect_step'] = redirect_step
+    if redirect_step != next_required_step:
+        data['skipped_step'] = next_required_step
 
     payload['message'] = 'Successful'
     payload['data'] = data

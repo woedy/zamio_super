@@ -1,7 +1,13 @@
-import React, { useState } from 'react';
+import React, { ChangeEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { baseUrl, getPublisherId, getUserToken } from '../../../constants';
+import { getPublisherId } from '../../../constants';
 import ButtonLoader from '../../../common/button_loader';
+import api from '../../../lib/api';
+import {
+  extractApiErrorMessage,
+  navigateToOnboardingStep,
+  skipPublisherOnboarding,
+} from '../../../utils/onboarding';
 
 const CompleteProfile = () => {
   const [firstName, setFirstName] = useState('');
@@ -10,8 +16,8 @@ const CompleteProfile = () => {
   const [bio, setBio] = useState('');
   const [country, setCountry] = useState('');
   const [region, setRegion] = useState('');
-  const [imagePreview, setImagePreview] = useState(null);
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const [email, setEmail] = useState('');
 
@@ -20,14 +26,13 @@ const CompleteProfile = () => {
 
   const navigate = useNavigate();
   const publisherId = getPublisherId();
-  const token = getUserToken();
 
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     if (file && file.type.startsWith('image/')) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setImagePreview(reader.result);
+        setImagePreview(typeof reader.result === 'string' ? reader.result : null);
       };
       reader.readAsDataURL(file);
       setSelectedFile(file); // <-- store actual file here
@@ -64,7 +69,7 @@ const CompleteProfile = () => {
       return;
     }
   
-    if (!publisherId || !token) {
+    if (!publisherId) {
       setInputError('Missing publisher session. Please sign in again.');
       return;
     }
@@ -75,67 +80,19 @@ const CompleteProfile = () => {
     formData.append('bio', bio);
     formData.append('country', country);
     formData.append('region', region);
-    formData.append('photo', selectedFile);
-  
-    const url = `${baseUrl}api/accounts/complete-publisher-profile/`;
-  
+    formData.append('photo', selectedFile as File);
+
     try {
       setLoading(true);
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          Authorization: `Token ${token}`,
-        },
-        body: formData,
+      const response = await api.post('api/accounts/complete-publisher-profile/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
-  
-      const data = await response.json();
-  
-      if (!response.ok) {
-        if (data.errors) {
-          const errorMessages = Object.values(data.errors).flat();
-          setInputError(errorMessages.join('\n'));
-        } else {
-          setInputError(data.message || 'Failed to update profile.');
-        }
-        return;
-      }
-  
-      // ✅ Successful submission
-      console.log('Profile updated successfully');
-  
-      // Move to next onboarding step (backend returns this)
-      let nextStep = data.data?.next_step as string | undefined;
-      if (!nextStep || nextStep === 'profile') {
-        // Fallback to the expected next step after profile
-        nextStep = 'revenue-split';
-      }
-  
-      switch (nextStep) {
-        case 'profile':
-          navigate('/onboarding/profile');
-          break;
-        case 'revenue-split':
-          navigate('/onboarding/revenue-split');
-          break;
-        case 'payment':
-          navigate('/onboarding/payment');
-          break;
-        case 'link-artist':
-          navigate('/onboarding/link-artist');
-          break;
-        case 'done':
-          navigate('/dashboard');
-          window.location.reload();
-          break;
-        default:
-          navigate('/dashboard'); // fallback
-          window.location.reload();
 
-      }
+      const nextStep = response.data?.data?.next_step as string | undefined;
+      navigateToOnboardingStep(navigate, nextStep);
     } catch (error) {
-      console.error('Error updating profile:', error.message);
-      setInputError('An unexpected error occurred.');
+      console.error('Error updating profile:', error);
+      setInputError(extractApiErrorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -246,18 +203,17 @@ const CompleteProfile = () => {
             <button
               onClick={async (e) => {
                 e.preventDefault();
-                if (!publisherId || !token) {
+                if (!publisherId) {
                   navigate('/sign-in');
                   return;
                 }
                 try {
-                  await fetch(`${baseUrl}api/accounts/skip-publisher-onboarding/`, {
-                    method: 'POST',
-                    headers: { Authorization: `Token ${token}` },
-                    body: new URLSearchParams({ publisher_id: String(publisherId), step: 'revenue-split' }),
-                  });
-                } catch {}
-                navigate('/onboarding/revenue-split');
+                  const { redirect_step } = await skipPublisherOnboarding(publisherId, 'revenue-split');
+                  navigateToOnboardingStep(navigate, redirect_step, { reloadOnDone: false });
+                } catch (error) {
+                  console.error('Failed to skip onboarding step:', error);
+                  setInputError(extractApiErrorMessage(error));
+                }
               }}
               className="underline text-white hover:text-blue-200"
             >

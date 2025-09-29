@@ -1,16 +1,30 @@
-// Allow overriding via Vite env vars; fall back to localhost defaults for dev
-export const baseUrl = (import.meta as any)?.env?.VITE_API_BASE || "http://localhost:8000/";
-export const baseUrlMedia = (import.meta as any)?.env?.VITE_MEDIA_BASE || "http://localhost:8000";
-export const baseWsUrl = (import.meta as any)?.env?.VITE_WS_BASE || "ws://localhost:8000/";
+const ensureTrailingSlash = (url: string) => (url.endsWith('/') ? url : `${url}/`);
 
-//export const baseUrl = "http://92.112.194.239:6161/";
-//export const baseUrlMedia = "http://92.112.194.239:6161";
-//export const baseWsUrl = "ws://92.112.194.239:6161/";
+const resolveDefaultApiBase = () => {
+  if (typeof window !== 'undefined' && window.location.origin) {
+    return ensureTrailingSlash(window.location.origin);
+  }
+  return 'http://localhost:8000/';
+};
 
+const envApiBase = ((import.meta as any)?.env?.VITE_API_BASE ?? '').toString().trim();
+const resolvedApiBase = envApiBase ? ensureTrailingSlash(envApiBase) : resolveDefaultApiBase();
 
+// Allow overriding via Vite env vars; fall back to same-origin (or localhost for SSR)
+export const baseUrl = resolvedApiBase;
 
-//export const baseUrl = "http://localhost:5050/";
-//export const baseWsUrl = "ws://localhost:5050/";
+const envMediaBase = ((import.meta as any)?.env?.VITE_MEDIA_BASE ?? '').toString().trim();
+export const baseUrlMedia = envMediaBase || baseUrl.replace(/\/$/, '');
+
+const envWsBase = ((import.meta as any)?.env?.VITE_WS_BASE ?? '').toString().trim();
+const resolvedWsBase = envWsBase
+  ? ensureTrailingSlash(envWsBase)
+  : (() => {
+      const defaultWsScheme = baseUrl.startsWith('https://') ? 'wss://' : 'ws://';
+      const defaultWsHost = baseUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
+      return `${defaultWsScheme}${defaultWsHost}/`;
+    })();
+export const baseWsUrl = resolvedWsBase;
 
 const getStoredValue = (key: string): string | null => {
   if (typeof window === 'undefined') return null;

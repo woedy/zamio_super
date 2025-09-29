@@ -1,7 +1,13 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { baseUrl, getPublisherId, getUserToken } from '../../../constants';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { getPublisherId } from '../../../constants';
 import ButtonLoader from '../../../common/button_loader';
+import api from '../../../lib/api';
+import {
+  extractApiErrorMessage,
+  navigateToOnboardingStep,
+  skipPublisherOnboarding,
+} from '../../../utils/onboarding';
 
 type SearchResult = {
   artist_id: string;
@@ -27,12 +33,11 @@ const LinkArtist = () => {
   const [inviteMsg, setInviteMsg] = useState('');
 
   const navigate = useNavigate();
-  const token = getUserToken();
   const publisherId = getPublisherId();
 
   useEffect(() => {
     setError('');
-    if (!token) {
+    if (!publisherId) {
       setResults([]);
       return;
     }
@@ -43,60 +48,44 @@ const LinkArtist = () => {
     const handle = setTimeout(async () => {
       try {
         setSearching(true);
-        const resp = await fetch(
-          `${baseUrl}api/publishers/link-artist/search/?q=${encodeURIComponent(query)}`,
-          {
-            headers: {
-              Authorization: `Token ${token}`,
-            },
-          }
-        );
-        const data = await resp.json();
-        if (!resp.ok) {
-          const msgs = data?.errors ? Object.values(data.errors).flat() : [data?.message || 'Search failed'];
-          setError((msgs as string[]).join('\n'));
-          setResults([]);
-          return;
-        }
-        setResults(data?.data?.results || []);
-      } catch (e: any) {
-        setError(e?.message || 'Search error');
+        const response = await api.get('api/publishers/link-artist/search/', {
+          params: { q: query.trim() },
+        });
+        setResults(response.data?.data?.results ?? []);
+      } catch (err) {
+        console.error('Failed to search artists:', err);
+        setResults([]);
+        setError(extractApiErrorMessage(err, 'Search failed.'));
       } finally {
         setSearching(false);
       }
     }, 350);
 
     return () => clearTimeout(handle);
-  }, [query, baseUrl, token]);
+  }, [query, publisherId]);
+
+  const ensureSession = () => {
+    if (!publisherId) {
+      setError('Missing publisher session. Please sign in again.');
+      navigate('/sign-in');
+      return false;
+    }
+    return true;
+  };
 
   const linkArtist = async (artist_id: string) => {
     setError('');
     setInviteMsg('');
-    if (!token) {
-      setError('Missing publisher session. Please sign in again.');
-      navigate('/sign-in');
+    if (!ensureSession()) {
       return;
     }
     try {
       setLinkingId(artist_id);
-      const resp = await fetch(`${baseUrl}api/publishers/link-artist/link/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Token ${token}`,
-        },
-        body: JSON.stringify({ artist_id }),
-      });
-      const data = await resp.json();
-      if (!resp.ok) {
-        const msgs = data?.errors ? Object.values(data.errors).flat() : [data?.message || 'Link failed'];
-        setError((msgs as string[]).join('\n'));
-        return;
-      }
-      // Mark as selected/linked in UI but do not navigate yet
+      await api.post('api/publishers/link-artist/link/', { artist_id });
       setSelected((prev) => ({ ...prev, [artist_id]: true }));
-    } catch (e: any) {
-      setError(e?.message || 'Link error');
+    } catch (err) {
+      console.error('Failed to link artist:', err);
+      setError(extractApiErrorMessage(err, 'Link failed.'));
     } finally {
       setLinkingId(null);
     }
@@ -110,41 +99,28 @@ const LinkArtist = () => {
       setError('Email is required to send invite');
       return;
     }
-    if (!token || !publisherId) {
-      setError('Missing publisher session. Please sign in again.');
-      navigate('/sign-in');
+    if (!ensureSession()) {
       return;
     }
     try {
       setInviting(true);
-      // Allow comma/space separated emails
       const parsed = inviteEmail
         .split(/[\s,;]+/)
         .map((s) => s.trim())
-        .filter((s) => s);
+        .filter(Boolean);
 
-      const body: any = parsed.length > 1 ? { emails: parsed } : { email: parsed[0] };
-      if (inviteStageName) body.stage_name = inviteStageName;
-
-      const resp = await fetch(`${baseUrl}api/publishers/link-artist/invite/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Token ${token}`,
-        },
-        body: JSON.stringify(body),
-      });
-      const data = await resp.json();
-      if (!resp.ok) {
-        const msgs = data?.errors ? Object.values(data.errors).flat() : [data?.message || 'Invite failed'];
-        setError((msgs as string[]).join('\n'));
-        return;
+      const payload: Record<string, unknown> = parsed.length > 1 ? { emails: parsed } : { email: parsed[0] };
+      if (inviteStageName.trim()) {
+        payload.stage_name = inviteStageName.trim();
       }
+
+      await api.post('api/publishers/link-artist/invite/', payload);
       setInviteMsg('Invitation sent successfully. Check email for the token.');
       setInviteEmail('');
       setInviteStageName('');
-    } catch (e: any) {
-      setError(e?.message || 'Invite error');
+    } catch (err) {
+      console.error('Failed to send invite:', err);
+      setError(extractApiErrorMessage(err, 'Invite failed.'));
     } finally {
       setInviting(false);
     }
@@ -157,91 +133,65 @@ const LinkArtist = () => {
       setError('Select at least one artist to link');
       return;
     }
-    if (!token || !publisherId) {
-      setError('Missing publisher session. Please sign in again.');
-      navigate('/sign-in');
+    if (!ensureSession()) {
       return;
     }
     try {
       setLinkingId('bulk');
-      const resp = await fetch(`${baseUrl}api/publishers/link-artist/link-multiple/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Token ${token}`,
-        },
-        body: JSON.stringify({ artist_ids: ids }),
+      const response = await api.post('api/publishers/link-artist/link-multiple/', {
+        artist_ids: ids,
       });
-      const data = await resp.json();
-      if (!resp.ok) {
-        const msgs = data?.errors ? Object.values(data.errors).flat() : [data?.message || 'Bulk link failed'];
-        setError((msgs as string[]).join('\n'));
-        return;
-      }
-      // clear selection of successfully linked
-      const linked: string[] = data?.data?.linked || [];
+      const linked: string[] = response.data?.data?.linked ?? [];
       setSelected((prev) => {
         const copy = { ...prev };
-        linked.forEach((id) => (copy[id] = true));
+        linked.forEach((id) => {
+          copy[id] = true;
+        });
         return copy;
       });
-    } catch (e: any) {
-      setError(e?.message || 'Bulk link error');
+    } catch (err) {
+      console.error('Failed to link selected artists:', err);
+      setError(extractApiErrorMessage(err, 'Bulk link failed.'));
     } finally {
       setLinkingId(null);
     }
   };
 
   const completeStepAndContinue = async () => {
-    // Mark link-artist step complete in backend, like artist onboarding does
+    if (!ensureSession()) {
+      return;
+    }
     try {
-      if (!publisherId || !token) {
-        setError('Missing publisher session. Please sign in again.');
-        navigate('/sign-in');
+      const id = publisherId;
+      if (!id) {
         return;
       }
-      const form = new FormData();
-      form.append('publisher_id', String(publisherId));
-      const resp = await fetch(`${baseUrl}api/accounts/complete-link-artist/`, {
-        method: 'POST',
-        headers: { Authorization: `Token ${token}` },
-        body: form,
+      const response = await api.post('api/accounts/complete-link-artist/', {
+        publisher_id: id,
       });
-      const data = await resp.json();
-      const next = data?.data?.next_step || 'payment';
-      switch (next) {
-        case 'revenue-split':
-          navigate('/onboarding/revenue-split');
-          break;
-        case 'link-artist':
-          navigate('/onboarding/link-artist');
-          break;
-        case 'payment':
-          navigate('/onboarding/payment');
-          break;
-        case 'done':
-        default:
-          navigate('/dashboard');
-          break;
-      }
-    } catch (e: any) {
-      setError(e?.message || 'Failed to continue');
+      const next = response.data?.data?.next_step as string | undefined;
+      navigateToOnboardingStep(navigate, next);
+    } catch (err) {
+      console.error('Failed to complete link-artist step:', err);
+      setError(extractApiErrorMessage(err, 'Failed to continue'));
     }
   };
 
   const handleSkip = async () => {
+    if (!ensureSession()) {
+      return;
+    }
     try {
-      if (!publisherId || !token) {
-        navigate('/sign-in');
+      const id = publisherId;
+      if (!id) {
         return;
       }
-      const resp = await fetch(`${baseUrl}api/accounts/skip-publisher-onboarding/`, {
-        method: 'POST',
-        headers: { Authorization: `Token ${token}` },
-        body: new URLSearchParams({ publisher_id: String(publisherId), step: 'payment' }),
-      });
-    } catch {}
-    navigate('/onboarding/payment');
+      const { redirect_step } = await skipPublisherOnboarding(id, 'payment');
+      navigateToOnboardingStep(navigate, redirect_step, { reloadOnDone: false });
+    } catch (err) {
+      console.error('Failed to skip link-artist step:', err);
+      setError(extractApiErrorMessage(err));
+    }
   };
 
   return (
@@ -265,7 +215,6 @@ const LinkArtist = () => {
           <h2 className="text-4xl font-bold text-white text-center mb-6">🎧 Sign/Link Artists</h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Left: Search and link existing artist */}
             <div>
               <p className="text-white text-center mb-4">Search artists and link to your catalog</p>
               <input
@@ -288,19 +237,19 @@ const LinkArtist = () => {
                         checked={!!selected[r.artist_id]}
                         onChange={(e) => setSelected((prev) => ({ ...prev, [r.artist_id]: e.target.checked }))}
                       />
-                    <div className="text-white text-sm">
-                      <div className="font-semibold">{r.stage_name || 'Unknown Stage Name'}</div>
-                      <div className="text-white/80">{r.contact_email || r.user_email || ''}</div>
-                      {r.linked && (
-                        <div className="text-xs text-yellow-200 mt-1">
-                          {r.linked_to_you ? 'Already linked to you' : `Linked to ${r.linked_publisher || 'another publisher'}`}
-                        </div>
-                      )}
-                    </div>
+                      <div className="text-white text-sm">
+                        <div className="font-semibold">{r.stage_name || 'Unknown Stage Name'}</div>
+                        <div className="text-white/80">{r.contact_email || r.user_email || ''}</div>
+                        {r.linked && (
+                          <div className="text-xs text-yellow-200 mt-1">
+                            {r.linked_to_you ? 'Already linked to you' : `Linked to ${r.linked_publisher || 'another publisher'}`}
+                          </div>
+                        )}
+                      </div>
                     </div>
                     <div>
                       <button
-                        disabled={r.linked && !r.linked_to_you || linkingId === r.artist_id}
+                        disabled={(r.linked && !r.linked_to_you) || linkingId === r.artist_id}
                         onClick={() => linkArtist(r.artist_id)}
                         className={`px-3 py-2 rounded text-xs font-semibold ${
                           r.linked && !r.linked_to_you
@@ -327,7 +276,6 @@ const LinkArtist = () => {
               </div>
             </div>
 
-            {/* Right: Invite artist by email */}
             <div>
               <p className="text-white text-center mb-4">Invite artists by email</p>
               <form onSubmit={inviteArtist} className="space-y-4">
@@ -360,10 +308,7 @@ const LinkArtist = () => {
           </div>
 
           <div className="flex items-center justify-between mt-6">
-            <button
-              onClick={handleSkip}
-              className="underline text-white hover:text-blue-200"
-            >
+            <button onClick={handleSkip} className="underline text-white hover:text-blue-200">
               Skip
             </button>
             <button

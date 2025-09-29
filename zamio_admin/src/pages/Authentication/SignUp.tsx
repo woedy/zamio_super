@@ -1,8 +1,13 @@
 import React, { useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { baseUrl } from '../../constants';
+import { Link, useNavigate } from 'react-router-dom';
+import { AxiosError } from 'axios';
 import ButtonLoader from '../../common/button_loader';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
+import {
+  registerAdmin,
+  type ApiErrorPayload,
+  type AdminRegistrationPayload,
+} from '../../services/authService';
 
 const SignUp = () => {
   const [firstName, setFirstName] = useState('');
@@ -22,8 +27,10 @@ const SignUp = () => {
   const navigate = useNavigate();
 
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
+    setInputError('');
 
     // Validate email
     if (!validateEmail(email)) {
@@ -71,46 +78,41 @@ const SignUp = () => {
       return;
     }
 
-    // Create FormData object
-    const formData = new FormData();
-    formData.append('password', password);
-    formData.append('password2', password2);
-    formData.append('phone', contactNumber);
-    formData.append('email', email);
-    formData.append('first_name', firstName);
-    formData.append('last_name', lastName);
-
-    // Make a POST request to the server
-    const url = baseUrl + 'api/accounts/register-admin/';
-
-
+    const payload: AdminRegistrationPayload = {
+      email,
+      first_name: firstName,
+      last_name: lastName,
+      phone: contactNumber,
+      password,
+      password2,
+    };
 
     try {
       setLoading(true);
-      const response = await fetch(url, {
-        method: 'POST',
-        body: formData,
-      });
-    
-      const data = await response.json();
-    
-      if (!response.ok) {
-        // Display the first error message from the errors object
-        if (data.errors) {
-          const errorMessages = Object.values(data.errors).flat();
-          setInputError(errorMessages.join('\n'));
-        } else {
-          setInputError(data.message || 'Failed to register');
-        }
-        return; // Prevent further code execution
-      }
-    
-      // Registration successful
-      console.log('User registered successfully');
-      navigate('/verify-email', { state: { email } });
+      await registerAdmin(payload);
 
-  } catch (error) {
-      console.error('Error registering user:', error.message);
+      navigate('/verify-email', { state: { email } });
+    } catch (error) {
+      if (error instanceof AxiosError) {
+        const responsePayload = error.response?.data as ApiErrorPayload | undefined;
+        const errorBag = responsePayload?.errors;
+
+        if (errorBag && typeof errorBag === 'object') {
+          const allErrors = Object.values(errorBag as Record<string, string[] | string>)
+            .flatMap((item) => (Array.isArray(item) ? item : [item]))
+            .filter(Boolean);
+          if (allErrors.length) {
+            setInputError(allErrors.join('\n'));
+            return;
+          }
+        }
+
+        if (responsePayload?.message) {
+          setInputError(responsePayload.message);
+          return;
+        }
+      }
+
       setInputError('Failed to register');
     } finally {
       setLoading(false);

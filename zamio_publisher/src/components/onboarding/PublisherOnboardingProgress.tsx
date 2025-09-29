@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  CheckCircleIcon, 
+import {
+  CheckCircleIcon,
   ExclamationTriangleIcon,
   ArrowRightIcon,
   BuildingOfficeIcon,
@@ -10,6 +10,9 @@ import {
   ChartBarIcon
 } from '@heroicons/react/24/outline';
 import { useNavigate } from 'react-router-dom';
+import { getPublisherId } from '../../constants';
+import api from '../../lib/api';
+import { extractApiErrorMessage, navigateToOnboardingStep } from '../../utils/onboarding';
 
 interface PublisherOnboardingProgressProps {
   className?: string;
@@ -34,6 +37,7 @@ const PublisherOnboardingProgress: React.FC<PublisherOnboardingProgressProps> = 
   const navigate = useNavigate();
   const [status, setStatus] = useState<OnboardingStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     loadOnboardingStatus();
@@ -41,23 +45,22 @@ const PublisherOnboardingProgress: React.FC<PublisherOnboardingProgressProps> = 
 
   const loadOnboardingStatus = async () => {
     try {
-      // This would be replaced with actual API call
-      // const response = await api.get(`api/accounts/publisher-onboarding-status/${getPublisherId()}/`);
-      // setStatus(response.data.data);
-      
-      // Mock data for now
-      setStatus({
-        profile_completed: true,
-        revenue_split_completed: false,
-        link_artist_completed: false,
-        payment_info_added: false,
-        kyc_status: 'pending',
-        profile_complete_percentage: 25,
-        next_recommended_step: 'revenue-split',
-        admin_approval_required: true
-      });
+      setError('');
+      setLoading(true);
+      const publisherId = getPublisherId();
+      if (!publisherId) {
+        setStatus(null);
+        setError('Missing publisher session. Please sign in again.');
+        return;
+      }
+
+      const response = await api.get(
+        `api/accounts/publisher-onboarding-status/${publisherId}/`
+      );
+      setStatus(response.data?.data ?? null);
     } catch (error) {
       console.error('Failed to load onboarding status:', error);
+      setError(extractApiErrorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -142,11 +145,12 @@ const PublisherOnboardingProgress: React.FC<PublisherOnboardingProgressProps> = 
   ];
 
   const handleContinueOnboarding = () => {
-    navigate('/onboarding');
+    const next = status?.next_recommended_step || status?.onboarding_step || 'profile';
+    navigateToOnboardingStep(navigate, next, { reloadOnDone: false });
   };
 
   const handleCompleteStep = (stepKey: string) => {
-    navigate(`/onboarding?step=${stepKey}`);
+    navigateToOnboardingStep(navigate, stepKey, { reloadOnDone: false });
   };
 
   if (loading) {
@@ -165,7 +169,11 @@ const PublisherOnboardingProgress: React.FC<PublisherOnboardingProgressProps> = 
   }
 
   if (!status) {
-    return null;
+    return error ? (
+      <div className={`p-6 rounded-lg border bg-white ${className}`}>
+        <div className="text-sm text-red-600">{error}</div>
+      </div>
+    ) : null;
   }
 
   const completedSteps = steps.filter(step => getStepStatus(step.key) === 'completed').length;
@@ -205,6 +213,9 @@ const PublisherOnboardingProgress: React.FC<PublisherOnboardingProgressProps> = 
 
       {/* Steps List */}
       <div className="space-y-3">
+        {error && (
+          <div className="text-sm text-red-600">{error}</div>
+        )}
         {steps.map((step) => {
           const stepStatus = getStepStatus(step.key);
           const StepIcon = getStepIcon(step.key);

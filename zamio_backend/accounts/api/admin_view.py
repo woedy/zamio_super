@@ -84,16 +84,15 @@ def register_admin_view(request):
         serializer = UserRegistrationSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
+            user.phone = phone
+            user.user_type = "Admin"
+            user.save()
+
             data["user_id"] = user.user_id
             data["email"] = user.email
             data["first_name"] = user.first_name
             data["last_name"] = user.last_name
-            data["photo"] = user.photo
-
-   
-
-            user.user_type = "Admin"
-            user.save()
+            data["photo"] = getattr(user.photo, 'url', None)
 
             # Initialize admin profile with required non-null fields
             admin_profile = MrAdmin.objects.create(
@@ -105,7 +104,7 @@ def register_admin_view(request):
 
 
             data['phone'] = user.phone
-            data['photo'] = user.photo.url
+            data['photo'] = getattr(user.photo, 'url', None)
 
         token = Token.objects.get(user=user).key
         data['token'] = token
@@ -246,10 +245,18 @@ class AdminLogin(APIView):
         data["email"] = user.email
         data["first_name"] = user.first_name
         data["last_name"] = user.last_name
-        data["photo"] = user.photo.url
+        data["photo"] = getattr(user.photo, 'url', None)
         data["country"] = user.country
         data["phone"] = user.phone
         data["token"] = token.key
+        needs_profile = not (admin.city and admin.postal_code)
+        data["next_step"] = 'profile' if needs_profile else 'done'
+        data["profile"] = {
+            'address': admin.address,
+            'city': admin.city,
+            'postal_code': admin.postal_code,
+            'active': admin.active,
+        }
 
         payload['message'] = "Successful"
         payload['data'] = data
@@ -487,6 +494,12 @@ def admin_onboarding_status_view(request):
     data["user_id"] = user.user_id
     data["admin_id"] = admin.admin_id
     data["next_step"] = next_step
+    data["profile"] = {
+        'address': admin.address,
+        'city': admin.city,
+        'postal_code': admin.postal_code,
+        'active': admin.active,
+    }
 
     payload['message'] = 'Successful'
     payload['data'] = data
@@ -528,6 +541,12 @@ def complete_admin_profile_view(request):
 
     data['admin_id'] = admin.admin_id
     data['next_step'] = 'done'
+    data['profile'] = {
+        'address': admin.address,
+        'city': admin.city,
+        'postal_code': admin.postal_code,
+        'active': admin.active,
+    }
 
     payload['message'] = 'Successful'
     payload['data'] = data
