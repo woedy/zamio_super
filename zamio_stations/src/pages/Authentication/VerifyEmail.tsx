@@ -1,113 +1,198 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import api from '../../lib/api';
-import { persistStationId } from '../../lib/auth';
 import ButtonLoader from '../../common/button_loader';
+import { persistStationId } from '../../lib/auth';
+import api from '../../lib/api';
+import type { StationOnboardingStep } from '../../contexts/StationOnboardingContext';
 import useStationOnboarding from '../../hooks/useStationOnboarding';
 import { getOnboardingRoute } from '../../utils/onboarding';
 
-const VerifyEmail = () => {
-  const [otp, setOtp] = useState(['', '', '', '']);
-  const [inputError, setInputError] = useState('');
-  const [loading, setLoading] = useState(false);
+const OTP_LENGTH = 4;
 
+const VerifyEmail: React.FC = () => {
   const location = useLocation();
-  const email = location.state?.email;
-
   const navigate = useNavigate();
   const { refresh } = useStationOnboarding();
 
-  const handleChange = (value, index) => {
-    if (value.length > 1) return;
+  const email = useMemo(() => {
+    if (location.state?.email) {
+      return String(location.state.email);
+    }
 
-    const newOtp = [...otp];
-    newOtp[index] = value;
-    setOtp(newOtp);
+    const queryEmail = new URLSearchParams(location.search).get('email');
+    if (queryEmail) {
+      return queryEmail;
+    }
 
-    // Auto-focus next input
-    if (value && index < 3) {
-      document.getElementById(`otp-${index + 1}`).focus();
+    try {
+      return localStorage.getItem('email') || '';
+    } catch {
+      return '';
+    }
+  }, [location]);
+
+  const [otp, setOtp] = useState<string[]>(Array.from({ length: OTP_LENGTH }, () => ''));
+  const [inputError, setInputError] = useState('');
+  const [infoMessage, setInfoMessage] = useState('');
+  const [verifying, setVerifying] = useState(false);
+  const [resending, setResending] = useState(false);
+
+  const focusInput = (index: number) => {
+    const el = document.getElementById(`otp-${index}`) as HTMLInputElement | null;
+    el?.focus();
+  };
+
+  const handleChange = (value: string, index: number) => {
+    const sanitized = value.replace(/\D/g, '').slice(0, 1);
+    const nextOtp = [...otp];
+    nextOtp[index] = sanitized;
+    setOtp(nextOtp);
+
+    if (sanitized && index < OTP_LENGTH - 1) {
+      focusInput(index + 1);
     }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    const code = otp.join('');
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>, index: number) => {
+    if (event.key === 'Backspace' && !otp[index] && index > 0) {
+      focusInput(index - 1);
+    }
+  };
 
-    if (code.length !== 4 || otp.includes('')) {
-      setInputError('Please enter a valid 4-digit code.');
+  const handlePaste = (event: React.ClipboardEvent<HTMLInputElement>) => {
+    event.preventDefault();
+    const pasted = event.clipboardData.getData('text').replace(/\D/g, '').slice(0, OTP_LENGTH);
+    if (!pasted) {
+      return;
+    }
+    const nextOtp = Array.from({ length: OTP_LENGTH }, (_, idx) => pasted[idx] ?? '');
+    setOtp(nextOtp);
+    const filledLength = nextOtp.findIndex((digit) => !digit);
+    focusInput(filledLength === -1 ? OTP_LENGTH - 1 : filledLength);
+  };
+
+  const ensureEmailAvailable = (): boolean => {
+    if (email) {
+      return true;
+    }
+
+    setInputError(
+      'We could not determine which account to verify. Please open the verification link from your email or log in to request a new code.',
+    );
+    return false;
+  };
+
+  const resolveNextStep = (payload: any): StationOnboardingStep => {
+    if (payload?.profile_completed) {
+      return 'done';
+    }
+
+    const candidate = (payload?.next_step || 'profile') as StationOnboardingStep;
+    const allowed: StationOnboardingStep[] = ['profile', 'staff', 'report', 'payment', 'done'];
+    return allowed.includes(candidate) ? candidate : 'profile';
+  };
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!ensureEmailAvailable()) {
+      return;
+    }
+
+    const code = otp.join('');
+    if (code.length !== OTP_LENGTH || otp.some((digit) => !digit)) {
+      setInputError('Please enter the 4-digit code that we emailed to you.');
       return;
     }
 
     setInputError('');
-    setLoading(true);
+    setInfoMessage('');
+    setVerifying(true);
 
     try {
-      const resp = await api.post('api/accounts/verify-station-email/', {
-        email: email,
+      const response = await api.post('api/accounts/verify-station-email/', {
+        email,
         email_token: code,
       });
 
-      const payload = resp.data?.data ?? {};
+      const payload = response.data?.data ?? {};
 
-      localStorage.setItem('first_name', payload.first_name);
-      localStorage.setItem('last_name', payload.last_name);
-      localStorage.setItem('user_id', payload.user_id);
-      persistStationId(payload.station_id);
-      localStorage.setItem('email', payload.email);
-      localStorage.setItem('photo', payload.photo);
-      localStorage.setItem('token', payload.token);
+      localStorage.setItem('first_name', payload.first_name ?? '');
+      localStorage.setItem('last_name', payload.last_name ?? '');
+      localStorage.setItem('user_id', payload.user_id ?? '');
+      persistStationId(payload.station_id ?? '');
+      localStorage.setItem('email', payload.email ?? email);
+      if (payload.photo) {
+        localStorage.setItem('photo', payload.photo);
+      } else {
+        localStorage.removeItem('photo');
+      }
+      localStorage.setItem('token', payload.token ?? '');
+      try {
+        sessionStorage.setItem('token', payload.token ?? '');
+      } catch {
+        /* ignore storage errors */
+      }
 
-      await refresh();
+      await refresh({ silent: true });
 
-      const nextRoute = payload.profile_completed
-        ? getOnboardingRoute('done')
-        : getOnboardingRoute(payload.next_step || 'profile');
+      const nextStep = resolveNextStep(payload);
+      const nextRoute = getOnboardingRoute(nextStep);
 
-      navigate(nextRoute, { state: { successMessage: 'Email verified successfully!' } });
-
-
+      navigate(nextRoute, {
+        state: { successMessage: 'Email verified successfully!' },
+        replace: true,
+      });
     } catch (err: any) {
       const data = err?.response?.data;
       if (data?.errors) {
-        const errorMessages = Object.values(data.errors).flat() as string[];
-        setInputError(errorMessages.join('\n'));
+        const message = Object.values(data.errors)
+          .flat()
+          .filter((item): item is string => typeof item === 'string')
+          .join('\n');
+        setInputError(message || 'Verification error. Please try again.');
       } else {
         setInputError(data?.message || 'Verification error. Please try again.');
       }
     } finally {
-      setLoading(false);
+      setVerifying(false);
     }
   };
-  const handleResend = async (e) => {
-    e.preventDefault();
 
+  const handleResend = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+
+    if (!ensureEmailAvailable()) {
+      return;
+    }
 
     setInputError('');
-    setLoading(true);
+    setInfoMessage('');
+    setResending(true);
 
     try {
       await api.post('api/accounts/resend-email-verification/', { email });
-      navigate('/verify-email', { state: { email } });
+      setInfoMessage('We just sent a new verification code to your email.');
     } catch (err: any) {
       const data = err?.response?.data;
       if (data?.errors) {
-        const errorMessages = Object.values(data.errors).flat() as string[];
-        setInputError(errorMessages.join('\n'));
+        const message = Object.values(data.errors)
+          .flat()
+          .filter((item): item is string => typeof item === 'string')
+          .join('\n');
+        setInputError(message || 'Verification error. Please try again.');
       } else {
         setInputError(data?.message || 'Verification error. Please try again.');
       }
     } finally {
-      setLoading(false);
+      setResending(false);
     }
   };
 
   return (
     <div className="h-screen bg-gradient-to-br from-[#1a2a6c] via-[#b21f1f] to-[#fdbb2d] flex items-center justify-center">
       <div className="w-full max-w-md px-6">
-        <h2 className="text-5xl font-bold text-white text-center mb-8">
-          Verify Email
-        </h2>
+        <h2 className="text-5xl font-bold text-white text-center mb-8">Verify Email</h2>
 
         {inputError && (
           <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
@@ -116,9 +201,16 @@ const VerifyEmail = () => {
           </div>
         )}
 
+        {infoMessage && (
+          <div className="bg-green-100 border border-green-400 text-green-800 px-4 py-3 rounded mb-4">
+            <strong className="font-bold">Success!</strong>
+            <span className="block sm:inline"> {infoMessage}</span>
+          </div>
+        )}
+
         <div className="bg-white/10 p-8 rounded-2xl backdrop-blur-md w-full border border-white/20 shadow-xl">
           <p className="text-white text-center mb-6">
-            Please enter the 4-digit code sent to your email.
+            Please enter the 4-digit code sent to {email || 'your email address'}.
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -129,20 +221,24 @@ const VerifyEmail = () => {
                   id={`otp-${index}`}
                   type="text"
                   inputMode="numeric"
-                  maxLength="1"
+                  maxLength={1}
                   value={digit}
-                  onChange={(e) => handleChange(e.target.value, index)}
+                  onChange={(event) => handleChange(event.target.value, index)}
+                  onKeyDown={(event) => handleKeyDown(event, index)}
+                  onPaste={handlePaste}
                   className="w-16 h-16 text-center text-2xl text-white bg-white/20 border border-white/30 rounded-lg backdrop-blur-md focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  autoFocus={index === 0}
                 />
               ))}
             </div>
 
-            {loading ? (
+            {verifying ? (
               <ButtonLoader />
             ) : (
               <button
                 type="submit"
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-4 rounded-lg transition"
+                disabled={verifying}
               >
                 Verify
               </button>
@@ -151,21 +247,20 @@ const VerifyEmail = () => {
 
           <p className="text-white mt-6 text-center">
             Didn't receive a code?{' '}
-
-            {loading ? (
-              <ButtonLoader />
+            {resending ? (
+              <span className="inline-flex items-center justify-center align-middle">
+                <ButtonLoader />
+              </span>
             ) : (
-
-            <button
-              onClick={handleResend}
-              className="underline text-blue-400 hover:text-blue-200"
-            >
-              Resend
-            </button>
-                   )}
-
-
-
+              <button
+                onClick={handleResend}
+                className="underline text-blue-400 hover:text-blue-200"
+                type="button"
+                disabled={resending}
+              >
+                Resend
+              </button>
+            )}
           </p>
         </div>
       </div>
@@ -174,3 +269,4 @@ const VerifyEmail = () => {
 };
 
 export default VerifyEmail;
+

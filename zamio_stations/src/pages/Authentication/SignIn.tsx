@@ -64,7 +64,7 @@ const SignIn = () => {
       const response = await api.post(url, data);
       if (response.status === 200) {
         const user = response.data.data;
-  
+
         // Save to localStorage
         localStorage.setItem('first_name', user.first_name);
         localStorage.setItem('last_name', user.last_name);
@@ -73,8 +73,13 @@ const SignIn = () => {
         localStorage.setItem('email', user.email);
         localStorage.setItem('photo', user.photo);
         localStorage.setItem('token', user.token);
-  
-        await refresh();
+        try {
+          sessionStorage.setItem('token', user.token);
+        } catch {
+          /* ignore storage errors */
+        }
+
+        await refresh({ silent: true });
         const targetRoute = getOnboardingRoute(user.onboarding_step);
         navigate(targetRoute);
       }

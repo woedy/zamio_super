@@ -47,7 +47,7 @@ const PaymentInfo = () => {
       if (!nextStep || nextStep === 'payment') {
         nextStep = 'done';
       }
-      await refresh();
+      await refresh({ silent: true });
 
       switch (nextStep) {
         case 'profile':
@@ -80,7 +80,7 @@ const PaymentInfo = () => {
       await api.post('api/accounts/complete-station-onboarding/', {
         station_id: getStationId(),
       });
-      await refresh();
+      await refresh({ silent: true });
     } catch {}
     navigate(getOnboardingRoute('done'));
   };

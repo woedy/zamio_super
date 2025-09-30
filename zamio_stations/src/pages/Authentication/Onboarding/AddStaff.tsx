@@ -49,7 +49,7 @@ const AddStaff = () => {
       if (!nextStep || nextStep === 'staff') {
         nextStep = 'payment';
       }
-      await refresh();
+      await refresh({ silent: true });
 
       switch (nextStep) {
         case 'profile':
@@ -171,7 +171,7 @@ const AddStaff = () => {
                     station_id: getStationId(),
                     step: 'payment',
                   });
-                  await refresh();
+                  await refresh({ silent: true });
                 } catch {}
                 navigate(getOnboardingRoute('payment'));
               }}
