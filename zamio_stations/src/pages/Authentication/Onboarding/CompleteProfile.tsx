@@ -10,8 +10,8 @@ const CompleteProfile = () => {
   const [bio, setBio] = useState('');
   const [country, setCountry] = useState('');
   const [region, setRegion] = useState('');
-  const [imagePreview, setImagePreview] = useState(null);
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const [inputError, setInputError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -24,8 +24,10 @@ const CompleteProfile = () => {
       setBio(details.bio ?? '');
       setCountry(details.country ?? '');
       setRegion(details.region ?? '');
-      if (details.photo) {
-        setImagePreview(details.photo as unknown as string);
+      if (typeof details.photo === 'string' && details.photo) {
+        setImagePreview(details.photo);
+      } else {
+        setImagePreview(null);
       }
     }
   }, [details]);
@@ -35,7 +37,7 @@ const CompleteProfile = () => {
     if (file && file.type.startsWith('image/')) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setImagePreview(reader.result);
+        setImagePreview(typeof reader.result === 'string' ? reader.result : null);
       };
       reader.readAsDataURL(file);
       setSelectedFile(file); // <-- store actual file here
@@ -91,7 +93,7 @@ const CompleteProfile = () => {
       if (!nextStep || nextStep === 'profile') {
         nextStep = 'staff';
       }
-      await refresh();
+      await refresh({ silent: true });
 
       switch (nextStep) {
         case 'profile':
@@ -228,7 +230,7 @@ const CompleteProfile = () => {
                     station_id: getStationId(),
                     step: 'staff',
                   });
-                  await refresh();
+                  await refresh({ silent: true });
                 } catch {}
                 navigate(getOnboardingRoute('staff'));
               }}
