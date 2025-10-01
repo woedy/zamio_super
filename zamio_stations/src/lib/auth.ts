@@ -45,3 +45,50 @@ export const getToken = (): string => {
   }
 };
 
+const LOCAL_SESSION_KEYS = [
+  'token',
+  'station_id',
+  'user_id',
+  'first_name',
+  'last_name',
+  'email',
+  'photo',
+  'username',
+];
+
+export const clearSession = () => {
+  try {
+    LOCAL_SESSION_KEYS.forEach((key) => {
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
+    });
+  } catch {}
+};
+
+export const logoutStation = async () => {
+  const stationId = getStationId();
+
+  try {
+    const response = await fetch(`${process.env.REACT_APP_API_URL}/api/accounts/logout-station/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Token ${getToken()}`,
+      },
+      body: JSON.stringify({ station_id: stationId }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to log out');
+    }
+  } catch (error) {
+    console.error('Failed to log out station', error);
+  } finally {
+    clearSession();
+
+    if (typeof window !== 'undefined') {
+      window.location.replace('/sign-in');
+    }
+  }
+};
+

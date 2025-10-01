@@ -396,9 +396,18 @@ def complete_station_profile_view(request):
         station.country = country
     if region:
         station.region = region
-    if photo:
-        station.photo = photo
 
+    # Handle photo upload
+    photo_url = None
+    if photo:
+        # Delete old photo if it exists and is not the default
+        if station.user.photo and 'default' not in station.user.photo.name:
+            station.user.photo.delete(save=False)
+        # Save new photo
+        station.user.photo = photo
+        station.user.save()
+        photo_url = station.user.photo.url if station.user.photo else None
+    
     # Mark this step as complete (profile)
     station.profile_completed = True
 
@@ -408,6 +417,8 @@ def complete_station_profile_view(request):
 
     data["station_id"] = station.station_id
     data["next_step"] = station.onboarding_step
+    if photo_url:
+        data["photo"] = photo_url
 
     payload['message'] = "Successful"
     payload['data'] = data
@@ -627,11 +638,6 @@ def complete_station_payment_view(request):
     payload['message'] = "Successful"
     payload['data'] = data
     return Response(payload, status=status.HTTP_200_OK)
-
-
-
-
-
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 @authentication_classes([TokenAuthentication])
@@ -648,24 +654,28 @@ def logout_station_view(request):
         station = Station.objects.get(station_id=station_id)
     except Station.DoesNotExist:
         errors['station_id'] = ['Station not found.']
-
-    if errors:
         payload['message'] = "Errors"
         payload['errors'] = errors
         return Response(payload, status=status.HTTP_400_BAD_REQUEST)
-    
 
+    # Log the activity
     new_activity = AllActivity.objects.create(
         user=station.user,
         type="Authentication",
         subject="Station Log out",
-        body=station.user.email + " Just logged out of the account."
+        body=f"{station.user.email} just logged out of the account."
     )
     new_activity.save()
 
-    payload['message'] = "Successful"
+    # Delete the authentication token to log the user out
+    try:
+        request.auth.delete()
+    except (AttributeError, Token.DoesNotExist):
+        pass
+
+    payload['message'] = "Successfully logged out"
     payload['data'] = data
-    return Response(payload)
+    return Response(payload, status=status.HTTP_200_OK)
 
 
 @api_view(['POST'])

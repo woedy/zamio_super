@@ -90,6 +90,15 @@ const CompleteProfile = () => {
       setLoading(true);
       const resp = await api.post(url, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
       let nextStep = resp.data?.data?.next_step as string | undefined;
+      const photoUrl = resp.data?.data?.photo;
+      
+      // Update local state and storage with the new photo URL if available
+      if (photoUrl) {
+        setImagePreview(photoUrl);
+        // Save to local storage for persistence
+        localStorage.setItem('photo', photoUrl);
+      }
+      
       if (!nextStep || nextStep === 'profile') {
         nextStep = 'staff';
       }
@@ -107,9 +116,11 @@ const CompleteProfile = () => {
           break;
         case 'done':
           navigate(getOnboardingRoute('done'));
+          window.location.reload();
           break;
         default:
           navigate(getOnboardingRoute(nextStep as any));
+          window.location.reload();
       }
     } catch (error) {
       console.error('Error updating profile:', error.message);

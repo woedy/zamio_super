@@ -409,6 +409,9 @@ def complete_artist_profile_view(request):
     
     # Save artist changes
     artist.save()
+       # Mark this step as complete (profile)
+    artist.profile_completed = True
+
 
     data["artist_id"] = artist.artist_id
     data["next_step"] = artist.onboarding_step

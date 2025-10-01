@@ -64,9 +64,11 @@ const AddStaff = () => {
           break;
         case 'done':
           navigate(getOnboardingRoute('done'));
+          window.location.reload();
           break;
         default:
           navigate(getOnboardingRoute(nextStep as any));
+          window.location.reload();
       }
     } catch (error) {
       console.error('Error updating profile:', (error as any)?.message);

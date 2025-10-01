@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import UserOne from '../../images/user/user-01.png';
 import { baseUrlMedia, userEmail, userPhoto } from '../../constants';
 import ClickOutside from '../Sidebar/ClickOutside';
+import { logoutStation } from '../../lib/auth';
 
 const DropdownUser = () => {
   // Derive display name from stored profile data
@@ -108,7 +108,10 @@ const DropdownUser = () => {
               </Link>
             </li>
           </ul>
-          <button className="flex items-center gap-3.5 px-6 py-4 text-sm font-medium duration-300 ease-in-out hover:text-primary lg:text-base">
+          <button 
+            onClick={logoutStation}
+            className="flex items-center gap-3.5 px-6 py-4 w-full text-left text-sm font-medium duration-300 ease-in-out hover:text-primary lg:text-base"
+          >
             <svg
               className="fill-current"
               width="22"
