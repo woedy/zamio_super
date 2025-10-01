@@ -201,7 +201,7 @@ const StationCompliance: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-950 text-white p-6">
+      <div className="min-h-screen  text-white p-6">
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-6 h-6 animate-spin mr-2" />
           Loading compliance data...
@@ -212,7 +212,7 @@ const StationCompliance: React.FC = () => {
 
   if (!complianceData) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-950 text-white p-6">
+      <div className="min-h-screen  text-white p-6">
         <div className="text-center py-12 text-red-300">
           Failed to load compliance data
         </div>
@@ -221,7 +221,7 @@ const StationCompliance: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-950 text-white p-6">
+    <div className="min-h-screen  text-white p-6">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="flex justify-between items-center mb-8">

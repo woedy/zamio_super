@@ -167,7 +167,7 @@ const EducationSupport = () => {
           </form>
         </PageSection>
 
-        <PageSection padding="lg" className="border-sky-300/60 bg-sky-50 dark:border-info/40 dark:bg-info/10">
+        <PageSection padding="lg" className="border-sky-300/60 bg-sky-50 dark:border-info/40">
           <div className="flex items-start gap-4">
             <Info className="h-6 w-6 text-sky-500 dark:text-info" />
             <div>

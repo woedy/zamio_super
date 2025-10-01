@@ -148,7 +148,7 @@ class UserManagementService {
   private getHeaders() {
     return {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${userToken}`,
+      'Authorization': `Token ${userToken}`,
     };
   }
 
@@ -283,7 +283,7 @@ class UserManagementService {
   }
 
   async getKycPendingUsers(): Promise<User[]> {
-    const response = await fetch(`${this.baseURL}kyc-pending-users/`, {
+    const response = await fetch(this.baseURL + `kyc-pending-users/`, {
       headers: this.getHeaders(),
     });
 

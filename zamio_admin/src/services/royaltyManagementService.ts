@@ -191,7 +191,7 @@ class RoyaltyManagementService {
 
   // Royalty Cycle Management
   async getRoyaltyOverview(): Promise<RoyaltyOverview> {
-    const response = await fetch(`${this.baseURL}overview/`, {
+    const response = await fetch(this.baseURL + `overview/`, {
       headers: this.getHeaders(),
     });
 
@@ -204,7 +204,7 @@ class RoyaltyManagementService {
   }
 
   async getAllCycles(): Promise<RoyaltyCycle[]> {
-    const response = await fetch(`${this.baseURL}cycles/`, {
+    const response = await fetch(this.baseURL + `cycles/`, {
       headers: this.getHeaders(),
     });
 
@@ -223,7 +223,7 @@ class RoyaltyManagementService {
     period_end: string;
     admin_fee_percent_default?: number;
   }): Promise<RoyaltyCycle> {
-    const response = await fetch(`${this.baseURL}cycles/create/`, {
+    const response = await fetch(this.baseURL +`cycles/create/`, {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify(cycleData),
@@ -241,7 +241,7 @@ class RoyaltyManagementService {
     line_items_created: number;
     status: string;
   }> {
-    const response = await fetch(`${this.baseURL}cycles/${cycleId}/close/`, {
+    const response = await fetch(this.baseURL +`cycles/${cycleId}/close/`, {
       method: 'POST',
       headers: this.getHeaders(),
     });
@@ -255,7 +255,7 @@ class RoyaltyManagementService {
   }
 
   async getCycleLineItems(cycleId: number): Promise<RoyaltyLineItem[]> {
-    const response = await fetch(`${this.baseURL}cycles/${cycleId}/line-items/`, {
+    const response = await fetch(this.baseURL +`cycles/${cycleId}/line-items/`, {
       headers: this.getHeaders(),
     });
 
@@ -267,7 +267,7 @@ class RoyaltyManagementService {
   }
 
   async getCycleRemittances(cycleId: number): Promise<PartnerRemittance[]> {
-    const response = await fetch(`${this.baseURL}cycles/${cycleId}/remittances/`, {
+    const response = await fetch(this.baseURL + `cycles/${cycleId}/remittances/`, {
       headers: this.getHeaders(),
     });
 
@@ -307,7 +307,7 @@ class RoyaltyManagementService {
       dry_run: boolean;
     };
   }> {
-    const response = await fetch(`${this.baseURL}calculate/`, {
+    const response = await fetch(this.baseURL +`calculate/`, {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify(data),

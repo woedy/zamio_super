@@ -31,14 +31,18 @@ const Sidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
     { name: "Match Dispute Management", icon: <CreditCard className="w-5 h-5" />, route: "/match-disputes" },
     { name: "Notifications", icon: <Bell className="w-5 h-5" />, route: "/notifications" },
     
-    // Tools
-    { name: "Radio Stream", icon: <Radio className="w-5 h-5" />, route: "/radio-stream" },
-    { name: "Audio File Match", icon: <AudioWaveformIcon className="w-5 h-5" />, route: "/audio-stream" },
-    
+
     // Account
     { name: "Profile", icon: <User className="w-5 h-5" />, route: "/profile" },
     { name: "Education & Support", icon: <HelpCircle className="w-5 h-5" />, route: "/help" },
-    { name: "Settings", icon: <Settings className="w-5 h-5" />, route: "/settings" }
+    { name: "Settings", icon: <Settings className="w-5 h-5" />, route: "/settings" },
+
+
+
+        // Tools
+        { name: "Radio Stream", icon: <Radio className="w-5 h-5" />, route: "/radio-stream" },
+        { name: "Audio File Match", icon: <AudioWaveformIcon className="w-5 h-5" />, route: "/audio-stream" },
+        
   ];
 
   // close on click outside

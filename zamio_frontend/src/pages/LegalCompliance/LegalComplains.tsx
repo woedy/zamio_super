@@ -56,7 +56,7 @@ export default function LegalCompliancePage() {
           </ul>
         </PageSection>
 
-        <PageSection padding="lg" className="border-amber-300/60 bg-amber-50 dark:border-amber-400/40 dark:bg-amber-500/15">
+        <PageSection padding="lg" className="border-amber-300/60 bg-amber-50 dark:border-amber-400/40">
           <h2 className="flex items-center gap-2 text-lg font-semibold text-amber-700 dark:text-amber-200">
             <AlertCircle className="h-5 w-5" /> Dispute Claim Center (Coming Soon)
           </h2>

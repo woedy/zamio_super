@@ -127,7 +127,7 @@ export interface DisputeFilters {
 }
 
 class DisputeService {
-  private baseURL = `${baseUrl}api/disputes/`;
+  private baseURL = `${baseUrl}api/`;
   
   private getHeaders() {
     return {

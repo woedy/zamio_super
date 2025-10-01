@@ -87,7 +87,7 @@ const NotificationCenter = () => {
   }, [fetchData]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-950 text-white p-6">
+    <div className="min-h-screen text-grey p-6">
       <div className="max-w-4xl mx-auto">
         <h1 className="text-3xl font-bold mb-6">📬 Notification Center</h1>
         <div className="bg-white/5 backdrop-blur-xl p-6 rounded-2xl border border-white/10 space-y-4">

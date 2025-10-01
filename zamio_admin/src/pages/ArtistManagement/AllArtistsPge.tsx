@@ -40,8 +40,7 @@ const AllArtistsPage = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch(
-        `${baseUrl}api/artists/get-all-artists/?search=${encodeURIComponent(
+      const response = await fetch(baseUrl + `api/artists/get-all-artists/?search=${encodeURIComponent(
           search,
         )}&order_by=${encodeURIComponent(orderArtists)}&page=${page}`,
         {

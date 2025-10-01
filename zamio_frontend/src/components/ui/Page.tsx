@@ -30,12 +30,11 @@ export const PageContainer = forwardRef<HTMLDivElement, PageContainerProps>(
       ref={ref}
       style={style}
       className={cn(
-        'relative isolate flex min-h-screen w-full flex-col overflow-hidden bg-gradient-to-br',
-        'from-[#f4f7ff] via-[#ecf1ff] to-[#e1e9ff] text-slate-900',
-        'before:pointer-events-none before:absolute before:-top-36 before:left-1/2 before:h-[460px] before:w-[460px] before:-translate-x-1/2 before:rounded-full before:bg-sky-400/25 before:blur-3xl before:content-[""]',
-        'after:pointer-events-none after:absolute after:-bottom-40 after:right-[-20%] after:h-[380px] after:w-[380px] after:rounded-full after:bg-fuchsia-400/20 after:blur-3xl after:content-[""]',
-        'dark:from-[#050b1b] dark:via-[#08132d] dark:to-[#030812] dark:text-slate-100 dark:before:bg-sky-500/25 dark:after:bg-fuchsia-500/25',
-        'shadow-[0_28px_80px_rgba(8,15,45,0.12)] dark:shadow-[0_32px_80px_rgba(2,6,18,0.55)]',
+        'relative isolate flex min-h-screen w-full flex-col overflow-hidden ',
+        'text-slate-900',
+        'before:pointer-events-none before:absolute before:-top-36 before:left-1/2 before:h-[460px] before:w-[460px] before:-translate-x-1/2 before:rounded-full before:blur-3xl before:content-[""]',
+        'after:pointer-events-none after:absolute after:-bottom-40 after:right-[-20%] after:h-[380px] after:w-[380px] after:rounded-full  after:blur-3xl after:content-[""]',
+        ' dark:text-slate-100',
         'transition-colors duration-300 ease-out',
         bleed ? 'rounded-none' : 'rounded-[32px]',
         containerPadding[padding],
@@ -61,7 +60,7 @@ export const PageSection = forwardRef<HTMLDivElement, PageSectionProps>(
       className={cn(
         'relative overflow-hidden rounded-3xl border transition-all duration-300 ease-out',
         'border-white/60 bg-white/80 text-slate-900 shadow-[0_24px_55px_rgba(15,23,42,0.08)] backdrop-blur-2xl',
-        'before:pointer-events-none before:absolute before:inset-0 before:-z-10 before:bg-gradient-to-br before:from-white/60 before:via-white/30 before:to-transparent before:opacity-80 before:content-[""]',
+        'before:pointer-events-none before:absolute before:inset-0 before:-z-10 z before:from-white/60 before:via-white/30 before:to-transparent before:opacity-80 before:content-[""]',
         'dark:border-white/12 dark:bg-white/10 dark:text-slate-100 dark:shadow-[0_30px_60px_rgba(5,8,32,0.5)] dark:before:from-white/10 dark:before:via-white/5 dark:before:to-transparent',
         subtle &&
           'border-white/40 bg-white/70 text-slate-900 shadow-none backdrop-blur-xl before:hidden dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:shadow-none',
@@ -86,8 +85,8 @@ export const PageHeader = ({ title, subtitle, icon, actions, className, ...props
   <div
     className={cn(
       'flex flex-wrap items-center justify-between gap-5 rounded-3xl border px-6 py-5 transition-all duration-300 ease-out',
-      'border-white/60 bg-white/85 text-slate-900 shadow-[0_24px_55px_rgba(15,23,42,0.08)] backdrop-blur-2xl',
-      'dark:border-white/12 dark:bg-white/10 dark:text-slate-100 dark:shadow-[0_24px_55px_rgba(5,8,32,0.45)]',
+      'border-white/60 bg-white/85 text-slate-900 ',
+      'dark:border-white/12 dark:bg-white/10 dark:text-slate-100 ',
       className,
     )}
     {...props}

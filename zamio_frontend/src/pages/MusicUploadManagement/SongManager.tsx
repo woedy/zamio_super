@@ -116,7 +116,7 @@ const ArtistTracksView = () => {
     <PageContainer bleed padding="none">
       <PageBody>
         {successMessage && (
-          <div className="rounded-2xl border border-emerald-300/60 bg-emerald-50/90 px-4 py-3 text-sm font-medium text-emerald-900 shadow-[0_18px_45px_rgba(16,185,129,0.18)] backdrop-blur-xl transition dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-100 dark:shadow-[0_18px_45px_rgba(16,185,129,0.35)]">
+          <div className="rounded-2xl border border-emerald-300/60 bg-emerald-50/90 px-4 py-3 text-sm font-medium text-emerald-900 transition dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-100">
             {successMessage}
           </div>
         )}

@@ -671,7 +671,7 @@ const Dashboard2 = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-black text-white">
-      <header className="border-b border-white/10 bg-black/30 backdrop-blur">
+      <header className="border-b border-white/10 ">
         <div className="max-w-7xl mx-auto px-6 py-6">
           <div className="flex flex-wrap items-center justify-between gap-6">
             <div className="flex items-center gap-4">
