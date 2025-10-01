@@ -1,3 +1,5 @@
+import api from "./api";
+
 const safeRead = (reader: () => string | null): string => {
   try {
     return reader() || '';
@@ -65,23 +67,15 @@ export const clearSession = () => {
   } catch {}
 };
 
+
 export const logoutStation = async () => {
   const stationId = getStationId();
 
   try {
-    const response = await fetch(`${process.env.REACT_APP_API_URL}/api/accounts/logout-station/`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Token ${getToken()}`,
-      },
-      body: JSON.stringify({ station_id: stationId }),
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to log out');
-    }
+    const payload = stationId ? { station_id: stationId } : {};
+    await api.post('api/accounts/logout-station/', payload);
   } catch (error) {
+    // eslint-disable-next-line no-console
     console.error('Failed to log out station', error);
   } finally {
     clearSession();
@@ -91,4 +85,3 @@ export const logoutStation = async () => {
     }
   }
 };
-

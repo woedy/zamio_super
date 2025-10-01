@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { baseUrlMedia, userEmail, userPhoto } from '../../constants';
 import ClickOutside from '../Sidebar/ClickOutside';
 import { logoutStation } from '../../lib/auth';
@@ -11,6 +11,24 @@ const DropdownUser = () => {
   const fallbackName = userEmail || 'User';
   const displayName = `${firstName} ${lastName}`.trim() || fallbackName;
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    if (isLoggingOut) return;
+    
+    setIsLoggingOut(true);
+    setDropdownOpen(false);
+
+    try {
+      await logoutStation();
+      navigate('/sign-in');
+    } catch (error) {
+      console.error('Logout failed:', error);
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
 
   return (
     <ClickOutside onClick={() => setDropdownOpen(false)} className="relative">
@@ -109,8 +127,9 @@ const DropdownUser = () => {
             </li>
           </ul>
           <button 
-            onClick={logoutStation}
-            className="flex items-center gap-3.5 px-6 py-4 w-full text-left text-sm font-medium duration-300 ease-in-out hover:text-primary lg:text-base"
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            className={`flex items-center gap-3.5 px-6 py-4 w-full text-left text-sm font-medium duration-300 ease-in-out hover:text-primary lg:text-base ${isLoggingOut ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             <svg
               className="fill-current"
@@ -129,7 +148,7 @@ const DropdownUser = () => {
                 fill=""
               />
             </svg>
-            Log Out
+            {isLoggingOut ? 'Logging out...' : 'Log Out'}
           </button>
         </div>
       )}
