@@ -25,10 +25,13 @@ __pycache__/
 
 # User-uploaded/static build outputs
 /media
+!/media/defaults/
+!/media/defaults/*
 /static_cdn
 /audio
 /audioData
 /data
+
 
 # OS/editor
 .DS_Store

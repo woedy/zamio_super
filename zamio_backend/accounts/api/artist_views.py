@@ -395,20 +395,25 @@ def complete_artist_profile_view(request):
         artist.country = country
     if region:
         artist.region = region
-    if photo:
-        artist.user.photo = photo
     
-    artist.user.save()
-
-    # Mark this step as complete
-    artist.profile_completed = True
-
-    # Move to next onboarding step
-    artist.onboarding_step = artist.get_next_onboarding_step()
+    # Handle photo upload
+    photo_url = None
+    if photo:
+        # Delete old photo if it exists and is not the default
+        if artist.user.photo and 'default' not in artist.user.photo.name:
+            artist.user.photo.delete(save=False)
+        # Save new photo
+        artist.user.photo = photo
+        artist.user.save()
+        photo_url = artist.user.photo.url if artist.user.photo else None
+    
+    # Save artist changes
     artist.save()
 
     data["artist_id"] = artist.artist_id
     data["next_step"] = artist.onboarding_step
+    if photo_url:
+        data["photo"] = photo_url
 
     payload['message'] = "Successful"
     payload['data'] = data

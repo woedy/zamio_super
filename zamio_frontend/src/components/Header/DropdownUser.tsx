@@ -1,12 +1,39 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { baseUrlMedia, firstName, userEmail, userPhoto } from '../../constants';
+import { baseUrlMedia } from '../../constants';
 import { logoutArtist } from '../../lib/auth';
 import ClickOutside from '../Sidebar/ClickOutside';
 
 const DropdownUser = () => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [userData, setUserData] = useState({
+    firstName: localStorage.getItem('first_name') || '',
+    email: localStorage.getItem('email') || '',
+    photo: localStorage.getItem('photo') || ''
+  });
+
+  // Listen for storage events to update the photo when it changes
+  useEffect(() => {
+    const handleStorageChange = () => {
+      setUserData({
+        firstName: localStorage.getItem('first_name') || '',
+        email: localStorage.getItem('email') || '',
+        photo: localStorage.getItem('photo') || ''
+      });
+    };
+
+    // Listen for storage events from other tabs/windows
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Also listen for custom event that we'll dispatch after photo update
+    window.addEventListener('userDataUpdated', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('userDataUpdated', handleStorageChange);
+    };
+  }, []);
 
   const handleLogout = async () => {
     if (isLoggingOut) return;
@@ -30,16 +57,21 @@ const DropdownUser = () => {
       >
         <span className="hidden text-right lg:block">
           <span className="block text-sm font-medium text-black dark:text-white">
-            {`${firstName}`}
+            {userData.firstName}
           </span>
-          <span className="block text-xs text-text-secondary">{userEmail}</span>
+          <span className="block text-xs text-text-secondary">{userData.email}</span>
         </span>
 
         <span className="block h-12 w-12 rounded-full overflow-hidden">
           <img
-            src={`${baseUrlMedia}${userPhoto}`}
+            src={userData.photo ? `${baseUrlMedia}${userData.photo}` : '/images/default-avatar.png'}
             alt="User"
             className="object-cover w-full h-full"
+            onError={(e) => {
+              // If the image fails to load, show the default avatar
+              const target = e.target as HTMLImageElement;
+              target.src = '/images/default-avatar.png';
+            }}
           />
         </span>
 

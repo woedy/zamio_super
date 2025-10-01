@@ -143,7 +143,7 @@ const ProfileStep: React.FC<OnboardingStepProps> = ({ onNext, onBack }) => {
         formData.append('photo', profileData.photo);
       }
 
-      await api.post('api/accounts/complete-artist-profile/', formData, {
+      const response = await api.post('api/accounts/complete-artist-profile/', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
 
@@ -154,7 +154,14 @@ const ProfileStep: React.FC<OnboardingStepProps> = ({ onNext, onBack }) => {
         completed: true,
       });
 
-      await onNext();
+      // Update user data in local storage if photo was uploaded
+      if (profileData.photo && response.data?.data?.photo) {
+        localStorage.setItem('photo', response.data.data.photo);
+        // Dispatch custom event to notify other components of the update
+        window.dispatchEvent(new CustomEvent('userDataUpdated'));
+      }
+
+      await onNext?.();
     } catch (error: any) {
       console.error('Failed to update profile:', error);
       const errorData = error?.response?.data;
