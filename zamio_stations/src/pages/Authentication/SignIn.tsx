@@ -81,7 +81,13 @@ const SignIn = () => {
 
         await refresh({ silent: true });
         const targetRoute = getOnboardingRoute(user.onboarding_step);
-        navigate(targetRoute);
+        if(targetRoute == '/dashboard'){
+          navigate('/dashboard');
+          window.location.reload();
+        }else {
+          navigate(targetRoute);
+        }
+
       }
 
     } catch (err) {
