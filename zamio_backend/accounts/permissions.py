@@ -173,7 +173,12 @@ class IsAdminUser(permissions.BasePermission):
     Allows access only to admin users.
     """
     def has_permission(self, request, view):
-        return bool(request.user and request.user.is_authenticated and request.user.user_type == 'Admin')
+        return bool(
+            request.user and 
+            request.user.is_authenticated and 
+            request.user.user_type == 'Admin' and
+            request.user.admin == True
+        )
 
 
 class IsArtistUser(permissions.BasePermission):

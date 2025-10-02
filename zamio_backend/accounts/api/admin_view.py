@@ -90,6 +90,8 @@ def register_admin_view(request):
             user = serializer.save()
             user.phone = phone
             user.user_type = "Admin"
+            user.admin = True  # Set admin flag
+            user.staff = True  # Set staff flag
             user.save()
 
             data["user_id"] = user.user_id
@@ -106,6 +108,30 @@ def register_admin_view(request):
             )
             admin_profile.save()
 
+            # Log admin registration
+            AuditLog.objects.create(
+                user=None,  # System action during registration
+                action='admin_registered',
+                resource_type='user',
+                resource_id=str(user.user_id),
+                ip_address=request.META.get('REMOTE_ADDR'),
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                request_data={
+                    'email': email,
+                    'first_name': first_name,
+                    'last_name': last_name,
+                    'phone': phone
+                },
+                response_data={
+                    'success': True,
+                    'user_id': str(user.user_id),
+                    'admin_id': str(admin_profile.admin_id),
+                    'user_type': 'Admin',
+                    'admin_flag': True,
+                    'staff_flag': True
+                },
+                status_code=201
+            )
 
             data['phone'] = user.phone
             data['photo'] = getattr(user.photo, 'url', None)
