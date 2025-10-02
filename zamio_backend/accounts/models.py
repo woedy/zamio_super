@@ -1,8 +1,12 @@
 import os
 import random
 import uuid
+import hashlib
+import mimetypes
 from django.conf import settings
 from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
+from django.core.exceptions import ValidationError
+from django.core.files.storage import default_storage
 from django.db import models
 from django.db.models import Q
 from django.db.models.signals import post_save, pre_save
@@ -30,6 +34,92 @@ def upload_image_path(instance, filename):
     return "users/{final_filename}".format(
         final_filename=final_filename
     )
+
+
+def validate_file_size(file):
+    """Validate file size - max 10MB for documents, 5MB for images"""
+    max_size = 10 * 1024 * 1024  # 10MB for documents
+    if hasattr(file, 'content_type') and file.content_type.startswith('image/'):
+        max_size = 5 * 1024 * 1024  # 5MB for images
+    
+    if file.size > max_size:
+        raise ValidationError(f'File size cannot exceed {max_size // (1024*1024)}MB')
+
+
+def validate_file_type(file):
+    """Validate file type for security with enhanced checks"""
+    allowed_types = {
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+        'application/pdf', 'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'text/plain'
+    }
+    
+    # Dangerous file extensions to block
+    dangerous_extensions = {
+        '.exe', '.bat', '.cmd', '.com', '.pif', '.scr', '.vbs', '.js',
+        '.jar', '.php', '.asp', '.aspx', '.jsp', '.py', '.rb', '.pl',
+        '.sh', '.ps1', '.msi', '.deb', '.rpm'
+    }
+    
+    if hasattr(file, 'content_type'):
+        content_type = file.content_type
+    else:
+        content_type, _ = mimetypes.guess_type(file.name)
+    
+    # Check file extension
+    _, ext = os.path.splitext(file.name.lower())
+    if ext in dangerous_extensions:
+        raise ValidationError(f'File extension {ext} is not allowed for security reasons')
+    
+    # Check content type
+    if content_type not in allowed_types:
+        raise ValidationError(f'File type {content_type} is not allowed')
+    
+    # Check for null bytes in filename (security issue)
+    if '\x00' in file.name:
+        raise ValidationError('File name contains invalid characters')
+    
+    # Basic file content validation for images
+    if content_type and content_type.startswith('image/'):
+        try:
+            from PIL import Image
+            file.seek(0)
+            img = Image.open(file)
+            img.verify()  # Verify it's a valid image
+            file.seek(0)
+        except Exception:
+            raise ValidationError('Invalid image file or corrupted image')
+    
+    # Check for embedded scripts in PDFs (basic check)
+    if content_type == 'application/pdf':
+        file.seek(0)
+        content = file.read(1024)  # Read first 1KB
+        file.seek(0)
+        
+        # Look for JavaScript in PDF
+        if b'/JavaScript' in content or b'/JS' in content:
+            raise ValidationError('PDF files with embedded JavaScript are not allowed')
+        
+        # Look for forms that might be malicious
+        if b'/AcroForm' in content:
+            raise ValidationError('PDF files with forms are not allowed')
+
+
+def secure_file_upload_path(instance, filename):
+    """Generate secure file upload path with user isolation"""
+    # Sanitize filename
+    name, ext = get_file_ext(filename)
+    safe_name = "".join(c for c in name if c.isalnum() or c in (' ', '-', '_')).rstrip()
+    
+    # Generate unique filename with timestamp
+    timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+    unique_id = uuid.uuid4().hex[:8]
+    final_filename = f"{safe_name}_{timestamp}_{unique_id}{ext}"
+    
+    # Create user-specific path
+    user_id = instance.user.id if hasattr(instance, 'user') else 'anonymous'
+    return f"documents/{user_id}/{instance.__class__.__name__.lower()}/{final_filename}"
 
 
 class UserManager(BaseUserManager):
@@ -263,3 +353,103 @@ class AuditLog(models.Model):
     
     def __str__(self):
         return f"{self.user.email if self.user else 'System'} - {self.action} at {self.timestamp}"
+
+
+class KYCDocument(models.Model):
+    """Enhanced KYC document model with proper file handling and security"""
+    
+    DOCUMENT_TYPES = (
+        ('id_card', 'National ID Card'),
+        ('passport', 'Passport'),
+        ('drivers_license', 'Driver\'s License'),
+        ('utility_bill', 'Utility Bill'),
+        ('bank_statement', 'Bank Statement'),
+        ('business_registration', 'Business Registration'),
+        ('tax_certificate', 'Tax Certificate'),
+    )
+    
+    STATUS_CHOICES = (
+        ('uploaded', 'Uploaded'),
+        ('pending_review', 'Pending Review'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+        ('expired', 'Expired'),
+    )
+    
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='uploaded_kyc_documents')
+    document_type = models.CharField(max_length=50, choices=DOCUMENT_TYPES)
+    file = models.FileField(
+        upload_to=secure_file_upload_path,
+        validators=[validate_file_size, validate_file_type]
+    )
+    original_filename = models.CharField(max_length=255)
+    file_size = models.PositiveIntegerField()
+    file_hash = models.CharField(max_length=64, unique=True)  # SHA-256 hash for integrity
+    content_type = models.CharField(max_length=100)
+    
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='uploaded')
+    notes = models.TextField(blank=True, null=True)
+    reviewed_by = models.ForeignKey(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='reviewed_documents'
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        unique_together = ('user', 'document_type')
+        indexes = [
+            models.Index(fields=['user', 'document_type']),
+            models.Index(fields=['status']),
+            models.Index(fields=['uploaded_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.user.email} - {self.get_document_type_display()}"
+    
+    def save(self, *args, **kwargs):
+        if self.file:
+            # Store original filename and metadata
+            self.original_filename = self.file.name
+            self.file_size = self.file.size
+            
+            # Handle content type properly for both UploadedFile and FieldFile
+            if hasattr(self.file, 'content_type'):
+                self.content_type = self.file.content_type or mimetypes.guess_type(self.file.name)[0]
+            else:
+                self.content_type = mimetypes.guess_type(self.file.name)[0]
+            
+            # Generate file hash for integrity checking
+            if not self.file_hash:
+                self.file.seek(0)
+                file_content = self.file.read()
+                self.file_hash = hashlib.sha256(file_content).hexdigest()
+                self.file.seek(0)
+        
+        super().save(*args, **kwargs)
+    
+    def get_secure_url(self):
+        """Generate a secure URL for file access"""
+        if self.file:
+            return default_storage.url(self.file.name)
+        return None
+    
+    def verify_file_integrity(self):
+        """Verify file integrity using stored hash"""
+        if not self.file:
+            return False
+        
+        try:
+            self.file.seek(0)
+            file_content = self.file.read()
+            current_hash = hashlib.sha256(file_content).hexdigest()
+            self.file.seek(0)
+            return current_hash == self.file_hash
+        except Exception:
+            return False

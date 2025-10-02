@@ -13,7 +13,9 @@ from accounts.api.artist_views import (
     complete_artist_publisher_view, complete_artist_social_view, logout_artist_view, 
     register_artist_view, verify_artist_email, onboard_artist_view, skip_artist_onboarding_view,
     artist_onboarding_status_view, update_onboarding_status_view, complete_artist_onboarding_view,
-    set_self_published_status_view, upload_kyc_documents_view
+    set_self_published_status_view, upload_kyc_documents_view, get_kyc_documents_view,
+    delete_kyc_document_view, download_kyc_document_view, get_secure_download_url_view,
+    secure_download_view
 )
 from accounts.api.fan_views import FanLogin, register_fan_view
 from accounts.api.publisher_view import (
@@ -101,6 +103,11 @@ urlpatterns = [
     path('complete-artist-onboarding/', complete_artist_onboarding_view, name="complete_artist_onboarding_view"),
     path('set-self-published-status/', set_self_published_status_view, name="set_self_published_status_view"),
     path('upload-kyc-documents/', upload_kyc_documents_view, name="upload_kyc_documents_view"),
+    path('get-kyc-documents/', get_kyc_documents_view, name="get_kyc_documents_view"),
+    path('delete-kyc-document/<int:document_id>/', delete_kyc_document_view, name="delete_kyc_document_view"),
+    path('download-kyc-document/<int:document_id>/', download_kyc_document_view, name="download_kyc_document_view"),
+    path('secure-download-url/<int:document_id>/', get_secure_download_url_view, name="get_secure_download_url_view"),
+    path('secure-download/<int:document_id>/', secure_download_view, name="secure_download_view"),
 
    # 
 

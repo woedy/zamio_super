@@ -34,11 +34,62 @@
   - Create notification email tasks with proper queuing
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
 
-- [ ] 5. Enhance File Upload System
+- [x] 5. Enhance File Upload System
+
   - Improve KYC document upload handling in `accounts/models.py`
   - Add proper file validation (type, size, security)
   - Implement secure file storage with proper paths
   - Create file retrieval API with access controls
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
+
+- [ ] 5.1 Secure Artists Media File Uploads (HIGH PRIORITY)
+
+  - Apply enhanced file validation to `Track.audio_file`, `Track.audio_file_mp3/wav`
+  - Implement secure upload paths for audio files with user isolation
+  - Add malware scanning for audio files and cover art images
+  - Create secure download endpoints with access controls for media files
+  - Add file integrity checking with SHA-256 hashing for all media
+  - Implement comprehensive audit logging for media file operations
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
+
+- [ ] 5.2 Secure Dispute Evidence File System (HIGH PRIORITY)
+
+  - Apply enhanced validation to `DisputeEvidence.file` uploads
+  - Implement strict access controls for legal evidence files
+  - Add file integrity verification for dispute evidence
+  - Create secure evidence download with permission checking
+  - Add comprehensive audit trail for evidence file access
+  - Implement evidence file retention and deletion policies
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
+
+- [ ] 5.3 Secure Publisher Contract File System (MEDIUM PRIORITY)
+
+  - Apply enhanced validation to contract file uploads in `publishers/models.py`
+  - Implement secure storage for legal contract documents
+  - Add file integrity checking for contract tampering detection
+  - Create secure contract download with role-based access
+  - Add contract version tracking and audit logging
+  - Implement contract file retention policies
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
+
+- [ ] 5.4 Secure Royalties Data File Processing (MEDIUM PRIORITY)
+
+  - Apply enhanced validation to repertoire upload files in `royalties/views.py`
+  - Implement secure processing for financial data files (CSV/Excel)
+  - Add malware scanning for uploaded financial documents
+  - Create secure file storage for royalty data with encryption
+  - Add comprehensive audit logging for financial file operations
+  - Implement data integrity verification for royalty calculations
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
+
+- [ ] 5.5 Complete File Security Implementation (LOW PRIORITY)
+
+  - Apply enhanced validation to `Station.photo` uploads
+  - Secure playlog file uploads with proper validation
+  - Apply validation to `MatchedClip.clip_file` in streamer module
+  - Create unified file security service for all modules
+  - Add system-wide file security monitoring and alerting
+  - Implement automated security scanning for all uploaded files
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
 ## Phase 2: Frontend Authentication and Logout Implementation

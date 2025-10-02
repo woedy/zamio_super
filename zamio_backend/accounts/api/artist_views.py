@@ -1112,8 +1112,9 @@ def set_self_published_status_view(request):
 @authentication_classes([TokenAuthentication])
 @csrf_exempt
 def upload_kyc_documents_view(request):
-    """Upload KYC documents for verification"""
-    from django.utils import timezone
+    """Enhanced KYC document upload with proper file handling and security"""
+    from accounts.services.file_upload_service import FileUploadService
+    from accounts.models import AuditLog
     
     payload = {}
     data = {}
@@ -1122,52 +1123,257 @@ def upload_kyc_documents_view(request):
     user = request.user
     document_type = request.data.get('document_type', '')
     document_file = request.FILES.get('document_file')
+    notes = request.data.get('notes', '')
 
+    # Validate required fields
     if not document_type:
         errors['document_type'] = ['Document type is required.']
     if not document_file:
         errors['document_file'] = ['Document file is required.']
 
-    valid_document_types = ['id_card', 'passport', 'drivers_license', 'utility_bill', 'bank_statement']
-    if document_type not in valid_document_types:
-        errors['document_type'] = [f'Invalid document type. Must be one of: {", ".join(valid_document_types)}']
-
     if errors:
-        payload['message'] = "Errors"
+        payload['message'] = "Validation errors"
         payload['errors'] = errors
         return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
-    # Initialize kyc_documents if not exists
-    if not user.kyc_documents:
-        user.kyc_documents = {}
+    try:
+        # Upload document using the service
+        kyc_document = FileUploadService.upload_kyc_document(
+            user=user,
+            document_type=document_type,
+            file=document_file,
+            notes=notes
+        )
+        
+        # Log the upload action
+        AuditLog.objects.create(
+            user=user,
+            action='kyc_document_upload',
+            resource_type='KYCDocument',
+            resource_id=str(kyc_document.id),
+            request_data={
+                'document_type': document_type,
+                'filename': kyc_document.original_filename,
+                'file_size': kyc_document.file_size
+            }
+        )
+        
+        data = {
+            "document_id": kyc_document.id,
+            "document_type": document_type,
+            "document_type_display": kyc_document.get_document_type_display(),
+            "status": kyc_document.status,
+            "original_filename": kyc_document.original_filename,
+            "file_size": kyc_document.file_size,
+            "uploaded_at": kyc_document.uploaded_at,
+            "kyc_status": user.kyc_status,
+        }
 
-    # Store document information
-    user.kyc_documents[document_type] = {
-        'filename': document_file.name,
-        'size': document_file.size,
-        'uploaded_at': timezone.now().isoformat(),
-        'status': 'uploaded'
-    }
+        payload['message'] = "Document uploaded successfully"
+        payload['data'] = data
+        return Response(payload, status=status.HTTP_201_CREATED)
+        
+    except ValidationError as e:
+        errors['file'] = e.messages if hasattr(e, 'messages') else [str(e)]
+        payload['message'] = "File validation failed"
+        payload['errors'] = errors
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        payload['message'] = "Upload failed"
+        payload['errors'] = {'general': [str(e)]}
+        return Response(payload, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    # Update KYC status
-    if user.kyc_status == 'pending':
-        user.kyc_status = 'incomplete'
 
-    user.save()
+@api_view(['GET'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def get_kyc_documents_view(request):
+    """Get all KYC documents for the authenticated user"""
+    from accounts.services.file_upload_service import FileUploadService
+    
+    try:
+        user = request.user
+        documents_data = FileUploadService.get_user_documents(user)
+        
+        payload = {
+            'message': 'Documents retrieved successfully',
+            'data': documents_data
+        }
+        return Response(payload, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        payload = {
+            'message': 'Failed to retrieve documents',
+            'errors': {'general': [str(e)]}
+        }
+        return Response(payload, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    # Here you would typically save the file to storage
-    # For now, we'll just track the metadata
 
-    data = {
-        "document_type": document_type,
-        "status": "uploaded",
-        "kyc_status": user.kyc_status,
-        "kyc_documents": user.kyc_documents,
-    }
+@api_view(['DELETE'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def delete_kyc_document_view(request, document_id):
+    """Delete a KYC document (only if not approved)"""
+    from accounts.services.file_upload_service import FileUploadService
+    
+    try:
+        user = request.user
+        success = FileUploadService.delete_document(user, document_id)
+        
+        if success:
+            # Log the deletion
+            AuditLog.objects.create(
+                user=user,
+                action='kyc_document_delete',
+                resource_type='KYCDocument',
+                resource_id=str(document_id)
+            )
+            
+            payload = {
+                'message': 'Document deleted successfully'
+            }
+            return Response(payload, status=status.HTTP_200_OK)
+        else:
+            payload = {
+                'message': 'Document not found or cannot be deleted',
+                'errors': {'document': ['Document not found or already approved']}
+            }
+            return Response(payload, status=status.HTTP_404_NOT_FOUND)
+            
+    except Exception as e:
+        payload = {
+            'message': 'Failed to delete document',
+            'errors': {'general': [str(e)]}
+        }
+        return Response(payload, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    payload['message'] = "Successful"
-    payload['data'] = data
-    return Response(payload, status=status.HTTP_200_OK)
+
+@api_view(['GET'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def download_kyc_document_view(request, document_id):
+    """Download a KYC document with enhanced access control"""
+    from accounts.services.file_access_service import FileAccessService
+    from django.core.exceptions import PermissionDenied
+    from django.http import Http404
+    
+    try:
+        user = request.user
+        token = request.GET.get('token')  # Optional secure token
+        
+        # Use the secure file access service
+        response = FileAccessService.serve_secure_file(user, document_id, token)
+        return response
+        
+    except Http404 as e:
+        payload = {
+            'message': 'Document not found',
+            'errors': {'document': [str(e)]}
+        }
+        return Response(payload, status=status.HTTP_404_NOT_FOUND)
+        
+    except PermissionDenied as e:
+        payload = {
+            'message': 'Access denied',
+            'errors': {'permission': [str(e)]}
+        }
+        return Response(payload, status=status.HTTP_403_FORBIDDEN)
+        
+    except Exception as e:
+        payload = {
+            'message': 'Failed to download document',
+            'errors': {'general': [str(e)]}
+        }
+        return Response(payload, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def get_secure_download_url_view(request, document_id):
+    """Get a secure download URL for a KYC document"""
+    from accounts.services.file_access_service import FileAccessService
+    from django.core.exceptions import PermissionDenied
+    from django.http import Http404
+    
+    try:
+        user = request.user
+        
+        # Generate secure download URL
+        download_info = FileAccessService.get_secure_download_url(user, document_id)
+        
+        payload = {
+            'message': 'Secure download URL generated successfully',
+            'data': download_info
+        }
+        return Response(payload, status=status.HTTP_200_OK)
+        
+    except Http404 as e:
+        payload = {
+            'message': 'Document not found',
+            'errors': {'document': [str(e)]}
+        }
+        return Response(payload, status=status.HTTP_404_NOT_FOUND)
+        
+    except PermissionDenied as e:
+        payload = {
+            'message': 'Access denied',
+            'errors': {'permission': [str(e)]}
+        }
+        return Response(payload, status=status.HTTP_403_FORBIDDEN)
+        
+    except Exception as e:
+        payload = {
+            'message': 'Failed to generate download URL',
+            'errors': {'general': [str(e)]}
+        }
+        return Response(payload, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def secure_download_view(request, document_id):
+    """Secure file download with token verification"""
+    from accounts.services.file_access_service import FileAccessService
+    from django.core.exceptions import PermissionDenied
+    from django.http import Http404
+    
+    try:
+        user = request.user
+        token = request.GET.get('token')
+        
+        if not token:
+            payload = {
+                'message': 'Access token required',
+                'errors': {'token': ['Token parameter is required']}
+            }
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Use the secure file access service with token verification
+        response = FileAccessService.serve_secure_file(user, document_id, token)
+        return response
+        
+    except Http404 as e:
+        payload = {
+            'message': 'Document not found',
+            'errors': {'document': [str(e)]}
+        }
+        return Response(payload, status=status.HTTP_404_NOT_FOUND)
+        
+    except PermissionDenied as e:
+        payload = {
+            'message': 'Access denied',
+            'errors': {'permission': [str(e)]}
+        }
+        return Response(payload, status=status.HTTP_403_FORBIDDEN)
+        
+    except Exception as e:
+        payload = {
+            'message': 'Failed to download file',
+            'errors': {'general': [str(e)]}
+        }
+        return Response(payload, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 def calculate_profile_completion_percentage(artist):
