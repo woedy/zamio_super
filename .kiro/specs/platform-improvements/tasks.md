@@ -4,7 +4,6 @@
 
 - [x] 1. Fix Celery Task Registration Issues
 
-
   - Create the missing `run_matchcache_to_playlog` task in `music_monitor/tasks.py`
   - Ensure all task modules are properly imported in `core/celery.py`
   - Add explicit task imports to prevent KeyError exceptions
@@ -12,6 +11,7 @@
   - _Requirements: 23.1, 23.2, 23.3, 23.4, 23.5_
 
 - [ ] 2. Implement Enhanced Audit Logging System
+
   - Create `AuditLog` model in `accounts/models.py` with required fields
   - Implement audit logging middleware in `accounts/middleware.py`
   - Add audit logging to all user actions (login, logout, profile changes)
@@ -19,6 +19,7 @@
   - _Requirements: 19.1, 19.2, 19.3, 19.4, 19.5_
 
 - [ ] 3. Enhance Authentication and Session Management
+
   - Implement proper logout API endpoint in `accounts/api/views.py`
   - Add session cleanup and token invalidation logic
   - Create audit logging for all authentication events
@@ -26,6 +27,7 @@
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
 
 - [ ] 4. Implement Background Task System for Emails
+
   - Create Celery tasks for email verification in `accounts/tasks.py`
   - Implement password reset email tasks
   - Add user invitation email tasks
@@ -42,6 +44,7 @@
 ## Phase 2: Frontend Authentication and Logout Implementation
 
 - [ ] 6. Implement Logout Functionality in zamio_frontend
+
   - Create logout utility function in `src/lib/auth.ts`
   - Add logout button to header/navigation components
   - Implement proper session cleanup (localStorage, sessionStorage)
@@ -49,6 +52,7 @@
   - _Requirements: 2.1, 2.5_
 
 - [ ] 7. Implement Logout Functionality in zamio_admin
+
   - Create logout utility function in `src/lib/auth.ts`
   - Add logout button to admin dashboard header
   - Implement session cleanup and audit logging
@@ -56,6 +60,7 @@
   - _Requirements: 2.4, 2.5_
 
 - [ ] 8. Implement Logout Functionality in zamio_stations
+
   - Create logout utility function in `src/lib/auth.ts`
   - Add logout button to station dashboard
   - Implement session cleanup and activity logging
@@ -72,6 +77,7 @@
 ## Phase 3: UI Consistency and Theme Implementation
 
 - [ ] 10. Create Shared UI Theme Package
+
   - Create `packages/ui-theme` directory structure
   - Implement theme provider with dark/light mode support
   - Create consistent color palette and typography system
@@ -79,6 +85,7 @@
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
 
 - [ ] 11. Implement Input Validation Framework
+
   - Create shared validation utilities in ui-theme package
   - Implement real-time form validation components
   - Add numeric input validation for all forms
@@ -86,6 +93,7 @@
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
 
 - [ ] 12. Standardize Icons Across Applications
+
   - Audit current icon usage across all frontends
   - Replace inconsistent icons with Lucide React icons
   - Create icon mapping for dashboard, profile, settings
@@ -102,6 +110,7 @@
 ## Phase 4: Real Data Integration and API Implementation
 
 - [ ] 14. Replace Demo Data in Admin Dashboard
+
   - Identify all demo data usage in admin components
   - Create real API endpoints for system health metrics
   - Implement real staff management data integration
@@ -109,6 +118,7 @@
   - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 13.1, 13.2, 13.3, 13.4, 13.5_
 
 - [ ] 15. Implement Station Complaint System Backend
+
   - Create `Complaint` model in `stations/models.py`
   - Implement complaint CRUD API endpoints
   - Add complaint status workflow management
@@ -116,6 +126,7 @@
   - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5_
 
 - [ ] 16. Implement Station Complaint System Frontend
+
   - Replace demo complaint data in zamio_stations
   - Connect complaint forms to real backend APIs
   - Implement complaint status tracking UI
@@ -132,6 +143,7 @@
 ## Phase 5: Enhanced Onboarding and User Experience
 
 - [ ] 18. Implement Location-Based Onboarding
+
   - Add location field to User model in `accounts/models.py`
   - Create location search API with autocomplete
   - Implement optional location step in artist onboarding
@@ -139,6 +151,7 @@
   - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5_
 
 - [ ] 19. Implement Station Stream URL Management
+
   - Add stream_url field to Station model
   - Create stream URL validation and testing
   - Implement stream URL input in station onboarding
@@ -155,6 +168,7 @@
 ## Phase 6: Royalty Management and Publishing Integration
 
 - [ ] 21. Implement Publishing Status-Based Royalty Management
+
   - Add publishing relationship fields to Artist model
   - Create royalty withdrawal permission logic
   - Implement publisher-artist relationship management
@@ -162,6 +176,7 @@
   - _Requirements: 14.1, 14.2, 14.3, 14.4, 14.5_
 
 - [ ] 22. Implement Publisher Dashboard Integration
+
   - Add publisher cards to dashboard components
   - Create publisher metrics and analytics display
   - Implement publisher navigation and detail views
@@ -178,6 +193,7 @@
 ## Phase 7: Settings and Profile Management
 
 - [ ] 24. Implement Settings Pages for zamio_frontend
+
   - Create settings page with account preferences
   - Add notification settings management
   - Implement privacy settings configuration
@@ -185,6 +201,7 @@
   - _Requirements: 16.1, 16.2, 16.3, 16.4, 16.5_
 
 - [ ] 25. Implement Settings Pages for zamio_admin
+
   - Create admin-specific settings interface
   - Add system configuration options
   - Implement admin notification preferences
@@ -192,6 +209,7 @@
   - _Requirements: 16.1, 16.2, 16.3, 16.4, 16.5_
 
 - [ ] 26. Implement Settings Pages for zamio_stations
+
   - Create station settings and configuration
   - Add stream monitoring preferences
   - Implement staff management settings
@@ -208,6 +226,7 @@
 ## Phase 8: Edit Functionality and Data Management
 
 - [ ] 28. Implement Edit Profile Functionality
+
   - Create edit profile API endpoints for all user types
   - Implement profile editing forms in all frontends
   - Add profile image upload and management
@@ -224,6 +243,7 @@
 ## Phase 9: Performance Optimization and Accessibility
 
 - [ ] 30. Implement Code Splitting and Lazy Loading
+
   - Add route-based code splitting to all frontends
   - Implement lazy loading for heavy components
   - Add loading states and suspense boundaries
@@ -231,6 +251,7 @@
   - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
 
 - [ ] 31. Implement Accessibility Improvements
+
   - Fix contrast ratios for hero text and UI elements
   - Add proper ARIA labels and semantic HTML
   - Implement keyboard navigation support
@@ -247,6 +268,7 @@
 ## Phase 10: Testing and Quality Assurance
 
 - [ ] 33. Implement Comprehensive Testing Suite
+
   - Add unit tests for all new backend functionality
   - Create integration tests for API endpoints
   - Implement frontend component testing

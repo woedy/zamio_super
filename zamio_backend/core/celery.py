@@ -77,27 +77,17 @@ CELERY_BEAT_SCHEDULE = {
     
     # New enhanced tasks
     'auto-fingerprint-new-tracks': {
-        'task': 'music_monitor.tasks.auto_fingerprint_new_tracks',
+        'task': 'music_monitor.auto_fingerprint_new_tracks',
         'schedule': crontab(minute='*/10'),  # every 10 minutes
         'options': {'queue': 'high'}
     },
     'cleanup-old-fingerprints': {
-        'task': 'music_monitor.tasks.cleanup_old_fingerprints',
+        'task': 'music_monitor.cleanup_old_fingerprints',
         'schedule': crontab(hour=2, minute=0),  # daily at 2 AM
         'options': {'queue': 'low'}
     },
-    'warm-cache-hourly': {
-        'task': 'core.enhanced_tasks.warm_cache_task',
-        'schedule': crontab(minute=0),  # every hour
-        'options': {'queue': 'low'}
-    },
-    'cleanup-old-data-daily': {
-        'task': 'core.enhanced_tasks.cleanup_old_data_task',
-        'schedule': crontab(hour=3, minute=0),  # daily at 3 AM
-        'options': {'queue': 'low'}
-    },
     'update-pro-mappings': {
-        'task': 'music_monitor.tasks.batch_update_pro_mappings',
+        'task': 'music_monitor.batch_update_pro_mappings',
         'schedule': crontab(hour=1, minute=0),  # daily at 1 AM
         'options': {'queue': 'normal'}
     },

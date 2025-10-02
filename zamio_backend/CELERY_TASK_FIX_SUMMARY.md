@@ -41,6 +41,12 @@ The `run_matchcache_to_playlog` task was missing from `music_monitor/tasks.py`, 
 - **Schedule**: Runs every 2 minutes (`crontab(minute='*/2')`)
 - **Queue**: Assigned to 'normal' priority queue
 
+### 6. Fixed Task Name Mismatches (`core/celery.py`)
+- **Issue**: Beat schedule referenced tasks with incorrect names (e.g., `music_monitor.tasks.auto_fingerprint_new_tracks` vs `music_monitor.auto_fingerprint_new_tracks`)
+- **Solution**: Aligned all task names in beat schedule with actual registered task names
+- **Removed**: Problematic `core.enhanced_tasks` references that had dependency issues
+- **Result**: All 5 scheduled tasks now properly match registered task names
+
 ## Task Implementation Details
 
 ### Function Signature
@@ -101,6 +107,8 @@ django.core.exceptions.AppRegistryNotReady: Apps aren't loaded yet.
 - ✅ Task functions use lazy imports for all Django models
 - ✅ Missing task `run_matchcache_to_playlog` is properly implemented
 - ✅ No duplicate task registrations
+- ✅ All scheduled tasks in beat schedule are properly registered
+- ✅ Task name alignment verified between schedule and registration
 
 ## Next Steps
 1. Deploy the changes to test environment
