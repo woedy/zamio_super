@@ -12,7 +12,6 @@
 
 - [x] 2. Implement Enhanced Audit Logging System
 
-
   - Create `AuditLog` model in `accounts/models.py` with required fields
   - Implement audit logging middleware in `accounts/middleware.py`
   - Add audit logging to all user actions (login, logout, profile changes)

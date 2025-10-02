@@ -16,38 +16,9 @@ import {
   Settings
 } from 'lucide-react';
 import { fireToast } from '../../../hooks/fireToast';
+import { auditLogService, AuditLogEntry, AuditLogFilters } from '../../../services/auditLogService';
 
-interface AuditLogEntry {
-  id: string;
-  user: {
-    email: string;
-    first_name: string;
-    last_name: string;
-    user_type: string;
-  } | null;
-  action: string;
-  resource_type?: string;
-  resource_id?: string;
-  ip_address?: string;
-  user_agent?: string;
-  request_data: Record<string, any>;
-  response_data: Record<string, any>;
-  status_code?: number;
-  timestamp: string;
-  trace_id?: string;
-}
-
-interface AuditLogFilters {
-  search?: string;
-  action?: string;
-  resource_type?: string;
-  user_type?: string;
-  status_code?: string;
-  start_date?: string;
-  end_date?: string;
-  page?: number;
-  per_page?: number;
-}
+// Interfaces are now imported from auditLogService
 
 const AuditLogViewer: React.FC = () => {
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
@@ -71,67 +42,19 @@ const AuditLogViewer: React.FC = () => {
     has_previous: false
   });
 
-  // Mock data for demonstration - replace with actual API call
+  // Load audit logs from backend API
   const loadAuditLogs = useCallback(async () => {
     try {
-      // This would be replaced with actual API call
-      // const response = await auditLogService.getAuditLogs(filters);
+      const response = await auditLogService.getAuditLogs(filters);
       
-      // Mock data for demonstration
-      const mockLogs: AuditLogEntry[] = [
-        {
-          id: '1',
-          user: {
-            email: 'admin@zamio.com',
-            first_name: 'Admin',
-            last_name: 'User',
-            user_type: 'Admin'
-          },
-          action: 'update_kyc_status',
-          resource_type: 'user',
-          resource_id: 'user-123',
-          ip_address: '192.168.1.1',
-          user_agent: 'Mozilla/5.0...',
-          request_data: {
-            old_status: 'pending',
-            new_status: 'verified',
-            admin_notes: 'Documents verified successfully'
-          },
-          response_data: { success: true },
-          status_code: 200,
-          timestamp: new Date().toISOString(),
-          trace_id: 'trace-123'
-        },
-        {
-          id: '2',
-          user: {
-            email: 'admin@zamio.com',
-            first_name: 'Admin',
-            last_name: 'User',
-            user_type: 'Admin'
-          },
-          action: 'user_deactivate',
-          resource_type: 'user',
-          resource_id: 'user-456',
-          ip_address: '192.168.1.1',
-          request_data: {
-            action: 'deactivate',
-            reason: 'Policy violation'
-          },
-          response_data: { success: true },
-          status_code: 200,
-          timestamp: new Date(Date.now() - 3600000).toISOString()
-        }
-      ];
-      
-      setAuditLogs(mockLogs);
+      setAuditLogs(response.logs);
       setPagination({
-        page_number: 1,
-        per_page: 50,
-        total_pages: 1,
-        total_count: mockLogs.length,
-        has_next: false,
-        has_previous: false
+        page_number: response.pagination.page,
+        per_page: response.pagination.per_page,
+        total_pages: response.pagination.total_pages,
+        total_count: response.pagination.total_count,
+        has_next: response.pagination.has_next,
+        has_previous: response.pagination.has_previous
       });
     } catch (error) {
       console.error('Failed to load audit logs:', error);
@@ -216,6 +139,18 @@ const AuditLogViewer: React.FC = () => {
     });
   };
 
+  const handleExport = async () => {
+    try {
+      const blob = await auditLogService.exportAuditLogs(filters);
+      const filename = `audit_logs_${new Date().toISOString().split('T')[0]}.csv`;
+      auditLogService.downloadCsvFile(blob, filename);
+      fireToast('Audit logs exported successfully', 'success');
+    } catch (error) {
+      console.error('Export failed:', error);
+      fireToast('Failed to export audit logs', 'error');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -237,6 +172,14 @@ const AuditLogViewer: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center space-x-3">
+          <button
+            onClick={handleExport}
+            disabled={loading}
+            className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Export CSV
+          </button>
           <button
             onClick={refreshData}
             disabled={refreshing}
@@ -374,16 +317,16 @@ const AuditLogViewer: React.FC = () => {
                 <tr key={log.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                   <td className="px-6 py-4">
                     <div className="flex items-center">
-                      <div className={`flex-shrink-0 ${getActionColor(log.action)}`}>
-                        {getActionIcon(log.action)}
+                      <div className="flex-shrink-0 text-lg mr-2">
+                        {auditLogService.getResourceTypeIcon(log.resource_type)}
                       </div>
-                      <div className="ml-3">
-                        <div className="text-sm font-medium text-gray-900 dark:text-white">
-                          {log.action.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                      <div className="ml-1">
+                        <div className={`text-sm font-medium inline-flex px-2 py-1 rounded-full ${auditLogService.getActionColor(log.action)}`}>
+                          {auditLogService.formatAction(log.action)}
                         </div>
                         {log.trace_id && (
-                          <div className="text-xs text-gray-500 dark:text-gray-400">
-                            Trace: {log.trace_id}
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            Trace: {auditLogService.truncateText(log.trace_id, 8)}
                           </div>
                         )}
                       </div>
@@ -418,13 +361,13 @@ const AuditLogViewer: React.FC = () => {
                   </td>
                   <td className="px-6 py-4">
                     {log.status_code && (
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(log.status_code)}`}>
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${auditLogService.getStatusCodeColor(log.status_code)}`}>
                         {log.status_code}
                       </span>
                     )}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
-                    {formatDate(log.timestamp)}
+                    {auditLogService.formatTimestamp(log.timestamp)}
                   </td>
                   <td className="px-6 py-4">
                     <button
