@@ -6,13 +6,71 @@ from celery import shared_task
 from django.utils import timezone
 from django.db import transaction
 
-import librosa
+# Import librosa conditionally to handle missing dependency gracefully
+try:
+    import librosa
+except ImportError:
+    librosa = None
 
-from artists.models import Track, Fingerprint
-from stations.models import Station, StationStreamLink
-from music_monitor.models import MatchCache, AudioDetection
-from music_monitor.utils.match_engine import simple_match, simple_match_mp3
-from music_monitor.services.enhanced_fingerprinting import EnhancedFingerprintService
+# Django model imports moved inside functions to prevent AppRegistryNotReady errors
+# These will be imported when tasks are actually executed, not during module loading
+
+# Global variables to cache imports after first use
+_django_models = None
+_services = None
+
+def _get_django_models():
+    """
+    Lazy import of Django models to prevent AppRegistryNotReady errors.
+    This function should be called inside task functions when models are needed.
+    """
+    global _django_models
+    if _django_models is None:
+        from artists.models import Track, Fingerprint
+        from stations.models import Station, StationStreamLink
+        from music_monitor.models import MatchCache, AudioDetection, PlayLog, FailedPlayLog
+        
+        # Import additional models that might be needed
+        try:
+            from royalties.models import PartnerPRO, ExternalWork, ExternalRecording
+            royalty_models = {
+                'PartnerPRO': PartnerPRO,
+                'ExternalWork': ExternalWork,
+                'ExternalRecording': ExternalRecording,
+            }
+        except ImportError:
+            royalty_models = {}
+        
+        _django_models = {
+            'Track': Track,
+            'Fingerprint': Fingerprint,
+            'Station': Station,
+            'StationStreamLink': StationStreamLink,
+            'MatchCache': MatchCache,
+            'AudioDetection': AudioDetection,
+            'PlayLog': PlayLog,
+            'FailedPlayLog': FailedPlayLog,
+            **royalty_models
+        }
+    return _django_models
+
+def _get_services():
+    """
+    Lazy import of service classes to prevent AppRegistryNotReady errors.
+    """
+    global _services
+    if _services is None:
+        try:
+            from music_monitor.services.enhanced_fingerprinting import EnhancedFingerprintService
+            from music_monitor.utils.match_engine import simple_match, simple_match_mp3
+            _services = {
+                'EnhancedFingerprintService': EnhancedFingerprintService,
+                'simple_match': simple_match,
+                'simple_match_mp3': simple_match_mp3,
+            }
+        except ImportError:
+            _services = {}
+    return _services
 
 
 def _capture_stream_wav_bytes(stream_url: str, duration_seconds: int = 20, sample_rate: int = 44100, channels: int = 1) -> bytes:
@@ -44,6 +102,9 @@ def _load_samples(wav_bytes: bytes, sr: int = 44100):
 
 
 def _get_all_fingerprints() -> List[Tuple[int, str, int]]:
+    # Import here to avoid AppRegistryNotReady error
+    models = _get_django_models()
+    Fingerprint = models['Fingerprint']
     # (track_id, hash, offset)
     return list(Fingerprint.objects.select_related('track').values_list('track_id', 'hash', 'offset'))
 
@@ -52,6 +113,13 @@ def _get_all_fingerprints() -> List[Tuple[int, str, int]]:
 def scan_single_station_stream(station_id: int, stream_url: str, duration_seconds: int = 20) -> dict:
     """Capture a small window from a station stream and try to match it."""
     try:
+        # Import Django models here to avoid AppRegistryNotReady error
+        models = _get_django_models()
+        services = _get_services()
+        Track = models['Track']
+        Station = models['Station']
+        MatchCache = models['MatchCache']
+        simple_match_mp3 = services.get('simple_match_mp3')
         wav_bytes = _capture_stream_wav_bytes(stream_url, duration_seconds=duration_seconds)
         samples, sr = _load_samples(wav_bytes, sr=44100)
         if samples is None or len(samples) == 0:
@@ -86,6 +154,10 @@ def scan_single_station_stream(station_id: int, stream_url: str, duration_second
 @shared_task(name='music_monitor.scan_station_streams')
 def scan_station_streams() -> dict:
     """Scan all active station stream links once. Intended to be triggered by Celery Beat."""
+    # Import Django models here to avoid AppRegistryNotReady error
+    models = _get_django_models()
+    StationStreamLink = models['StationStreamLink']
+    
     total = 0
     scheduled = 0
     for link in StationStreamLink.objects.select_related('station').filter(active=True, is_archived=False):
@@ -117,6 +189,12 @@ def enhanced_fingerprint_track(track_id: int, config_name: str = 'balanced',
         Dictionary with processing results
     """
     try:
+        # Import Django models here to avoid AppRegistryNotReady error
+        models = _get_django_models()
+        services = _get_services()
+        Track = models['Track']
+        EnhancedFingerprintService = services.get('EnhancedFingerprintService')
+        
         track = Track.objects.get(id=track_id)
         service = EnhancedFingerprintService(config_name)
         
@@ -169,6 +247,12 @@ def batch_enhanced_fingerprint(track_ids: List[int], config_name: str = 'balance
         Dictionary with batch processing results
     """
     try:
+        # Import Django models here to avoid AppRegistryNotReady error
+        models = _get_django_models()
+        services = _get_services()
+        Track = models['Track']
+        EnhancedFingerprintService = services.get('EnhancedFingerprintService')
+        
         service = EnhancedFingerprintService(config_name)
         results = service.batch_fingerprint_tracks(track_ids, max_workers, force_reprocess)
         
@@ -204,6 +288,12 @@ def auto_fingerprint_new_tracks(config_name: str = 'balanced') -> Dict[str, Any]
         Dictionary with processing results
     """
     try:
+        # Import Django models here to avoid AppRegistryNotReady error
+        models = _get_django_models()
+        services = _get_services()
+        Track = models['Track']
+        EnhancedFingerprintService = services.get('EnhancedFingerprintService')
+        
         # Find tracks that need fingerprinting
         current_version = EnhancedFingerprintService.CURRENT_VERSION
         
@@ -385,6 +475,8 @@ def cleanup_old_fingerprints(keep_versions: int = 2) -> Dict[str, Any]:
     """
     try:
         from django.db.models import Count
+        models = _get_django_models()
+        Fingerprint = models['Fingerprint']
         
         # Get version statistics
         version_stats = Fingerprint.objects.values('version').annotate(
@@ -665,7 +757,10 @@ def sync_pro_catalog(pro_id: int, batch_size: int = 100) -> Dict[str, Any]:
         Dictionary with sync results
     """
     try:
-        from royalties.models import PartnerPRO, ExternalWork, ExternalRecording
+        models = _get_django_models()
+        PartnerPRO = models.get('PartnerPRO')
+        if not PartnerPRO:
+            return {'success': False, 'error': 'PartnerPRO model not available'}
         
         pro = PartnerPRO.objects.get(id=pro_id)
         
@@ -922,7 +1017,11 @@ def run_matchcache_to_playlog(batch_size: int = 50) -> Dict[str, Any]:
         Dictionary with processing results including success count, failures, and errors
     """
     try:
-        from music_monitor.models import PlayLog, FailedPlayLog
+        # Import Django models here to avoid AppRegistryNotReady error
+        models = _get_django_models()
+        MatchCache = models['MatchCache']
+        PlayLog = models['PlayLog']
+        FailedPlayLog = models['FailedPlayLog']
         
         # Get unprocessed MatchCache entries
         unprocessed_matches = MatchCache.objects.filter(

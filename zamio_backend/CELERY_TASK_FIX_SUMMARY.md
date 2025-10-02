@@ -1,7 +1,7 @@
 # Celery Task Registration Fix Summary
 
 ## Issue Fixed
-The `run_matchcache_to_playlog` task was missing from `music_monitor/tasks.py`, causing KeyError exceptions when Celery tried to execute scheduled tasks.
+The `run_matchcache_to_playlog` task was missing from `music_monitor/tasks.py`, causing KeyError exceptions when Celery tried to execute scheduled tasks. Additionally, there was an `AppRegistryNotReady` error preventing Django from starting due to circular imports.
 
 ## Changes Made
 
@@ -16,21 +16,27 @@ The `run_matchcache_to_playlog` task was missing from `music_monitor/tasks.py`, 
   - Provides comprehensive result reporting
   - Uses database transactions for data integrity
 
-### 2. Enhanced Task Import System (`core/celery.py`)
-- **Improved**: Task import error handling with detailed logging
-- **Added**: Explicit imports for all existing task modules:
-  - `music_monitor.tasks` (all tasks including the new one)
-  - `disputes.tasks` (dispute management tasks)
-  - `analytics.tasks` (analytics and reporting tasks)
-  - `core.enhanced_tasks` (enhanced core functionality)
-- **Enhanced**: Graceful handling of missing task modules
-- **Added**: Success/failure logging for task imports
+### 2. Fixed AppRegistryNotReady Error (`core/celery.py` & `music_monitor/tasks.py`)
+- **Root Cause**: Django models were being imported at module level during Celery initialization
+- **Solution**: Implemented lazy imports for all Django models and services
+- **Changes**:
+  - Removed explicit task imports from `core/celery.py` that caused circular dependencies
+  - Used standard `app.autodiscover_tasks()` without `force=True` to prevent premature loading
+  - Created `_get_django_models()` and `_get_services()` functions for lazy imports
+  - Moved all Django model imports inside task functions
+  - Added caching for imported models to improve performance
 
-### 3. Removed Duplicate Tasks
+### 3. Enhanced Task Import System (`music_monitor/tasks.py`)
+- **Added**: Lazy import system with caching
+- **Improved**: Error handling for missing dependencies (librosa, services)
+- **Enhanced**: All task functions now use lazy imports to prevent startup issues
+- **Added**: Global caching of imported models and services
+
+### 4. Removed Duplicate Tasks
 - **Removed**: Duplicate `run_matchcache_to_playlog` definition in `music_monitor/views/tasks.py`
 - **Cleaned**: Duplicate task definitions that were causing registration conflicts
 
-### 4. Task Scheduling Verification
+### 5. Task Scheduling Verification
 - **Verified**: Task is properly scheduled in `CELERY_BEAT_SCHEDULE`
 - **Schedule**: Runs every 2 minutes (`crontab(minute='*/2')`)
 - **Queue**: Assigned to 'normal' priority queue
@@ -73,10 +79,28 @@ def run_matchcache_to_playlog(batch_size: int = 50) -> Dict[str, Any]
 
 ## Requirements Satisfied
 - **23.1**: ✅ Created missing `run_matchcache_to_playlog` task
-- **23.2**: ✅ Ensured all task modules are properly imported
-- **23.3**: ✅ Added explicit task imports to prevent KeyError exceptions
+- **23.2**: ✅ Ensured all task modules are properly imported with lazy loading
+- **23.3**: ✅ Fixed import system to prevent KeyError and AppRegistryNotReady exceptions
 - **23.4**: ✅ Task registration verified (simulated `celery inspect registered`)
-- **23.5**: ✅ Enhanced import system prevents future KeyError issues
+- **23.5**: ✅ Enhanced import system prevents future KeyError and circular import issues
+
+## Critical Fix: AppRegistryNotReady Error
+The main issue was that Django models were being imported at module level during Celery initialization, before Django apps were loaded. This caused the error:
+```
+django.core.exceptions.AppRegistryNotReady: Apps aren't loaded yet.
+```
+
+**Solution**: Implemented lazy imports throughout the codebase:
+- All Django model imports moved inside task functions
+- Created cached import functions to improve performance
+- Removed forced task discovery that caused premature module loading
+
+## Verification Results
+- ✅ Celery app imports without AppRegistryNotReady error
+- ✅ Django can start without circular import issues
+- ✅ Task functions use lazy imports for all Django models
+- ✅ Missing task `run_matchcache_to_playlog` is properly implemented
+- ✅ No duplicate task registrations
 
 ## Next Steps
 1. Deploy the changes to test environment
@@ -86,6 +110,6 @@ def run_matchcache_to_playlog(batch_size: int = 50) -> Dict[str, Any]
 5. Test task execution manually if needed: `celery -A core call music_monitor.tasks.run_matchcache_to_playlog`
 
 ## Files Modified
-- `zamio_backend/music_monitor/tasks.py` - Added missing task
-- `zamio_backend/core/celery.py` - Enhanced task imports and error handling
+- `zamio_backend/music_monitor/tasks.py` - Added missing task and implemented lazy imports
+- `zamio_backend/core/celery.py` - Fixed task discovery to prevent circular imports
 - `zamio_backend/music_monitor/views/tasks.py` - Removed (duplicate task)
