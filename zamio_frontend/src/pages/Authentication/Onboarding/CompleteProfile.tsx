@@ -77,9 +77,7 @@ const CompleteProfile = () => {
   
     try {
       setLoading(true);
-      const response = await api.post(url, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      const response = await api.post(url, formData);
       const nextStep = response.data?.data?.next_step;
   
       switch (nextStep) {

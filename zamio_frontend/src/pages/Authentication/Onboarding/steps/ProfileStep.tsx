@@ -143,9 +143,7 @@ const ProfileStep: React.FC<OnboardingStepProps> = ({ onNext, onBack }) => {
         formData.append('photo', profileData.photo);
       }
 
-      const response = await api.post('api/accounts/complete-artist-profile/', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      const response = await api.post('api/accounts/complete-artist-profile/', formData);
 
       // Update onboarding status
       await api.post('api/accounts/update-onboarding-status/', {

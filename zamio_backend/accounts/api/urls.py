@@ -54,6 +54,12 @@ from accounts.api.user_management_views import (
     get_kyc_pending_users,
     get_audit_logs
 )
+from accounts.api.views import (
+    logout_view,
+    invalidate_all_sessions_view,
+    session_status_view,
+    authentication_audit_logs_view
+)
 
 app_name = 'accounts'
 
@@ -160,6 +166,12 @@ urlpatterns = [
     path('admin/bulk-user-operations/', bulk_user_operations, name="bulk_user_operations"),
     path('admin/kyc-pending-users/', get_kyc_pending_users, name="get_kyc_pending_users"),
     path('admin/audit-logs/', get_audit_logs, name="get_audit_logs"),
+
+    # Enhanced Authentication Endpoints
+    path('logout/', logout_view, name="enhanced_logout"),
+    path('invalidate-all-sessions/', invalidate_all_sessions_view, name="invalidate_all_sessions"),
+    path('session-status/', session_status_view, name="session_status"),
+    path('auth-audit-logs/', authentication_audit_logs_view, name="auth_audit_logs"),
 
     #path('remove_user/', remove_user_view, name="remove_user_view"),
    # path('send-sms/', send_sms_view, name="send_sms_view"),

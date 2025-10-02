@@ -111,9 +111,7 @@ const KYCStep: React.FC<OnboardingStepProps> = ({ onNext, onSkip, onBack }) => {
       formData.append('document_type', documentId);
       formData.append('document_file', file);
 
-      const response = await api.post('api/accounts/upload-kyc-documents/', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      const response = await api.post('api/accounts/upload-kyc-documents/', formData);
 
       // Update document status
       setDocuments(prev => prev.map(doc => 

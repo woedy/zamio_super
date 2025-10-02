@@ -1,6 +1,7 @@
 from decimal import Decimal
 from django.core.mail import send_mail
 from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
 
 from django.conf import settings
 from django.contrib.auth import get_user_model, authenticate
@@ -14,6 +15,7 @@ from rest_framework.permissions import IsAuthenticated
 
 from accounts.api.serializers import UserRegistrationSerializer
 from accounts.models import AuditLog
+from accounts.api.enhanced_auth import SecurityEventHandler
 from activities.models import AllActivity
 
 
@@ -324,18 +326,26 @@ class ArtistLogin(APIView):
         user = authenticate(email=email, password=password)
 
         if not user:
-            # Log failed login attempt due to invalid credentials
-            AuditLog.objects.create(
-                user=None,
-                action='artist_login_failed',
-                resource_type='authentication',
+            # Handle failed login with security measures
+            security_result = SecurityEventHandler.handle_failed_login(
+                user_email=email,
                 ip_address=ip_address,
                 user_agent=request.META.get('HTTP_USER_AGENT', ''),
-                request_data={'email': email},
-                response_data={'error': 'invalid_credentials'},
-                status_code=400
+                reason='invalid_credentials'
             )
-            return Response({'message': 'Errors', 'errors': {'email': ['Invalid credentials']}}, status=status.HTTP_400_BAD_REQUEST)
+            
+            error_message = 'Invalid credentials'
+            if security_result.get('account_locked'):
+                error_message = f'Account locked due to multiple failed attempts. Try again after {security_result.get("locked_until")}'
+            
+            return Response({
+                'message': 'Errors', 
+                'errors': {'email': [error_message]},
+                'security_info': {
+                    'failed_attempts': security_result.get('failed_attempts', 0),
+                    'account_locked': security_result.get('account_locked', False)
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             artist = Artist.objects.get(user=user)
@@ -367,12 +377,17 @@ class ArtistLogin(APIView):
             )
             return Response({'message': 'Errors', 'errors': {'email': ['Please check your email to confirm your account or resend confirmation email.']}}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Handle successful login with security measures
+        SecurityEventHandler.handle_successful_login(
+            user=user,
+            ip_address=ip_address,
+            user_agent=request.META.get('HTTP_USER_AGENT', '')
+        )
+
         # Token and FCM token
         token, _ = Token.objects.get_or_create(user=user)
         user.fcm_token = fcm_token
-        user.last_activity = timezone.now()
-        user.failed_login_attempts = 0  # Reset failed attempts on successful login
-        user.save()
+        user.save(update_fields=['fcm_token'])
 
         # Do not override stored onboarding_step here.
         # It is updated by completion endpoints or explicit skip actions.
@@ -393,19 +408,6 @@ class ArtistLogin(APIView):
 
         # Create activity log
         AllActivity.objects.create(user=user, subject="Artist Login", body=f"{user.email} just logged in.")
-
-        # Log successful login
-        AuditLog.objects.create(
-            user=user,
-            action='artist_login_success',
-            resource_type='authentication',
-            resource_id=str(artist.artist_id),
-            ip_address=ip_address,
-            user_agent=request.META.get('HTTP_USER_AGENT', ''),
-            request_data={'email': email},
-            response_data={'success': True, 'artist_id': str(artist.artist_id)},
-            status_code=200
-        )
 
         return Response({'message': 'Successful', 'data': data}, status=status.HTTP_200_OK)
 
@@ -439,9 +441,8 @@ import json
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
 @authentication_classes([TokenAuthentication])
+@csrf_exempt
 def complete_artist_profile_view(request):
     payload = {}
     data = {}
@@ -567,6 +568,7 @@ def complete_artist_profile_view(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 @authentication_classes([TokenAuthentication])
+@csrf_exempt
 def skip_artist_onboarding_view(request):
     payload = {}
     data = {}
@@ -610,6 +612,7 @@ def skip_artist_onboarding_view(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 @authentication_classes([TokenAuthentication])
+@csrf_exempt
 def complete_artist_social_view(request):
     payload = {}
     data = {}
@@ -664,6 +667,7 @@ def complete_artist_social_view(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 @authentication_classes([TokenAuthentication])
+@csrf_exempt
 def complete_artist_payment_view(request):
     payload = {}
     data = {}
@@ -711,6 +715,7 @@ def complete_artist_payment_view(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 @authentication_classes([TokenAuthentication])
+@csrf_exempt
 def complete_artist_publisher_view(request):
     payload = {}
     data = {}
@@ -780,6 +785,7 @@ def complete_artist_publisher_view(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 @authentication_classes([TokenAuthentication])
+@csrf_exempt
 def onboard_artist_view(request):
     payload = {}
     data = {}
@@ -843,9 +849,8 @@ def onboard_artist_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
 @authentication_classes([TokenAuthentication])
+@csrf_exempt
 def logout_artist_view(request):
     payload = {}
     data = {}
@@ -976,6 +981,7 @@ def artist_onboarding_status_view(request, artist_id):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 @authentication_classes([TokenAuthentication])
+@csrf_exempt
 def update_onboarding_status_view(request):
     """Update specific onboarding step status"""
     payload = {}
@@ -1031,6 +1037,7 @@ def update_onboarding_status_view(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 @authentication_classes([TokenAuthentication])
+@csrf_exempt
 def complete_artist_onboarding_view(request):
     """Mark artist onboarding as complete and set self-published status"""
     payload = {}
@@ -1084,6 +1091,7 @@ def complete_artist_onboarding_view(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 @authentication_classes([TokenAuthentication])
+@csrf_exempt
 def set_self_published_status_view(request):
     """Explicitly set artist self-published status"""
     payload = {}
@@ -1127,6 +1135,7 @@ def set_self_published_status_view(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 @authentication_classes([TokenAuthentication])
+@csrf_exempt
 def upload_kyc_documents_view(request):
     """Upload KYC documents for verification"""
     from django.utils import timezone

@@ -1,6 +1,7 @@
 from celery import chain
 from django.core.mail import send_mail
 from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -571,6 +572,7 @@ def admin_onboarding_status_view(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 @authentication_classes([TokenAuthentication])
+@csrf_exempt
 def complete_admin_profile_view(request):
     payload = {}
     data = {}

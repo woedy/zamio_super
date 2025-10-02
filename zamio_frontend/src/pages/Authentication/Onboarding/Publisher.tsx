@@ -53,9 +53,7 @@ const Publisher: React.FC<PublisherProps> = ({ onNext, onSkip, onBack }) => {
 
     try {
       setLoading(true);
-      const response = await api.post('api/accounts/complete-artist-publisher/', payload, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      const response = await api.post('api/accounts/complete-artist-publisher/', payload);
 
       if (response.status >= 200 && response.status < 300) {
         await onNext();
