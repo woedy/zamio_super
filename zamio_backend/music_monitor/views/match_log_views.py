@@ -3,6 +3,7 @@ from time import timezone
 import uuid
 from collections import Counter
 
+from accounts.models import AuditLog
 from artists.models import Fingerprint, Track
 from music_monitor.models import MatchCache, PlayLog
 from music_monitor.utils.match_engine import simple_match, simple_match_mp3
@@ -253,6 +254,17 @@ def upload_audio_match(request):
     """
     Uploads an audio clip, matches it to known fingerprints, and logs to MatchCache.
     """
+    # Get client IP for audit logging
+    def get_client_ip(request):
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+        return ip
+
+    ip_address = get_client_ip(request)
+    
     audio_file = request.FILES.get('file')
     station_id = request.POST.get('station_id')
     chunk_id = request.POST.get('chunk_id')
@@ -260,13 +272,52 @@ def upload_audio_match(request):
     duration_seconds = request.POST.get('duration_seconds')
 
     if not audio_file:
+        # Log failed audio match attempt - no file
+        AuditLog.objects.create(
+            user=request.user,
+            action='audio_match_failed',
+            resource_type='music_detection',
+            ip_address=ip_address,
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            request_data={'station_id': station_id, 'chunk_id': chunk_id},
+            response_data={'error': 'no_audio_file'},
+            status_code=400
+        )
         return Response({'error': 'No audio file provided'}, status=status.HTTP_400_BAD_REQUEST)
+    
     if not station_id:
+        # Log failed audio match attempt - no station ID
+        AuditLog.objects.create(
+            user=request.user,
+            action='audio_match_failed',
+            resource_type='music_detection',
+            ip_address=ip_address,
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            request_data={'chunk_id': chunk_id, 'file_size': audio_file.size},
+            response_data={'error': 'no_station_id'},
+            status_code=400
+        )
         return Response({'error': 'Station ID is required'}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
         station = Station.objects.get(station_id=station_id)
     except Station.DoesNotExist:
+        # Log failed audio match attempt - invalid station
+        AuditLog.objects.create(
+            user=request.user,
+            action='audio_match_failed',
+            resource_type='music_detection',
+            resource_id=station_id,
+            ip_address=ip_address,
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            request_data={
+                'station_id': station_id,
+                'chunk_id': chunk_id,
+                'file_size': audio_file.size
+            },
+            response_data={'error': 'invalid_station_id'},
+            status_code=404
+        )
         return Response({'error': 'Invalid station ID'}, status=status.HTTP_404_NOT_FOUND)
 
     # Idempotency check/create by chunk_id if provided
@@ -348,6 +399,31 @@ def upload_audio_match(request):
             # from django.core.management import call_command
             # call_command('process_matches')
 
+            # Log successful audio match
+            AuditLog.objects.create(
+                user=request.user,
+                action='audio_match_success',
+                resource_type='music_detection',
+                resource_id=str(track.track_id),
+                ip_address=ip_address,
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                request_data={
+                    'station_id': station_id,
+                    'chunk_id': chunk_id,
+                    'file_size': audio_file.size,
+                    'duration_seconds': duration_seconds
+                },
+                response_data={
+                    'match_found': True,
+                    'track_id': str(track.track_id),
+                    'track_title': track.title,
+                    'artist_name': track.artist.stage_name,
+                    'confidence_score': round(confidence_score, 2),
+                    'hashes_matched': hashes_matched
+                },
+                status_code=200
+            )
+
             return Response({
                 'match': True,
                 'track_title': track.title,
@@ -358,9 +434,46 @@ def upload_audio_match(request):
             }, status=status.HTTP_200_OK)
 
         else:
+            # Log no match found
+            AuditLog.objects.create(
+                user=request.user,
+                action='audio_match_no_result',
+                resource_type='music_detection',
+                ip_address=ip_address,
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                request_data={
+                    'station_id': station_id,
+                    'chunk_id': chunk_id,
+                    'file_size': audio_file.size,
+                    'duration_seconds': duration_seconds
+                },
+                response_data={
+                    'match_found': False,
+                    'reason': result['reason']
+                },
+                status_code=200
+            )
             return Response({'match': False, 'reason': result['reason']}, status=status.HTTP_200_OK)
 
     except Exception as e:
+        # Log processing error
+        AuditLog.objects.create(
+            user=request.user,
+            action='audio_match_error',
+            resource_type='music_detection',
+            ip_address=ip_address,
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            request_data={
+                'station_id': station_id,
+                'chunk_id': chunk_id,
+                'file_size': audio_file.size if audio_file else None
+            },
+            response_data={
+                'error': 'processing_error',
+                'error_message': str(e)
+            },
+            status_code=500
+        )
         return Response({'error': f'Processing error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 

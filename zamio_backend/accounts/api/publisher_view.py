@@ -1,5 +1,6 @@
 from decimal import Decimal
 from django.core.mail import send_mail
+from django.utils import timezone
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -12,6 +13,7 @@ from rest_framework.authentication import TokenAuthentication
 from rest_framework.response import Response
 
 from accounts.api.serializers import UserRegistrationSerializer
+from accounts.models import AuditLog
 from activities.models import AllActivity
 from django.core.mail import send_mail
 from django.contrib.auth import get_user_model, authenticate
@@ -295,6 +297,9 @@ class PublisherLogin(APIView):
         payload = {}
         errors = {}
 
+        # Get client IP for audit logging
+        ip_address = self.get_client_ip(request)
+
         if not email:
             errors['email'] = ['Email is required.']
         if not password:
@@ -303,24 +308,70 @@ class PublisherLogin(APIView):
             errors['fcm_token'] = ['FCM token is required.']
 
         if errors:
+            # Log failed login attempt due to missing fields
+            AuditLog.objects.create(
+                user=None,
+                action='publisher_login_failed',
+                resource_type='authentication',
+                ip_address=ip_address,
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                request_data={'email': email, 'errors': list(errors.keys())},
+                response_data={'error': 'validation_failed'},
+                status_code=400
+            )
             return Response({'message': 'Errors', 'errors': errors}, status=status.HTTP_400_BAD_REQUEST)
 
         user = authenticate(email=email, password=password)
 
         if not user:
+            # Log failed login attempt due to invalid credentials
+            AuditLog.objects.create(
+                user=None,
+                action='publisher_login_failed',
+                resource_type='authentication',
+                ip_address=ip_address,
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                request_data={'email': email},
+                response_data={'error': 'invalid_credentials'},
+                status_code=400
+            )
             return Response({'message': 'Errors', 'errors': {'email': ['Invalid credentials']}}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             publisher = PublisherProfile.objects.get(user=user)
         except PublisherProfile.DoesNotExist:
-            return Response({'message': 'Errors', 'errors': {'email': ['User is not an publisher']}}, status=status.HTTP_400_BAD_REQUEST)
+            # Log failed login attempt - user exists but not a publisher
+            AuditLog.objects.create(
+                user=user,
+                action='publisher_login_failed',
+                resource_type='authentication',
+                ip_address=ip_address,
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                request_data={'email': email},
+                response_data={'error': 'not_publisher'},
+                status_code=400
+            )
+            return Response({'message': 'Errors', 'errors': {'email': ['User is not a publisher']}}, status=status.HTTP_400_BAD_REQUEST)
 
         if not user.email_verified:
+            # Log failed login attempt due to unverified email
+            AuditLog.objects.create(
+                user=user,
+                action='publisher_login_failed',
+                resource_type='authentication',
+                ip_address=ip_address,
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                request_data={'email': email},
+                response_data={'error': 'email_not_verified'},
+                status_code=400
+            )
             return Response({'message': 'Errors', 'errors': {'email': ['Please check your email to confirm your account or resend confirmation email.']}}, status=status.HTTP_400_BAD_REQUEST)
 
         # Token and FCM token
         token, _ = Token.objects.get_or_create(user=user)
         user.fcm_token = fcm_token
+        user.last_activity = timezone.now()
+        user.failed_login_attempts = 0  # Reset failed attempts on successful login
         user.save()
 
         # Do not override stored onboarding_step here.
@@ -340,9 +391,32 @@ class PublisherLogin(APIView):
             "onboarding_step": publisher.onboarding_step,
         }
 
+        # Create activity log
         AllActivity.objects.create(user=user, subject="Publisher Login", body=f"{user.email} just logged in.")
 
+        # Log successful login
+        AuditLog.objects.create(
+            user=user,
+            action='publisher_login_success',
+            resource_type='authentication',
+            resource_id=str(publisher.publisher_id),
+            ip_address=ip_address,
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            request_data={'email': email},
+            response_data={'success': True, 'publisher_id': str(publisher.publisher_id)},
+            status_code=200
+        )
+
         return Response({'message': 'Successful', 'data': data}, status=status.HTTP_200_OK)
+
+    def get_client_ip(self, request):
+        """Extract client IP address from request"""
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+        return ip
 
 
 
@@ -826,38 +900,86 @@ def invite_artist_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 @authentication_classes([TokenAuthentication])
 def logout_publisher_view(request):
     payload = {}
     data = {}
     errors = {}
 
-    publisher_id = request.data.get('publisher_id', "")
-    if not publisher_id:
-        errors['publisher_id'] = ['Publisher ID is required.']
+    # Get client IP for audit logging
+    def get_client_ip(request):
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+        return ip
+
+    ip_address = get_client_ip(request)
 
     try:
-        publisher = PublisherProfile.objects.get(publisher_id=publisher_id)
+        # Get the publisher associated with the authenticated user
+        publisher = PublisherProfile.objects.get(user=request.user)
     except PublisherProfile.DoesNotExist:
-        errors['publisher_id'] = ['Publisher not found.']
-
-    if errors:
+        errors['user'] = ['User is not a publisher.']
         payload['message'] = "Errors"
         payload['errors'] = errors
+        
+        # Log failed logout attempt
+        AuditLog.objects.create(
+            user=request.user,
+            action='publisher_logout_failed',
+            resource_type='authentication',
+            ip_address=ip_address,
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            response_data={'error': 'not_publisher'},
+            status_code=400
+        )
+        
         return Response(payload, status=status.HTTP_400_BAD_REQUEST)
-    
 
+    # Clear FCM token for security
+    request.user.fcm_token = None
+    request.user.save()
+
+    # Delete the authentication token to invalidate the session
+    try:
+        token = Token.objects.get(user=request.user)
+        token.delete()
+    except Token.DoesNotExist:
+        pass  # Token already deleted or doesn't exist
+
+    # Create activity log
     new_activity = AllActivity.objects.create(
-        user=publisher.user,
+        user=request.user,
         type="Authentication",
         subject="Publisher Log out",
-        body=publisher.user.email + " Just logged out of the account."
+        body=f"{request.user.email} just logged out of the account."
     )
-    new_activity.save()
+
+    # Log successful logout
+    AuditLog.objects.create(
+        user=request.user,
+        action='publisher_logout_success',
+        resource_type='authentication',
+        resource_id=str(publisher.publisher_id),
+        ip_address=ip_address,
+        user_agent=request.META.get('HTTP_USER_AGENT', ''),
+        response_data={'success': True, 'session_invalidated': True},
+        status_code=200
+    )
+
+    data = {
+        'message': 'Successfully logged out',
+        'session_invalidated': True,
+        'timestamp': timezone.now().isoformat()
+    }
 
     payload['message'] = "Successful"
     payload['data'] = data
-    return Response(payload)
+    return Response(payload, status=status.HTTP_200_OK)
 
 
 # Enhanced Publisher Onboarding API Endpoints

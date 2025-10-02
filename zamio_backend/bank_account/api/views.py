@@ -6,6 +6,10 @@ from rest_framework.authentication import TokenAuthentication
 from rest_framework.response import Response
 from rest_framework import status
 from django.core.paginator import Paginator, PageNotAnInteger, EmptyPage
+from django.utils import timezone
+from decimal import Decimal
+
+from accounts.models import AuditLog
 from ..serializers import (
     TransactionSerializer,
     DepositSerializer,
@@ -142,37 +146,221 @@ def client_list_transactions_view(request, user_id):
 @permission_classes([IsAuthenticated])
 @authentication_classes([TokenAuthentication])
 def deposit_view(request, account_id):
+    # Get client IP for audit logging
+    def get_client_ip(request):
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+        return ip
+
+    ip_address = get_client_ip(request)
+
     try:
         account = BankAccount.objects.get(account_id=account_id)
     except BankAccount.DoesNotExist:
+        # Log failed deposit attempt - account not found
+        AuditLog.objects.create(
+            user=request.user,
+            action='deposit_failed',
+            resource_type='bank_account',
+            resource_id=account_id,
+            ip_address=ip_address,
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            request_data=request.data,
+            response_data={'error': 'account_not_found'},
+            status_code=404
+        )
         return Response({'message': 'Bank account not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    # Verify account ownership
+    if account.user != request.user:
+        # Log unauthorized deposit attempt
+        AuditLog.objects.create(
+            user=request.user,
+            action='deposit_failed',
+            resource_type='bank_account',
+            resource_id=account_id,
+            ip_address=ip_address,
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            request_data=request.data,
+            response_data={'error': 'unauthorized_access'},
+            status_code=403
+        )
+        return Response({'message': 'Unauthorized access to account'}, status=status.HTTP_403_FORBIDDEN)
 
     serializer = DepositSerializer(data=request.data)
     if serializer.is_valid():
         amount = serializer.validated_data['amount']
         description = serializer.validated_data.get('description', '')
+        old_balance = account.balance
+        
         if account.deposit(amount, description):
-            return Response({'message': 'Deposit successful'}, status=status.HTTP_200_OK)
-        return Response({'message': 'Deposit failed'}, status=status.HTTP_400_BAD_REQUEST)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            # Log successful deposit
+            AuditLog.objects.create(
+                user=request.user,
+                action='deposit_success',
+                resource_type='bank_account',
+                resource_id=account_id,
+                ip_address=ip_address,
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                request_data={
+                    'amount': str(amount),
+                    'description': description
+                },
+                response_data={
+                    'success': True,
+                    'old_balance': str(old_balance),
+                    'new_balance': str(account.balance),
+                    'transaction_amount': str(amount)
+                },
+                status_code=200
+            )
+            return Response({'message': 'Deposit successful', 'new_balance': account.balance}, status=status.HTTP_200_OK)
+        else:
+            # Log failed deposit
+            AuditLog.objects.create(
+                user=request.user,
+                action='deposit_failed',
+                resource_type='bank_account',
+                resource_id=account_id,
+                ip_address=ip_address,
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                request_data={
+                    'amount': str(amount),
+                    'description': description
+                },
+                response_data={'error': 'deposit_operation_failed'},
+                status_code=400
+            )
+            return Response({'message': 'Deposit failed'}, status=status.HTTP_400_BAD_REQUEST)
+    else:
+        # Log validation errors
+        AuditLog.objects.create(
+            user=request.user,
+            action='deposit_failed',
+            resource_type='bank_account',
+            resource_id=account_id,
+            ip_address=ip_address,
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            request_data=request.data,
+            response_data={'error': 'validation_failed', 'errors': serializer.errors},
+            status_code=400
+        )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 @authentication_classes([TokenAuthentication])
 def withdraw_view(request, account_id):
+    # Get client IP for audit logging
+    def get_client_ip(request):
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+        return ip
+
+    ip_address = get_client_ip(request)
+
     try:
         account = BankAccount.objects.get(account_id=account_id)
     except BankAccount.DoesNotExist:
+        # Log failed withdrawal attempt - account not found
+        AuditLog.objects.create(
+            user=request.user,
+            action='withdrawal_failed',
+            resource_type='bank_account',
+            resource_id=account_id,
+            ip_address=ip_address,
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            request_data=request.data,
+            response_data={'error': 'account_not_found'},
+            status_code=404
+        )
         return Response({'message': 'Bank account not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    # Verify account ownership
+    if account.user != request.user:
+        # Log unauthorized withdrawal attempt
+        AuditLog.objects.create(
+            user=request.user,
+            action='withdrawal_failed',
+            resource_type='bank_account',
+            resource_id=account_id,
+            ip_address=ip_address,
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            request_data=request.data,
+            response_data={'error': 'unauthorized_access'},
+            status_code=403
+        )
+        return Response({'message': 'Unauthorized access to account'}, status=status.HTTP_403_FORBIDDEN)
 
     serializer = WithdrawSerializer(data=request.data)
     if serializer.is_valid():
         amount = serializer.validated_data['amount']
         description = serializer.validated_data.get('description', '')
+        old_balance = account.balance
+        
         if account.withdraw(amount, description):
-            return Response({'message': 'Withdrawal successful'}, status=status.HTTP_200_OK)
-        return Response({'message': 'Withdrawal failed'}, status=status.HTTP_400_BAD_REQUEST)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            # Log successful withdrawal
+            AuditLog.objects.create(
+                user=request.user,
+                action='withdrawal_success',
+                resource_type='bank_account',
+                resource_id=account_id,
+                ip_address=ip_address,
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                request_data={
+                    'amount': str(amount),
+                    'description': description
+                },
+                response_data={
+                    'success': True,
+                    'old_balance': str(old_balance),
+                    'new_balance': str(account.balance),
+                    'transaction_amount': str(amount)
+                },
+                status_code=200
+            )
+            return Response({'message': 'Withdrawal successful', 'new_balance': account.balance}, status=status.HTTP_200_OK)
+        else:
+            # Log failed withdrawal (insufficient funds)
+            AuditLog.objects.create(
+                user=request.user,
+                action='withdrawal_failed',
+                resource_type='bank_account',
+                resource_id=account_id,
+                ip_address=ip_address,
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                request_data={
+                    'amount': str(amount),
+                    'description': description
+                },
+                response_data={
+                    'error': 'insufficient_funds',
+                    'current_balance': str(account.balance),
+                    'requested_amount': str(amount)
+                },
+                status_code=400
+            )
+            return Response({'message': 'Withdrawal failed - insufficient funds'}, status=status.HTTP_400_BAD_REQUEST)
+    else:
+        # Log validation errors
+        AuditLog.objects.create(
+            user=request.user,
+            action='withdrawal_failed',
+            resource_type='bank_account',
+            resource_id=account_id,
+            ip_address=ip_address,
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            request_data=request.data,
+            response_data={'error': 'validation_failed', 'errors': serializer.errors},
+            status_code=400
+        )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])

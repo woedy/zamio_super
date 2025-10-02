@@ -187,15 +187,25 @@ def revoke_permission_view(request):
 @api_view(['GET'])
 @permission_classes([IsAdminUser])
 def audit_logs_view(request):
-    """Admin endpoint to view audit logs"""
+    """Enhanced admin endpoint to view audit logs with pagination and filtering"""
+    from django.core.paginator import Paginator
+    from django.utils import timezone
+    from datetime import datetime, timedelta
+    
     # Get query parameters
     user_email = request.query_params.get('user_email')
     action = request.query_params.get('action')
-    limit = int(request.query_params.get('limit', 50))
+    resource_type = request.query_params.get('resource_type')
+    ip_address = request.query_params.get('ip_address')
+    start_date = request.query_params.get('start_date')
+    end_date = request.query_params.get('end_date')
+    page = int(request.query_params.get('page', 1))
+    per_page = int(request.query_params.get('per_page', 50))
     
     # Build query
     logs = AuditLog.objects.all().order_by('-timestamp')
     
+    # Apply filters
     if user_email:
         try:
             user = User.objects.get(email=user_email)
@@ -208,30 +218,84 @@ def audit_logs_view(request):
     if action:
         logs = logs.filter(action__icontains=action)
     
-    # Limit results
-    logs = logs[:limit]
+    if resource_type:
+        logs = logs.filter(resource_type=resource_type)
+    
+    if ip_address:
+        logs = logs.filter(ip_address=ip_address)
+    
+    if start_date:
+        try:
+            start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+            logs = logs.filter(timestamp__gte=start_dt)
+        except ValueError:
+            return Response({
+                'error': 'Invalid start_date format. Use ISO format.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    if end_date:
+        try:
+            end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+            logs = logs.filter(timestamp__lte=end_dt)
+        except ValueError:
+            return Response({
+                'error': 'Invalid end_date format. Use ISO format.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Paginate results
+    paginator = Paginator(logs, per_page)
+    page_obj = paginator.get_page(page)
     
     # Serialize logs
     log_data = []
-    for log in logs:
+    for log in page_obj:
         log_data.append({
             'id': log.id,
             'user': log.user.email if log.user else 'System',
+            'user_id': str(log.user.user_id) if log.user and log.user.user_id else None,
             'action': log.action,
             'resource_type': log.resource_type,
             'resource_id': log.resource_id,
             'ip_address': log.ip_address,
+            'user_agent': log.user_agent,
             'status_code': log.status_code,
-            'timestamp': log.timestamp,
-            'trace_id': str(log.trace_id) if log.trace_id else None
+            'timestamp': log.timestamp.isoformat(),
+            'trace_id': str(log.trace_id) if log.trace_id else None,
+            'request_data': log.request_data,
+            'response_data': log.response_data
         })
+    
+    # Get summary statistics
+    total_logs = logs.count()
+    unique_users = logs.values('user').distinct().count()
+    unique_actions = logs.values('action').distinct().count()
+    
+    # Recent activity summary (last 24 hours)
+    last_24h = timezone.now() - timedelta(hours=24)
+    recent_activity = logs.filter(timestamp__gte=last_24h).count()
     
     return Response({
         'logs': log_data,
-        'total_count': logs.count(),
-        'filters': {
+        'pagination': {
+            'page': page,
+            'per_page': per_page,
+            'total_pages': paginator.num_pages,
+            'total_count': total_logs,
+            'has_next': page_obj.has_next(),
+            'has_previous': page_obj.has_previous()
+        },
+        'summary': {
+            'total_logs': total_logs,
+            'unique_users': unique_users,
+            'unique_actions': unique_actions,
+            'recent_activity_24h': recent_activity
+        },
+        'filters_applied': {
             'user_email': user_email,
             'action': action,
-            'limit': limit
+            'resource_type': resource_type,
+            'ip_address': ip_address,
+            'start_date': start_date,
+            'end_date': end_date
         }
     })

@@ -1,5 +1,6 @@
 from decimal import Decimal
 from django.core.mail import send_mail
+from django.utils import timezone
 
 from django.conf import settings
 from django.contrib.auth import get_user_model, authenticate
@@ -8,8 +9,11 @@ from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.response import Response
+from rest_framework.authentication import TokenAuthentication
+from rest_framework.permissions import IsAuthenticated
 
 from accounts.api.serializers import UserRegistrationSerializer
+from accounts.models import AuditLog
 from activities.models import AllActivity
 
 
@@ -293,6 +297,9 @@ class ArtistLogin(APIView):
         payload = {}
         errors = {}
 
+        # Get client IP for audit logging
+        ip_address = self.get_client_ip(request)
+
         if not email:
             errors['email'] = ['Email is required.']
         if not password:
@@ -301,24 +308,70 @@ class ArtistLogin(APIView):
             errors['fcm_token'] = ['FCM token is required.']
 
         if errors:
+            # Log failed login attempt due to missing fields
+            AuditLog.objects.create(
+                user=None,
+                action='artist_login_failed',
+                resource_type='authentication',
+                ip_address=ip_address,
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                request_data={'email': email, 'errors': list(errors.keys())},
+                response_data={'error': 'validation_failed'},
+                status_code=400
+            )
             return Response({'message': 'Errors', 'errors': errors}, status=status.HTTP_400_BAD_REQUEST)
 
         user = authenticate(email=email, password=password)
 
         if not user:
+            # Log failed login attempt due to invalid credentials
+            AuditLog.objects.create(
+                user=None,
+                action='artist_login_failed',
+                resource_type='authentication',
+                ip_address=ip_address,
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                request_data={'email': email},
+                response_data={'error': 'invalid_credentials'},
+                status_code=400
+            )
             return Response({'message': 'Errors', 'errors': {'email': ['Invalid credentials']}}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             artist = Artist.objects.get(user=user)
         except Artist.DoesNotExist:
+            # Log failed login attempt - user exists but not an artist
+            AuditLog.objects.create(
+                user=user,
+                action='artist_login_failed',
+                resource_type='authentication',
+                ip_address=ip_address,
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                request_data={'email': email},
+                response_data={'error': 'not_artist'},
+                status_code=400
+            )
             return Response({'message': 'Errors', 'errors': {'email': ['User is not an artist']}}, status=status.HTTP_400_BAD_REQUEST)
 
         if not user.email_verified:
+            # Log failed login attempt due to unverified email
+            AuditLog.objects.create(
+                user=user,
+                action='artist_login_failed',
+                resource_type='authentication',
+                ip_address=ip_address,
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                request_data={'email': email},
+                response_data={'error': 'email_not_verified'},
+                status_code=400
+            )
             return Response({'message': 'Errors', 'errors': {'email': ['Please check your email to confirm your account or resend confirmation email.']}}, status=status.HTTP_400_BAD_REQUEST)
 
         # Token and FCM token
         token, _ = Token.objects.get_or_create(user=user)
         user.fcm_token = fcm_token
+        user.last_activity = timezone.now()
+        user.failed_login_attempts = 0  # Reset failed attempts on successful login
         user.save()
 
         # Do not override stored onboarding_step here.
@@ -338,9 +391,32 @@ class ArtistLogin(APIView):
             "onboarding_step": artist.onboarding_step,
         }
 
+        # Create activity log
         AllActivity.objects.create(user=user, subject="Artist Login", body=f"{user.email} just logged in.")
 
+        # Log successful login
+        AuditLog.objects.create(
+            user=user,
+            action='artist_login_success',
+            resource_type='authentication',
+            resource_id=str(artist.artist_id),
+            ip_address=ip_address,
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            request_data={'email': email},
+            response_data={'success': True, 'artist_id': str(artist.artist_id)},
+            status_code=200
+        )
+
         return Response({'message': 'Successful', 'data': data}, status=status.HTTP_200_OK)
+
+    def get_client_ip(self, request):
+        """Extract client IP address from request"""
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+        return ip
 
 
 def check_password(email, password):
@@ -363,11 +439,24 @@ import json
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 @authentication_classes([TokenAuthentication])
 def complete_artist_profile_view(request):
     payload = {}
     data = {}
     errors = {}
+
+    # Get client IP for audit logging
+    def get_client_ip(request):
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+        return ip
+
+    ip_address = get_client_ip(request)
 
     artist_id = request.data.get('artist_id', "")
     bio = request.data.get('bio', "")
@@ -380,21 +469,52 @@ def complete_artist_profile_view(request):
 
     try:
         artist = Artist.objects.get(artist_id=artist_id)
+        
+        # Verify the artist belongs to the authenticated user
+        if artist.user != request.user:
+            errors['permission'] = ['You can only update your own profile.']
+            
     except Artist.DoesNotExist:
         errors['artist_id'] = ['Artist not found.']
 
     if errors:
         payload['message'] = "Errors"
         payload['errors'] = errors
+        
+        # Log failed profile update attempt
+        AuditLog.objects.create(
+            user=request.user,
+            action='artist_profile_update_failed',
+            resource_type='artist_profile',
+            resource_id=artist_id,
+            ip_address=ip_address,
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            request_data={'artist_id': artist_id, 'errors': list(errors.keys())},
+            response_data={'error': 'validation_failed'},
+            status_code=400
+        )
+        
         return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
+    # Store old values for audit logging
+    old_values = {
+        'bio': getattr(artist, 'bio', ''),
+        'country': getattr(artist, 'country', ''),
+        'region': getattr(artist, 'region', ''),
+        'photo': artist.user.photo.name if artist.user.photo else None
+    }
+
     # Apply changes if provided
-    if bio:
+    changes_made = {}
+    if bio and bio != old_values['bio']:
         artist.bio = bio
-    if country:
+        changes_made['bio'] = {'old': old_values['bio'], 'new': bio}
+    if country and country != old_values['country']:
         artist.country = country
-    if region:
+        changes_made['country'] = {'old': old_values['country'], 'new': country}
+    if region and region != old_values['region']:
         artist.region = region
+        changes_made['region'] = {'old': old_values['region'], 'new': region}
     
     # Handle photo upload
     photo_url = None
@@ -406,17 +526,38 @@ def complete_artist_profile_view(request):
         artist.user.photo = photo
         artist.user.save()
         photo_url = artist.user.photo.url if artist.user.photo else None
+        changes_made['photo'] = {'old': old_values['photo'], 'new': artist.user.photo.name}
     
     # Save artist changes
     artist.save()
-       # Mark this step as complete (profile)
+    # Mark this step as complete (profile)
     artist.profile_completed = True
-
+    artist.save()
 
     data["artist_id"] = artist.artist_id
     data["next_step"] = artist.onboarding_step
     if photo_url:
         data["photo"] = photo_url
+
+    # Log successful profile update
+    AuditLog.objects.create(
+        user=request.user,
+        action='artist_profile_updated',
+        resource_type='artist_profile',
+        resource_id=str(artist.artist_id),
+        ip_address=ip_address,
+        user_agent=request.META.get('HTTP_USER_AGENT', ''),
+        request_data={
+            'artist_id': artist_id,
+            'fields_updated': list(changes_made.keys())
+        },
+        response_data={
+            'success': True,
+            'changes_made': changes_made,
+            'profile_completed': True
+        },
+        status_code=200
+    )
 
     payload['message'] = "Successful"
     payload['data'] = data
@@ -702,38 +843,86 @@ def onboard_artist_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 @authentication_classes([TokenAuthentication])
 def logout_artist_view(request):
     payload = {}
     data = {}
     errors = {}
 
-    artist_id = request.data.get('artist_id', "")
-    if not artist_id:
-        errors['artist_id'] = ['Artist ID is required.']
+    # Get client IP for audit logging
+    def get_client_ip(request):
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+        return ip
+
+    ip_address = get_client_ip(request)
 
     try:
-        artist = Artist.objects.get(artist_id=artist_id)
+        # Get the artist associated with the authenticated user
+        artist = Artist.objects.get(user=request.user)
     except Artist.DoesNotExist:
-        errors['artist_id'] = ['Artist not found.']
-
-    if errors:
+        errors['user'] = ['User is not an artist.']
         payload['message'] = "Errors"
         payload['errors'] = errors
+        
+        # Log failed logout attempt
+        AuditLog.objects.create(
+            user=request.user,
+            action='artist_logout_failed',
+            resource_type='authentication',
+            ip_address=ip_address,
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            response_data={'error': 'not_artist'},
+            status_code=400
+        )
+        
         return Response(payload, status=status.HTTP_400_BAD_REQUEST)
-    
 
+    # Clear FCM token for security
+    request.user.fcm_token = None
+    request.user.save()
+
+    # Delete the authentication token to invalidate the session
+    try:
+        token = Token.objects.get(user=request.user)
+        token.delete()
+    except Token.DoesNotExist:
+        pass  # Token already deleted or doesn't exist
+
+    # Create activity log
     new_activity = AllActivity.objects.create(
-        user=artist.user,
+        user=request.user,
         type="Authentication",
         subject="Artist Log out",
-        body=artist.user.email + " Just logged out of the account."
+        body=f"{request.user.email} just logged out of the account."
     )
-    new_activity.save()
+
+    # Log successful logout
+    AuditLog.objects.create(
+        user=request.user,
+        action='artist_logout_success',
+        resource_type='authentication',
+        resource_id=str(artist.artist_id),
+        ip_address=ip_address,
+        user_agent=request.META.get('HTTP_USER_AGENT', ''),
+        response_data={'success': True, 'session_invalidated': True},
+        status_code=200
+    )
+
+    data = {
+        'message': 'Successfully logged out',
+        'session_invalidated': True,
+        'timestamp': timezone.now().isoformat()
+    }
 
     payload['message'] = "Successful"
     payload['data'] = data
-    return Response(payload)
+    return Response(payload, status=status.HTTP_200_OK)
 
 
 

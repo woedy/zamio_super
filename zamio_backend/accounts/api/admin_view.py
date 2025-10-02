@@ -1,5 +1,6 @@
 from celery import chain
 from django.core.mail import send_mail
+from django.utils import timezone
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -8,8 +9,11 @@ from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.response import Response
+from rest_framework.authentication import TokenAuthentication
+from rest_framework.permissions import IsAuthenticated
 
 from accounts.api.serializers import UserRegistrationSerializer
+from accounts.models import AuditLog
 from activities.models import AllActivity
 from django.core.mail import send_mail
 from django.contrib.auth import get_user_model, authenticate
@@ -183,6 +187,8 @@ class AdminLogin(APIView):
         data = {}
         errors = {}
 
+        # Get client IP for audit logging
+        ip_address = self.get_client_ip(request)
 
         email = request.data.get('email', '').lower()
         password = request.data.get('password', '')
@@ -202,14 +208,10 @@ class AdminLogin(APIView):
         except User.DoesNotExist:
             errors['email'] = ['User does not exist.']
 
-
-
         if qs.exists():
             not_active = qs.filter(email_verified=False)
             if not_active:
                 errors['email'] = ["Please check your email to confirm your account or resend confirmation email."]
-
-
 
         try:
             admin = MrAdmin.objects.get(user__email=email)
@@ -221,15 +223,26 @@ class AdminLogin(APIView):
 
         user = authenticate(email=email, password=password)
 
-
         if not user:
             errors['email'] = ['Invalid Credentials']
 
         if errors:
             payload['message'] = "Errors"
             payload['errors'] = errors
+            
+            # Log failed admin login attempt
+            AuditLog.objects.create(
+                user=user if user else None,
+                action='admin_login_failed',
+                resource_type='authentication',
+                ip_address=ip_address,
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                request_data={'email': email, 'errors': list(errors.keys())},
+                response_data={'error': 'authentication_failed'},
+                status_code=400
+            )
+            
             return Response(payload, status=status.HTTP_400_BAD_REQUEST)
-
 
         try:
             token = Token.objects.get(user=user)
@@ -237,8 +250,9 @@ class AdminLogin(APIView):
             token = Token.objects.create(user=user)
 
         user.fcm_token = fcm_token
+        user.last_activity = timezone.now()
+        user.failed_login_attempts = 0  # Reset failed attempts on successful login
         user.save()
-
 
         data["user_id"] = user.user_id
         data["admin_id"] = admin.admin_id
@@ -261,14 +275,36 @@ class AdminLogin(APIView):
         payload['message'] = "Successful"
         payload['data'] = data
 
+        # Create activity log
         new_activity = AllActivity.objects.create(
             user=user,
             subject="Admin Login",
             body=user.email + " Just logged in."
         )
-        new_activity.save()
+
+        # Log successful admin login
+        AuditLog.objects.create(
+            user=user,
+            action='admin_login_success',
+            resource_type='authentication',
+            resource_id=str(admin.admin_id),
+            ip_address=ip_address,
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            request_data={'email': email},
+            response_data={'success': True, 'admin_id': str(admin.admin_id)},
+            status_code=200
+        )
 
         return Response(payload, status=status.HTTP_200_OK)
+
+    def get_client_ip(self, request):
+        """Extract client IP address from request"""
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+        return ip
 
 
 

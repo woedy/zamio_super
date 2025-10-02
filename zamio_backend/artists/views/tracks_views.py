@@ -5,6 +5,7 @@ import uuid
 import shutil
 from django.db.models import Sum, Count, Avg, F, Q
 from django.db.models.functions import TruncDate, TruncMonth
+from django.utils import timezone
 
 from click import File
 from django.conf import settings
@@ -19,6 +20,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from accounts.api.artist_views import is_valid_email, check_email_exist
+from accounts.models import AuditLog
 from artists.models import Album, Artist, Contributor, Fingerprint, Genre, Track
 from artists.serializers import AlbumSerializer, GenreSerializer
 from django.core.files.base import ContentFile
@@ -201,6 +203,42 @@ def add_track(request):
     data['track_id'] = track.track_id
     data['title'] = track.title
     data['isrc_code'] = track.isrc_code
+
+    # Get client IP for audit logging
+    def get_client_ip(request):
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+        return ip
+
+    # Log successful track upload
+    AuditLog.objects.create(
+        user=request.user,
+        action='track_uploaded',
+        resource_type='track',
+        resource_id=str(track.track_id),
+        ip_address=get_client_ip(request),
+        user_agent=request.META.get('HTTP_USER_AGENT', ''),
+        request_data={
+            'title': title,
+            'artist_id': artist_id,
+            'album_id': album_id,
+            'genre_id': genre_id,
+            'explicit': explicit,
+            'file_size': audio_file_uploaded.size,
+            'file_name': audio_file_uploaded.name
+        },
+        response_data={
+            'success': True,
+            'track_id': str(track.track_id),
+            'duration_seconds': float(track.duration.total_seconds()) if track.duration else 0,
+            'fingerprints_created': len(audio_fingerprints) if audio_fingerprints else 0,
+            'isrc_code': track.isrc_code
+        },
+        status_code=201
+    )
 
     return Response({'message': 'Successful', 'data': data}, status=status.HTTP_201_CREATED)
 

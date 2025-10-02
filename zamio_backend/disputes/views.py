@@ -8,6 +8,7 @@ from django.shortcuts import get_object_or_404
 from datetime import timedelta
 import logging
 
+from accounts.models import AuditLog
 from .models import (
     Dispute, DisputeEvidence, DisputeComment, DisputeNotification,
     DisputeStatus, DisputeType, DisputePriority
@@ -94,7 +95,40 @@ class DisputeViewSet(viewsets.ModelViewSet):
         """Create dispute with audit logging"""
         dispute = serializer.save()
         
-        # Create initial audit log
+        # Get client IP for audit logging
+        def get_client_ip(request):
+            x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+            if x_forwarded_for:
+                ip = x_forwarded_for.split(',')[0]
+            else:
+                ip = request.META.get('REMOTE_ADDR')
+            return ip
+
+        # Enhanced audit logging
+        AuditLog.objects.create(
+            user=self.request.user,
+            action='dispute_created',
+            resource_type='dispute',
+            resource_id=str(dispute.dispute_id),
+            ip_address=get_client_ip(self.request),
+            user_agent=self.request.META.get('HTTP_USER_AGENT', ''),
+            request_data={
+                'title': dispute.title,
+                'dispute_type': dispute.dispute_type,
+                'priority': dispute.priority,
+                'related_track_id': str(dispute.related_track.track_id) if dispute.related_track else None,
+                'related_station_id': str(dispute.related_station.station_id) if dispute.related_station else None
+            },
+            response_data={
+                'success': True,
+                'dispute_id': str(dispute.dispute_id),
+                'status': dispute.status,
+                'created_at': dispute.created_at.isoformat()
+            },
+            status_code=201
+        )
+        
+        # Create initial audit log (existing workflow)
         workflow = DisputeWorkflow()
         workflow._create_audit_log(
             dispute=dispute,
