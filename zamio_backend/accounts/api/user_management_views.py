@@ -929,8 +929,8 @@ def get_audit_logs(request):
     payload = {}
     data = {}
     
-    # Verify admin permissions
-    if not hasattr(request.user, 'mr_admin') or request.user.user_type != 'Admin':
+    # Verify admin permissions - check user_type and admin flag
+    if request.user.user_type != 'Admin' or not request.user.admin:
         return Response({
             'message': 'Unauthorized',
             'errors': {'permission': ['Admin access required']}
@@ -1021,21 +1021,37 @@ def get_audit_logs(request):
             }
             logs_data.append(log_data)
         
-        # Pagination info
+        # Pagination info (match frontend expected format)
         pagination_data = {
-            'page_number': page,
+            'page': page,
             'per_page': per_page,
             'total_pages': paginator.num_pages,
             'total_count': paginator.count,
             'has_next': page_obj.has_next(),
             'has_previous': page_obj.has_previous(),
-            'next': page + 1 if page_obj.has_next() else None,
-            'previous': page - 1 if page_obj.has_previous() else None,
         }
         
-        data = {
-            'audit_logs': logs_data,
+        # Summary statistics
+        total_logs = queryset.count()
+        unique_users = queryset.values('user').distinct().count()
+        unique_actions = queryset.values('action').distinct().count()
+        
+        # Recent activity (last 24 hours)
+        last_24h = timezone.now() - timedelta(hours=24)
+        recent_activity = queryset.filter(timestamp__gte=last_24h).count()
+        
+        summary_data = {
+            'total_logs': total_logs,
+            'unique_users': unique_users,
+            'unique_actions': unique_actions,
+            'recent_activity_24h': recent_activity
+        }
+        
+        # Return data in format expected by frontend
+        response_data = {
+            'logs': logs_data,
             'pagination': pagination_data,
+            'summary': summary_data,
             'filters_applied': {
                 'search': search,
                 'action': action,
@@ -1047,10 +1063,7 @@ def get_audit_logs(request):
             }
         }
         
-        payload['message'] = 'Successful'
-        payload['data'] = data
-        
-        return Response(payload, status=status.HTTP_200_OK)
+        return Response(response_data, status=status.HTTP_200_OK)
         
     except Exception as e:
         return Response({

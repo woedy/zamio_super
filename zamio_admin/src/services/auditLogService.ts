@@ -52,18 +52,20 @@ export interface PaginatedAuditLogs {
 }
 
 class AuditLogService {
-  private baseURL = `${baseUrl}api/accounts/rbac/`;
-  
+  private baseURL = `${baseUrl}api/accounts/admin/`;
+
   private getHeaders() {
     return {
       'Content-Type': 'application/json',
-      'Authorization': `Token ${userToken}`,
+      Authorization: `Token ${userToken}`,
     };
   }
 
-  async getAuditLogs(filters: AuditLogFilters = {}): Promise<PaginatedAuditLogs> {
+  async getAuditLogs(
+    filters: AuditLogFilters = {},
+  ): Promise<PaginatedAuditLogs> {
     const params = new URLSearchParams();
-    
+
     Object.entries(filters).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== '') {
         params.append(key, value.toString());
@@ -85,39 +87,39 @@ class AuditLogService {
   // Utility methods for formatting and display
   getActionColor(action: string): string {
     if (action.includes('login')) {
-      return action.includes('success') 
+      return action.includes('success')
         ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
         : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300';
     }
-    
+
     if (action.includes('logout')) {
       return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300';
     }
-    
+
     if (action.includes('deposit') || action.includes('withdrawal')) {
       return action.includes('success')
         ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
         : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300';
     }
-    
+
     if (action.includes('dispute')) {
       return 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300';
     }
-    
+
     if (action.includes('track') || action.includes('audio')) {
       return 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300';
     }
-    
+
     if (action.includes('failed') || action.includes('error')) {
       return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300';
     }
-    
+
     return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
   }
 
   getStatusCodeColor(statusCode?: number): string {
     if (!statusCode) return 'bg-gray-100 text-gray-800';
-    
+
     if (statusCode >= 200 && statusCode < 300) {
       return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300';
     } else if (statusCode >= 400 && statusCode < 500) {
@@ -125,7 +127,7 @@ class AuditLogService {
     } else if (statusCode >= 500) {
       return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300';
     }
-    
+
     return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
   }
 
@@ -136,30 +138,30 @@ class AuditLogService {
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
-      second: '2-digit'
+      second: '2-digit',
     });
   }
 
   formatAction(action: string): string {
     return action
       .split('_')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
   }
 
   getResourceTypeIcon(resourceType?: string): string {
     const icons = {
-      'authentication': '🔐',
-      'bank_account': '💰',
-      'track': '🎵',
-      'music_detection': '🔍',
-      'dispute': '⚖️',
-      'user': '👤',
-      'user_management': '👥',
-      'artist_profile': '🎤',
-      'system_test': '🧪'
+      authentication: '🔐',
+      bank_account: '💰',
+      track: '🎵',
+      music_detection: '🔍',
+      dispute: '⚖️',
+      user: '👤',
+      user_management: '👥',
+      artist_profile: '🎤',
+      system_test: '🧪',
     };
-    
+
     return icons[resourceType as keyof typeof icons] || '📄';
   }
 
@@ -171,13 +173,13 @@ class AuditLogService {
   // Export functionality
   async exportAuditLogs(filters: AuditLogFilters = {}): Promise<Blob> {
     const params = new URLSearchParams();
-    
+
     Object.entries(filters).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== '') {
         params.append(key, value.toString());
       }
     });
-    
+
     // Add export parameter
     params.append('export', 'csv');
 

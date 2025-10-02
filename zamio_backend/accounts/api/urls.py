@@ -51,7 +51,8 @@ from accounts.api.user_management_views import (
     update_kyc_status,
     update_user_status,
     bulk_user_operations,
-    get_kyc_pending_users
+    get_kyc_pending_users,
+    get_audit_logs
 )
 
 app_name = 'accounts'
@@ -150,7 +151,6 @@ urlpatterns = [
     path('rbac/grant-permission/', grant_permission_view, name="grant_permission_view"),
     path('rbac/revoke-permission/', revoke_permission_view, name="revoke_permission_view"),
     path('rbac/audit-logs/', audit_logs_view, name="audit_logs_view"),
-
     # User Management Endpoints
     path('admin/user-management-overview/', get_user_management_overview, name="get_user_management_overview"),
     path('admin/all-users/', get_all_users, name="get_all_users"),
@@ -159,6 +159,7 @@ urlpatterns = [
     path('admin/update-user-status/', update_user_status, name="update_user_status"),
     path('admin/bulk-user-operations/', bulk_user_operations, name="bulk_user_operations"),
     path('admin/kyc-pending-users/', get_kyc_pending_users, name="get_kyc_pending_users"),
+    path('admin/audit-logs/', get_audit_logs, name="get_audit_logs"),
 
     #path('remove_user/', remove_user_view, name="remove_user_view"),
    # path('send-sms/', send_sms_view, name="send_sms_view"),

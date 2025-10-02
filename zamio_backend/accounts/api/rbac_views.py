@@ -1,7 +1,8 @@
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.authentication import TokenAuthentication
 from django.contrib.auth import get_user_model
 
 from accounts.permissions import (
@@ -185,12 +186,20 @@ def revoke_permission_view(request):
 
 
 @api_view(['GET'])
-@permission_classes([IsAdminUser])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
 def audit_logs_view(request):
     """Enhanced admin endpoint to view audit logs with pagination and filtering"""
     from django.core.paginator import Paginator
     from django.utils import timezone
     from datetime import datetime, timedelta
+    
+    # Verify admin permissions (same pattern as other admin endpoints)
+    if not hasattr(request.user, 'mr_admin') or request.user.user_type != 'Admin':
+        return Response({
+            'message': 'Unauthorized',
+            'errors': {'permission': ['Admin access required']}
+        }, status=status.HTTP_403_FORBIDDEN)
     
     # Get query parameters
     user_email = request.query_params.get('user_email')
