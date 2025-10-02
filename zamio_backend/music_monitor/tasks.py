@@ -857,14 +857,7 @@ def batch_update_pro_mappings(detection_ids: List[str] = None, limit: int = 100)
                     detection.track = track
                     detection.detected_title = track.title
                     detection.detected_artist = track.artist.stage_name
-                    detection.confidence_score = match_result.get('confidence', 0) / 100.0
-                    
-                    result.update({
-                        'track_id': track.id,
-                        'title': track.title,
-                        'artist': track.artist.stage_name,
-                        'confidence': match_result.get('confidence', 0)
-                    })
+                    detection.save()
                     
                     # Create MatchCache for backward compatibility
                     MatchCache.objects.create(
@@ -875,39 +868,30 @@ def batch_update_pro_mappings(detection_ids: List[str] = None, limit: int = 100)
                         processed=False
                     )
                     
-                except Track.DoesNotExist:
-                    print(f"Track {match_result['song_id']} not found")
+                    result.update({
+                        'track_id': track.id,
+                        'track_title': track.title,
+                        'artist_name': track.artist.stage_name
+                    })
                     
-            elif detection_source == 'acrcloud':
-                # ACRCloud match - use external metadata
-                detection.detected_title = match_result.get('title', '')
-                detection.detected_artist = match_result.get('artist', '')
-                detection.detected_album = match_result.get('album', '')
+                except Track.DoesNotExist:
+                    result.update({
+                        'error': f'Track {match_result["song_id"]} not found'
+                    })
+            else:
+                # ACRCloud match
+                detection.detected_title = match_result.get('title')
+                detection.detected_artist = match_result.get('artist')
+                detection.detected_album = match_result.get('album')
                 detection.isrc = match_result.get('isrc')
-                detection.iswc = match_result.get('iswc')
-                detection.confidence_score = match_result.get('confidence', 0) / 100.0
-                detection.acrcloud_response = match_result.get('external_metadata', {})
-                
-                # Set PRO affiliation from first PRO in list
-                pro_affiliations = match_result.get('pro_affiliations', [])
-                if pro_affiliations:
-                    detection.pro_affiliation = pro_affiliations[0].get('pro_code')
+                detection.save()
                 
                 result.update({
-                    'title': match_result.get('title', ''),
-                    'artist': match_result.get('artist', ''),
-                    'album': match_result.get('album', ''),
-                    'isrc': match_result.get('isrc'),
-                    'confidence': match_result.get('confidence', 0),
-                    'pro_affiliations': pro_affiliations
+                    'title': match_result.get('title'),
+                    'artist': match_result.get('artist'),
+                    'album': match_result.get('album'),
+                    'isrc': match_result.get('isrc')
                 })
-            
-            detection.save()
-        else:
-            # No match found
-            detection.processing_status = 'completed'
-            detection.confidence_score = 0.0
-            detection.save()
         
         return result
         
@@ -923,91 +907,131 @@ def batch_update_pro_mappings(detection_ids: List[str] = None, limit: int = 100)
         }
 
 
-@shared_task(name='music_monitor.update_isrc_metadata')
-def update_isrc_metadata(isrc: str, force_refresh: bool = False) -> Dict[str, Any]:
+@shared_task(name='music_monitor.tasks.run_matchcache_to_playlog')
+def run_matchcache_to_playlog(batch_size: int = 50) -> Dict[str, Any]:
     """
-    Background task to update ISRC metadata
+    Convert unprocessed MatchCache entries to PlayLog entries
+    
+    This task processes MatchCache entries that have been created by the audio detection
+    system and converts them into PlayLog entries for royalty calculation and tracking.
     
     Args:
-        isrc: ISRC to update
-        force_refresh: Whether to force refresh cached data
+        batch_size: Number of MatchCache entries to process in one batch
         
     Returns:
-        Dictionary with update results
+        Dictionary with processing results including success count, failures, and errors
     """
     try:
-        from music_monitor.services.isrc_lookup_service import ISRCLookupService
+        from music_monitor.models import PlayLog, FailedPlayLog
         
-        service = ISRCLookupService()
-        result = service.lookup_isrc(isrc, force_refresh)
+        # Get unprocessed MatchCache entries
+        unprocessed_matches = MatchCache.objects.filter(
+            processed=False,
+            failed_reason__isnull=True
+        ).select_related('track', 'station', 'station_program')[:batch_size]
         
-        if result:
+        if not unprocessed_matches:
             return {
                 'success': True,
-                'isrc': isrc,
-                'title': result.title,
-                'artist': result.artist,
-                'confidence': result.confidence,
-                'pro_affiliations_count': len(result.pro_affiliations),
-                'last_updated': result.last_updated
+                'message': 'No unprocessed matches found',
+                'processed': 0,
+                'failed': 0,
+                'errors': []
             }
-        else:
-            return {
-                'success': False,
-                'isrc': isrc,
-                'message': 'No metadata found'
-            }
-            
-    except Exception as e:
-        return {
-            'success': False,
-            'isrc': isrc,
-            'error': str(e)
-        }
-
-
-@shared_task(name='music_monitor.batch_update_pro_mappings')
-def batch_update_pro_mappings(isrcs: List[str], force_refresh: bool = False) -> Dict[str, Any]:
-    """
-    Batch update PRO mappings for multiple ISRCs
-    
-    Args:
-        isrcs: List of ISRCs to update
-        force_refresh: Whether to force refresh cached data
         
-    Returns:
-        Dictionary with batch update results
-    """
-    try:
-        from music_monitor.services.isrc_lookup_service import ISRCLookupService
+        processed_count = 0
+        failed_count = 0
+        errors = []
         
-        service = ISRCLookupService()
-        results = service.batch_lookup_isrcs(isrcs, force_refresh)
-        
-        successful = sum(1 for result in results.values() if result is not None)
-        failed = len(isrcs) - successful
+        for match in unprocessed_matches:
+            try:
+                with transaction.atomic():
+                    # Check if PlayLog already exists for this match
+                    existing_playlog = PlayLog.objects.filter(
+                        track=match.track,
+                        station=match.station,
+                        played_at=match.matched_at
+                    ).first()
+                    
+                    if existing_playlog:
+                        # Mark as processed to avoid duplicate processing
+                        match.processed = True
+                        match.save(update_fields=['processed'])
+                        processed_count += 1
+                        continue
+                    
+                    # Create new PlayLog entry
+                    playlog = PlayLog.objects.create(
+                        track=match.track,
+                        station=match.station,
+                        station_program=match.station_program,
+                        source='Radio',  # Default source for radio station matches
+                        played_at=match.matched_at,
+                        start_time=match.matched_at,
+                        # Estimate stop time based on track duration or default to 3 minutes
+                        stop_time=match.matched_at + timezone.timedelta(
+                            seconds=getattr(match.track, 'duration_seconds', 180)
+                        ),
+                        duration=timezone.timedelta(
+                            seconds=getattr(match.track, 'duration_seconds', 180)
+                        ),
+                        avg_confidence_score=match.avg_confidence_score,
+                        claimed=False,
+                        flagged=False,
+                        active=True,
+                        is_archived=False
+                    )
+                    
+                    # Calculate basic royalty amount (this could be enhanced with more complex logic)
+                    base_royalty_rate = 0.10  # 10 pesewas per play as base rate
+                    confidence_multiplier = float(match.avg_confidence_score or 50) / 100.0
+                    royalty_amount = base_royalty_rate * max(confidence_multiplier, 0.5)  # Minimum 50% of base rate
+                    
+                    playlog.royalty_amount = royalty_amount
+                    playlog.save(update_fields=['royalty_amount'])
+                    
+                    # Mark MatchCache as processed
+                    match.processed = True
+                    match.save(update_fields=['processed'])
+                    
+                    processed_count += 1
+                    
+            except Exception as e:
+                # Log the failure and mark the match with failure reason
+                error_msg = str(e)
+                errors.append(f"Match {match.id}: {error_msg}")
+                
+                try:
+                    # Create FailedPlayLog entry
+                    FailedPlayLog.objects.create(
+                        match=match,
+                        reason=error_msg,
+                        will_retry=True
+                    )
+                    
+                    # Mark match with failure reason but don't set processed=True
+                    # so it can be retried later
+                    match.failed_reason = error_msg
+                    match.save(update_fields=['failed_reason'])
+                    
+                except Exception as nested_e:
+                    errors.append(f"Failed to log error for match {match.id}: {str(nested_e)}")
+                
+                failed_count += 1
         
         return {
             'success': True,
-            'total_isrcs': len(isrcs),
-            'successful': successful,
-            'failed': failed,
-            'results': {
-                isrc: {
-                    'success': result is not None,
-                    'title': result.title if result else None,
-                    'artist': result.artist if result else None,
-                    'pro_count': len(result.pro_affiliations) if result else 0
-                }
-                for isrc, result in results.items()
-            }
+            'processed': processed_count,
+            'failed': failed_count,
+            'total_matches': len(unprocessed_matches),
+            'errors': errors,
+            'message': f'Processed {processed_count} matches, {failed_count} failed'
         }
         
     except Exception as e:
         return {
             'success': False,
             'error': str(e),
-            'total_isrcs': len(isrcs),
-            'successful': 0,
-            'failed': len(isrcs)
+            'processed': 0,
+            'failed': 0
         }

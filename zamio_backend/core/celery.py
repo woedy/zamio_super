@@ -8,6 +8,102 @@ app = Celery('core')
 app.config_from_object('django.conf:settings', namespace='CELERY')
 app.autodiscover_tasks()
 
+# Explicit task imports to prevent KeyError exceptions
+# Import all task modules to ensure proper registration
+try:
+    # Music monitor tasks
+    from music_monitor.tasks import (
+        run_matchcache_to_playlog,
+        scan_single_station_stream,
+        scan_station_streams,
+        enhanced_fingerprint_track,
+        batch_enhanced_fingerprint,
+        auto_fingerprint_new_tracks,
+        enhanced_audio_detection,
+        cleanup_old_fingerprints,
+        acrcloud_identify_audio,
+        hybrid_audio_detection,
+        sync_pro_catalog,
+        update_isrc_metadata,
+        batch_update_pro_mappings
+    )
+    print("Successfully imported music_monitor tasks")
+    
+    # Disputes tasks
+    try:
+        from disputes.tasks import (
+            auto_escalate_old_disputes,
+            send_dispute_reminders,
+            cleanup_old_notifications,
+            generate_dispute_analytics,
+            send_email_notifications,
+            auto_assign_disputes
+        )
+        print("Successfully imported disputes tasks")
+    except ImportError as e:
+        print(f"Warning: Could not import disputes tasks: {e}")
+    
+    # Analytics tasks
+    try:
+        from analytics.tasks import (
+            generate_analytics_export,
+            create_analytics_snapshots,
+            update_realtime_metrics,
+            cleanup_analytics_data
+        )
+        print("Successfully imported analytics tasks")
+    except ImportError as e:
+        print(f"Warning: Could not import analytics tasks: {e}")
+    
+    # Core enhanced tasks
+    try:
+        import core.enhanced_tasks
+        print("Successfully imported core enhanced tasks")
+    except ImportError as e:
+        print(f"Warning: Could not import core enhanced tasks: {e}")
+    
+    # Royalties tasks (if they exist)
+    try:
+        import royalties.tasks
+        print("Successfully imported royalties tasks")
+    except ImportError as e:
+        print(f"Info: No royalties tasks found: {e}")
+    
+    # Accounts tasks (if they exist)
+    try:
+        import accounts.tasks
+        print("Successfully imported accounts tasks")
+    except ImportError as e:
+        print(f"Info: No accounts tasks found: {e}")
+    
+    # Notifications tasks (if they exist)
+    try:
+        import notifications.tasks
+        print("Successfully imported notifications tasks")
+    except ImportError as e:
+        print(f"Info: No notifications tasks found: {e}")
+    
+    # Artists tasks (if they exist)
+    try:
+        import artists.tasks
+        print("Successfully imported artists tasks")
+    except ImportError as e:
+        print(f"Info: No artists tasks found: {e}")
+    
+    # Stations tasks (if they exist)
+    try:
+        import stations.tasks
+        print("Successfully imported stations tasks")
+    except ImportError as e:
+        print(f"Info: No stations tasks found: {e}")
+    
+except ImportError as e:
+    # Log import errors but don't fail startup
+    print(f"Critical error: Could not import core music_monitor tasks: {e}")
+    # Re-raise if it's the core music_monitor tasks that failed
+    if 'music_monitor.tasks' in str(e):
+        raise
+
 # Enhanced Celery configuration for performance optimization
 app.conf.update(
     # Task routing and queues
