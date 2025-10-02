@@ -134,7 +134,7 @@ class User(AbstractBaseUser):
     
     fcm_token = models.TextField(blank=True, null=True)
     otp_code = models.CharField(max_length=10, blank=True, null=True)
-    email_token = models.CharField(max_length=10, blank=True, null=True)
+    email_token = models.CharField(max_length=64, blank=True, null=True)  # Expanded for secure tokens
     
 
     profile_complete = models.BooleanField(default=False)

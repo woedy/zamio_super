@@ -1,0 +1,19 @@
+Welcome to ZamIO!
+
+Hi {% if user.first_name %}{{ user.first_name }}{% else %}there{% endif %},
+
+Thank you for signing up for ZamIO! To complete your registration and start managing your music royalties, please verify your email address.
+
+Please click the following link to verify your account:
+{{ verification_url }}
+
+This verification link will expire in 24 hours for security reasons.
+
+If you didn't create an account with ZamIO, please ignore this email.
+
+Best regards,
+The ZamIO Team
+
+---
+© {{ current_year }} ZamIO. All rights reserved.
+This is an automated message, please do not reply to this email.

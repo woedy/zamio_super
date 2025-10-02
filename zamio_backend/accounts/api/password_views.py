@@ -57,50 +57,34 @@ class PasswordResetView(generics.GenericAPIView):
 
 
         user = User.objects.filter(email=email).first()
-        otp_code = generate_random_otp_code()
-        user.otp_code = otp_code
-        user.save()
+        
+        try:
+            # Generate new OTP code
+            otp_code = generate_random_otp_code()
+            user.otp_code = otp_code
+            user.save()
 
-        context = {
-            'otp_code': otp_code,
-            'email': user.email,
-            'first_name': user.first_name,
-            'last_name': user.last_name
-        }
+            # Use the new Celery email task system for password reset
+            from accounts.email_utils import send_password_reset_email
+            task_id = send_password_reset_email(user)
 
-        txt_ = get_template("registration/emails/send_otp.txt").render(context)
-        html_ = get_template("registration/emails/send_otp.html").render(context)
+            data["email"] = user.email
+            data["user_id"] = user.user_id
+            data["task_id"] = task_id
 
-        subject = 'OTP CODE'
-        from_email = settings.DEFAULT_FROM_EMAIL
-        recipient_list = [user.email]
-
-        # # Use Celery chain to execute tasks in sequence
-        # email_chain = chain(
-        #     send_generic_email.si(subject, txt_, from_email, recipient_list, html_),
-        #  )
-        # # Execute the Celery chain asynchronously
-        # email_chain.apply_async()
-
-        send_mail(
-            subject,
-            txt_,
-            from_email,
-            recipient_list,
-            html_message=html_,
-            fail_silently=False,
-        )
-
-       # data["otp_code"] = otp_code
-        data["email"] = user.email
-        data["user_id"] = user.user_id
-
-        new_activity = AllActivity.objects.create(
-            user=user,
-            subject="Reset Password",
-            body="OTP sent to " + user.email,
-        )
-        new_activity.save()
+            # Create activity log
+            new_activity = AllActivity.objects.create(
+                user=user,
+                subject="Reset Password",
+                body="Password reset OTP sent to " + user.email,
+            )
+            new_activity.save()
+            
+        except Exception as e:
+            errors['system'] = [f'Failed to send password reset email: {str(e)}']
+            payload['message'] = "Error"
+            payload['errors'] = errors
+            return Response(payload, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         payload['message'] = "Successful"
         payload['data'] = data
@@ -159,11 +143,15 @@ def confirm_otp_password_view(request):
 @permission_classes([AllowAny])
 @authentication_classes([])
 def resend_password_otp(request):
+    """
+    Resend password reset OTP using the new Celery email task system.
+    
+    Requirements: 1.2 - Password reset tokens processed as background tasks
+    """
     payload = {}
     data = {}
     errors = {}
     email_errors = []
-
 
     email = request.data.get('email', '').lower()
 
@@ -185,55 +173,39 @@ def resend_password_otp(request):
             return Response(payload, status=status.HTTP_404_NOT_FOUND)
 
     user = User.objects.filter(email=email).first()
-    otp_code = generate_random_otp_code()
-    user.otp_code = otp_code
-    user.save()
+    
+    try:
+        # Generate new OTP code
+        otp_code = generate_random_otp_code()
+        user.otp_code = otp_code
+        user.save()
 
-    context = {
-        'otp_code': otp_code,
-        'email': user.email,
-        'first_name': user.first_name,
-        'last_name': user.last_name
-    }
+        # Use the new Celery email task system for password reset
+        from accounts.email_utils import send_password_reset_email
+        task_id = send_password_reset_email(user)
 
-    txt_ = get_template("registration/emails/send_otp.txt").render(context)
-    html_ = get_template("registration/emails/send_otp.html").render(context)
+        data["email"] = user.email
+        data["user_id"] = user.user_id
+        data["task_id"] = task_id
 
-    subject = 'OTP CODE'
-    from_email = settings.DEFAULT_FROM_EMAIL
-    recipient_list = [user.email]
+        # Create activity log
+        new_activity = AllActivity.objects.create(
+            user=user,
+            subject="Password OTP resent",
+            body="Password OTP resent to " + user.email,
+        )
+        new_activity.save()
 
-    # # Use Celery chain to execute tasks in sequence
-    # email_chain = chain(
-    #     send_generic_email.si(subject, txt_, from_email, recipient_list, html_),
-    #  )
-    # # Execute the Celery chain asynchronously
-    # email_chain.apply_async()
+        payload['message'] = "Password reset OTP sent successfully"
+        payload['data'] = data
 
-    send_mail(
-        subject,
-        txt_,
-        from_email,
-        recipient_list,
-        html_message=html_,
-        fail_silently=False,
-    )
-
-    #data["otp_code"] = otp_code
-    data["email"] = user.email
-    data["user_id"] = user.user_id
-
-    new_activity = AllActivity.objects.create(
-        user=user,
-        subject="Password OTP sent",
-        body="Password OTP sent to " + user.email,
-    )
-    new_activity.save()
-
-    payload['message'] = "Successful"
-    payload['data'] = data
-
-    return Response(payload, status=status.HTTP_200_OK)
+        return Response(payload, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        errors['system'] = [f'Failed to send password reset OTP: {str(e)}']
+        payload['message'] = "Error"
+        payload['errors'] = errors
+        return Response(payload, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 

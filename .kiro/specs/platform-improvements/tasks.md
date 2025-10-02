@@ -26,7 +26,7 @@
   - Add proper error handling for authentication failures
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
 
-- [ ] 4. Implement Background Task System for Emails
+- [x] 4. Implement Background Task System for Emails
 
   - Create Celery tasks for email verification in `accounts/tasks.py`
   - Implement password reset email tasks
@@ -175,7 +175,17 @@
   - Add withdrawal request validation based on publishing status
   - _Requirements: 14.1, 14.2, 14.3, 14.4, 14.5_
 
-- [ ] 22. Implement Publisher Dashboard Integration
+- [ ] 22. Implement Contributor Split Management System
+
+  - Create Contributor model with relationship to tracks/albums in `artists/models.py`
+  - Implement split percentage validation logic (must total 100%)
+  - Create contributor CRUD API endpoints with automatic split calculation
+  - Add inline editing UI for managing contributors in zamio_frontend
+  - Integrate contributor splits with royalty calculation system
+  - Add contributor management to track/album editing forms
+  - _Requirements: 22.4_
+
+- [ ] 23. Implement Publisher Dashboard Integration
 
   - Add publisher cards to dashboard components
   - Create publisher metrics and analytics display
@@ -183,7 +193,7 @@
   - Add publisher data to all relevant dashboards
   - _Requirements: 17.1, 17.2, 17.3, 17.4, 17.5_
 
-- [ ] 23. Implement Dispute Management System
+- [ ] 24. Implement Dispute Management System
   - Create `Dispute` model with proper workflow states
   - Implement dispute filing and management APIs
   - Create admin dispute resolution interface
@@ -192,7 +202,7 @@
 
 ## Phase 7: Settings and Profile Management
 
-- [ ] 24. Implement Settings Pages for zamio_frontend
+- [ ] 25. Implement Settings Pages for zamio_frontend
 
   - Create settings page with account preferences
   - Add notification settings management
@@ -200,7 +210,7 @@
   - Add theme preference persistence
   - _Requirements: 16.1, 16.2, 16.3, 16.4, 16.5_
 
-- [ ] 25. Implement Settings Pages for zamio_admin
+- [ ] 26. Implement Settings Pages for zamio_admin
 
   - Create admin-specific settings interface
   - Add system configuration options
@@ -208,7 +218,7 @@
   - Add audit log settings and preferences
   - _Requirements: 16.1, 16.2, 16.3, 16.4, 16.5_
 
-- [ ] 26. Implement Settings Pages for zamio_stations
+- [ ] 27. Implement Settings Pages for zamio_stations
 
   - Create station settings and configuration
   - Add stream monitoring preferences
@@ -216,7 +226,7 @@
   - Add compliance and reporting settings
   - _Requirements: 16.1, 16.2, 16.3, 16.4, 16.5_
 
-- [ ] 27. Implement Settings Pages for zamio_publisher
+- [ ] 28. Implement Settings Pages for zamio_publisher
   - Create publisher-specific settings
   - Add artist management preferences
   - Implement contract and royalty settings
@@ -225,7 +235,7 @@
 
 ## Phase 8: Edit Functionality and Data Management
 
-- [ ] 28. Implement Edit Profile Functionality
+- [ ] 29. Implement Edit Profile Functionality
 
   - Create edit profile API endpoints for all user types
   - Implement profile editing forms in all frontends
@@ -233,7 +243,7 @@
   - Create profile change audit logging
   - _Requirements: 15.1, 15.2, 15.3, 15.4, 15.5_
 
-- [ ] 29. Implement Track and Album Editing
+- [ ] 30. Implement Track and Album Editing
   - Create track editing API endpoints
   - Implement track editing forms in artist frontend
   - Add album editing functionality
@@ -242,7 +252,7 @@
 
 ## Phase 9: Performance Optimization and Accessibility
 
-- [ ] 30. Implement Code Splitting and Lazy Loading
+- [ ] 31. Implement Code Splitting and Lazy Loading
 
   - Add route-based code splitting to all frontends
   - Implement lazy loading for heavy components
@@ -250,7 +260,7 @@
   - Optimize bundle sizes and dependencies
   - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
 
-- [ ] 31. Implement Accessibility Improvements
+- [ ] 32. Implement Accessibility Improvements
 
   - Fix contrast ratios for hero text and UI elements
   - Add proper ARIA labels and semantic HTML
@@ -258,16 +268,16 @@
   - Add screen reader compatibility
   - _Requirements: 21.1, 21.2, 21.3, 21.4, 21.5_
 
-- [ ] 32. Implement Non-Blocking Upload Processing
+- [ ] 33. Implement Non-Blocking Upload Processing
   - Create background file processing with Celery
   - Implement upload progress tracking
   - Add real-time status updates for processing
-  - Create contributor management with inline editing
-  - _Requirements: 22.1, 22.2, 22.3, 22.4, 22.5_
+  - Integrate with contributor split management system
+  - _Requirements: 22.1, 22.2, 22.3, 22.5_
 
 ## Phase 10: Testing and Quality Assurance
 
-- [ ] 33. Implement Comprehensive Testing Suite
+- [ ] 34. Implement Comprehensive Testing Suite
 
   - Add unit tests for all new backend functionality
   - Create integration tests for API endpoints
@@ -275,7 +285,7 @@
   - Add end-to-end workflow testing
   - _Requirements: All requirements validation_
 
-- [ ] 34. Implement Monitoring and Health Checks
+- [ ] 35. Implement Monitoring and Health Checks
   - Create system health monitoring endpoints
   - Implement real-time performance metrics
   - Add error tracking and alerting

@@ -60,6 +60,17 @@ from accounts.api.views import (
     session_status_view,
     authentication_audit_logs_view
 )
+from accounts.api.email_views import (
+    resend_verification_email,
+    resend_verification_email_by_email,
+    request_password_reset,
+    send_user_invitation,
+    send_notification_to_specific_users,
+    send_notification_to_user_type,
+    send_welcome_email_to_user,
+    mark_email_verified,
+    email_system_status
+)
 
 app_name = 'accounts'
 
@@ -172,6 +183,17 @@ urlpatterns = [
     path('invalidate-all-sessions/', invalidate_all_sessions_view, name="invalidate_all_sessions"),
     path('session-status/', session_status_view, name="session_status"),
     path('auth-audit-logs/', authentication_audit_logs_view, name="auth_audit_logs"),
+
+    # Email Task System Endpoints
+    path('email/resend-verification/', resend_verification_email, name="resend_verification_email"),
+    path('email/resend-verification-by-email/', resend_verification_email_by_email, name="resend_verification_email_by_email"),
+    path('email/request-password-reset/', request_password_reset, name="request_password_reset"),
+    path('email/send-invitation/', send_user_invitation, name="send_user_invitation"),
+    path('email/send-notification-to-users/', send_notification_to_specific_users, name="send_notification_to_users"),
+    path('email/send-notification-to-user-type/', send_notification_to_user_type, name="send_notification_to_user_type"),
+    path('email/send-welcome/', send_welcome_email_to_user, name="send_welcome_email"),
+    path('email/verify/', mark_email_verified, name="mark_email_verified"),
+    path('email/system-status/', email_system_status, name="email_system_status"),
 
     #path('remove_user/', remove_user_view, name="remove_user_view"),
    # path('send-sms/', send_sms_view, name="send_sms_view"),

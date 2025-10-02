@@ -140,43 +140,18 @@ def register_admin_view(request):
         token = Token.objects.get(user=user).key
         data['token'] = token
 
-        email_token = generate_email_token()
-
-        user = User.objects.get(email=email)
-        user.email_token = email_token
-        user.save()
-
-        context = {
-            'email_token': email_token,
-            'email': user.email,
-            'first_name': user.first_name,
-            'last_name': user.last_name,
-        }
-#
-        txt_ = get_template("registration/emails/verify.txt").render(context)
-        html_ = get_template("registration/emails/verify.html").render(context)
-#
-        subject = 'EMAIL CONFIRMATION CODE'
-        from_email = settings.DEFAULT_FROM_EMAIL
-        recipient_list = [user.email]
-
-
-
-        # # Use Celery chain to execute tasks in sequence
-        # email_chain = chain(
-        #     send_generic_email.si(subject, txt_, from_email, recipient_list, html_),
-        # )
-        # # Execute the Celery chain asynchronously
-        # email_chain.apply_async()
-
-        send_mail(
-            subject,
-            txt_,
-            from_email,
-            recipient_list,
-            html_message=html_,
-            fail_silently=False,
-        )
+        try:
+            # Use the new Celery email task system for email verification
+            from accounts.email_utils import send_verification_email
+            task_id = send_verification_email(user)
+            data['email_task_id'] = task_id
+            
+        except Exception as e:
+            # Log the error but don't fail registration
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to send verification email during admin registration: {str(e)}")
+            # Continue with registration even if email fails
 
 
 #
@@ -352,11 +327,15 @@ def check_password(email, password):
 @permission_classes([AllowAny])
 @authentication_classes([])
 def resend_email_verification(request):
+    """
+    Resend email verification using the new Celery email task system.
+    
+    Requirements: 1.1 - Email verification queued using Celery
+    """
     payload = {}
     data = {}
     errors = {}
     email_errors = []
-
 
     email = request.data.get('email', '').lower()
 
@@ -378,79 +357,40 @@ def resend_email_verification(request):
             return Response(payload, status=status.HTTP_404_NOT_FOUND)
 
     user = User.objects.filter(email=email).first()
-    otp_code = generate_email_token()
-    user.email_token = otp_code
-    user.save()
+    
+    # Check if email is already verified
+    if user.email_verified:
+        payload['message'] = "Email is already verified"
+        payload['data'] = {"email": user.email, "user_id": user.user_id}
+        return Response(payload, status=status.HTTP_200_OK)
 
+    try:
+        # Use the new Celery email task system
+        from accounts.email_utils import send_verification_email
+        task_id = send_verification_email(user)
+        
+        data["email"] = user.email
+        data["user_id"] = user.user_id
+        data["task_id"] = task_id
 
+        # Create activity log
+        new_activity = AllActivity.objects.create(
+            user=user,
+            subject="Email verification resent",
+            body="Email verification resent to " + user.email,
+        )
+        new_activity.save()
 
-     ##### SEND SMS
+        payload['message'] = "Email verification sent successfully"
+        payload['data'] = data
 
-    # _msg = f'Your Weekend Chef OTP code is {otp_code}'
-    # url = f"https://apps.mnotify.net/smsapi"
-    # api_key = settings.MNOTIFY_KEY  # Replace with your actual API key
-    # print(api_key)
-    # response = requests.post(url,
-    # data={
-    #     "key": api_key,
-    #     "to": user.phone,
-    #     "msg": _msg,
-    #     "sender_id": settings.MNOTIFY_SENDER_ID,
-    #     })
-    # if response.status_code == 200:
-    #     print('##########################')
-    #     print(response.content)
-    #     payload['message'] = "Successful"
-    # else:
-    #     errors['user_id'] = ['Failed to send SMS']
-    #     ######################
-
-
-    context = {
-        'email_token': otp_code,
-        'email': user.email,
-        'first_name': user.first_name,
-        'last_name': user.last_name
-    }
-#
-    txt_ = get_template("registration/emails/verify.txt").render(context)
-    html_ = get_template("registration/emails/verify.html").render(context)
-#
-    subject = 'OTP CODE'
-    from_email = settings.DEFAULT_FROM_EMAIL
-    recipient_list = [user.email]
-
-     # Use Celery chain to execute tasks in sequence
-    # email_chain = chain(
-    #      send_generic_email.si(subject, txt_, from_email, recipient_list, html_),
-    #   )
-    #  # Execute the Celery chain asynchronously
-    # email_chain.apply_async()
-
-    send_mail(
-        subject,
-        txt_,
-        from_email,
-        recipient_list,
-        html_message=html_,
-        fail_silently=False,
-    )
-
-    #data["otp_code"] = otp_code
-    data["email"] = user.email
-    data["user_id"] = user.user_id
-
-    new_activity = AllActivity.objects.create(
-        user=user,
-        subject="Email verification sent",
-        body="Email verification sent to " + user.email,
-    )
-    new_activity.save()
-
-    payload['message'] = "Successful"
-    payload['data'] = data
-
-    return Response(payload, status=status.HTTP_200_OK)
+        return Response(payload, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        errors['system'] = [f'Failed to send verification email: {str(e)}']
+        payload['message'] = "Error"
+        payload['errors'] = errors
+        return Response(payload, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # ---------- Admin Email Verification ----------

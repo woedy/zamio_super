@@ -132,43 +132,18 @@ def register_artist_view(request):
         token_obj, _ = Token.objects.get_or_create(user=user)
         data['token'] = token_obj.key
 
-        email_token = generate_email_token()
-
-        user = User.objects.get(email=email)
-        user.email_token = email_token
-        user.save()
-
-        context = {
-            'email_token': email_token,
-            'email': user.email,
-            'first_name': user.first_name,
-            'last_name': user.last_name,
-        }
-#
-        txt_ = get_template("registration/emails/verify.txt").render(context)
-        html_ = get_template("registration/emails/verify.html").render(context)
-#
-        subject = 'EMAIL CONFIRMATION CODE'
-        from_email = settings.DEFAULT_FROM_EMAIL
-        recipient_list = [user.email]
-
-
-
-        # # Use Celery chain to execute tasks in sequence
-        # email_chain = chain(
-        #     send_generic_email.si(subject, txt_, from_email, recipient_list, html_),
-        # )
-        # # Execute the Celery chain asynchronously
-        # email_chain.apply_async()
-
-        send_mail(
-            subject,
-            txt_,
-            from_email,
-            recipient_list,
-            html_message=html_,
-            fail_silently=False,
-        )
+        try:
+            # Use the new Celery email task system for email verification
+            from accounts.email_utils import send_verification_email
+            task_id = send_verification_email(user)
+            data['email_task_id'] = task_id
+            
+        except Exception as e:
+            # Log the error but don't fail registration
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to send verification email during artist registration: {str(e)}")
+            # Continue with registration even if email fails
 
 
 

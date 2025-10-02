@@ -844,6 +844,9 @@ def update_isrc_metadata(isrc: str) -> Dict[str, Any]:
         }
 
 
+# Duplicate task removed - keeping the better implementation below
+
+
 @shared_task(name='music_monitor.batch_update_pro_mappings')
 def batch_update_pro_mappings(detection_ids: List[str] = None, limit: int = 100) -> Dict[str, Any]:
     """
