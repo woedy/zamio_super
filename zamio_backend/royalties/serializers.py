@@ -108,6 +108,62 @@ class UploadRepertoireSerializer(serializers.Serializer):
     dry_run = serializers.BooleanField(required=False, default=False)
 
 
+class SecureFinancialFileUploadSerializer(serializers.Serializer):
+    """Serializer for secure financial file uploads"""
+    file = serializers.FileField(
+        help_text="Financial data file (CSV, Excel, JSON, XML)"
+    )
+    file_category = serializers.ChoiceField(
+        choices=[
+            ('auto', 'Auto-detect'),
+            ('repertoire', 'Repertoire/Catalog'),
+            ('usage_report', 'Usage Report'),
+            ('royalty_data', 'Royalty Data'),
+            ('partner_data', 'Partner Data')
+        ],
+        default='auto',
+        help_text="Category of financial data"
+    )
+    encrypt_storage = serializers.BooleanField(
+        default=True,
+        help_text="Whether to encrypt the stored file"
+    )
+    process_async = serializers.BooleanField(
+        default=True,
+        help_text="Whether to process the file asynchronously"
+    )
+    
+    def validate_file(self, value):
+        """Validate file size and type"""
+        # Basic validation - detailed validation happens in the service
+        max_size = 100 * 1024 * 1024  # 100MB
+        if value.size > max_size:
+            raise serializers.ValidationError(f"File size exceeds maximum allowed size of {max_size} bytes")
+        
+        allowed_types = {
+            'text/csv', 'application/csv', 'text/plain',
+            'application/vnd.ms-excel', 
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'application/json', 'text/json',
+            'application/xml', 'text/xml'
+        }
+        
+        if value.content_type not in allowed_types:
+            raise serializers.ValidationError(f"File type {value.content_type} is not allowed")
+        
+        return value
+
+
+class FileIntegrityVerificationSerializer(serializers.Serializer):
+    """Serializer for file integrity verification requests"""
+    upload_ids = serializers.ListField(
+        child=serializers.CharField(max_length=16),
+        min_length=1,
+        max_length=50,
+        help_text="List of upload IDs to verify (max 50)"
+    )
+
+
 class RoyaltyRateStructureSerializer(serializers.ModelSerializer):
     station_class_display = serializers.CharField(source='get_station_class_display', read_only=True)
     time_period_display = serializers.CharField(source='get_time_period_display', read_only=True)

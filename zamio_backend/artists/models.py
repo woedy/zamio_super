@@ -1,14 +1,103 @@
 import uuid
+import os
+import hashlib
+import mimetypes
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.db.models.signals import post_save, pre_save
 from django.core.exceptions import ValidationError
 from django.db.models import Sum
+from django.utils import timezone
 
 from core.utils import unique_artist_id_generator, unique_contributor_id_generator, unique_track_id_generator
 from fan.models import Fan
 
 User = get_user_model()
+
+
+def validate_audio_file_size(file):
+    """Validate audio file size - max 100MB"""
+    max_size = 100 * 1024 * 1024  # 100MB
+    if file.size > max_size:
+        raise ValidationError(f'Audio file size cannot exceed {max_size // (1024*1024)}MB')
+
+
+def validate_audio_file_type(file):
+    """Validate audio file type for security"""
+    allowed_types = {
+        'audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/flac',
+        'audio/mp4', 'audio/aac', 'audio/ogg'
+    }
+    
+    content_type = file.content_type or mimetypes.guess_type(file.name)[0]
+    if content_type not in allowed_types:
+        raise ValidationError(f'Audio file type {content_type} is not allowed')
+    
+    # Check file extension
+    _, ext = os.path.splitext(file.name.lower())
+    dangerous_extensions = {'.exe', '.bat', '.cmd', '.php', '.js', '.py'}
+    if ext in dangerous_extensions:
+        raise ValidationError(f'File extension {ext} is not allowed for security reasons')
+
+
+def validate_image_file_size(file):
+    """Validate image file size - max 10MB"""
+    max_size = 10 * 1024 * 1024  # 10MB
+    if file.size > max_size:
+        raise ValidationError(f'Image file size cannot exceed {max_size // (1024*1024)}MB')
+
+
+def validate_image_file_type(file):
+    """Validate image file type for security"""
+    allowed_types = {'image/jpeg', 'image/png', 'image/webp', 'image/gif'}
+    
+    content_type = file.content_type or mimetypes.guess_type(file.name)[0]
+    if content_type not in allowed_types:
+        raise ValidationError(f'Image file type {content_type} is not allowed')
+    
+    # Basic image validation
+    if hasattr(file, 'content_type') and file.content_type.startswith('image/'):
+        try:
+            from PIL import Image
+            file.seek(0)
+            img = Image.open(file)
+            img.verify()
+            file.seek(0)
+        except Exception:
+            raise ValidationError('Invalid or corrupted image file')
+
+
+def secure_audio_upload_path(instance, filename):
+    """Generate secure upload path for audio files"""
+    name, ext = os.path.splitext(filename)
+    safe_name = "".join(c for c in name if c.isalnum() or c in (' ', '-', '_')).rstrip()
+    
+    timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+    unique_id = hashlib.md5(f"{safe_name}{timestamp}".encode()).hexdigest()[:8]
+    final_filename = f"{safe_name}_{timestamp}_{unique_id}{ext}"
+    
+    artist_id = instance.artist.id if hasattr(instance, 'artist') else 'unknown'
+    return f"media/{artist_id}/audio/{final_filename}"
+
+
+def secure_image_upload_path(instance, filename):
+    """Generate secure upload path for image files"""
+    name, ext = os.path.splitext(filename)
+    safe_name = "".join(c for c in name if c.isalnum() or c in (' ', '-', '_')).rstrip()
+    
+    timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+    unique_id = hashlib.md5(f"{safe_name}{timestamp}".encode()).hexdigest()[:8]
+    final_filename = f"{safe_name}_{timestamp}_{unique_id}{ext}"
+    
+    if hasattr(instance, 'artist'):
+        artist_id = instance.artist.id
+        entity_type = 'tracks' if instance.__class__.__name__ == 'Track' else 'albums'
+    else:
+        artist_id = 'unknown'
+        entity_type = 'images'
+    
+    return f"media/{artist_id}/{entity_type}/covers/{final_filename}"
+
 
 class Artist(models.Model):
     ONBOARDING_STEPS = [
@@ -164,10 +253,18 @@ class Album(models.Model):
     title = models.CharField(max_length=255)
     artist = models.ForeignKey(Artist, on_delete=models.CASCADE)
     release_date = models.DateField(null=True, blank=True)
-    cover_art = models.ImageField(upload_to='album_covers/', default=get_default_album_cover_image)
+    cover_art = models.ImageField(
+        upload_to=secure_image_upload_path, 
+        default=get_default_album_cover_image,
+        validators=[validate_image_file_size, validate_image_file_type]
+    )
     upc_code = models.CharField(null=True, max_length=30, unique=True, help_text="Universal Product Code")
     
     publisher = models.ForeignKey('publishers.PublisherProfile', on_delete=models.SET_NULL, null=True, related_name='album_publishers')
+
+    # Enhanced security fields
+    cover_art_hash = models.CharField(max_length=64, null=True, blank=True)  # SHA-256 hash
+    last_malware_scan = models.DateTimeField(null=True, blank=True)
 
     is_archived = models.BooleanField(default=False)
     active = models.BooleanField(default=False)
@@ -176,6 +273,33 @@ class Album(models.Model):
 
     def __str__(self):
         return f"{self.title} - {self.artist.stage_name}"
+    
+    def verify_cover_art_integrity(self):
+        """Verify cover art integrity using stored hash"""
+        if not self.cover_art or not self.cover_art_hash:
+            return True  # No cover art or hash is valid
+        
+        try:
+            self.cover_art.seek(0)
+            file_content = self.cover_art.read()
+            current_hash = hashlib.sha256(file_content).hexdigest()
+            self.cover_art.seek(0)
+            return current_hash == self.cover_art_hash
+        except Exception:
+            return False
+    
+    def save(self, *args, **kwargs):
+        # Generate cover art hash if not present
+        if self.cover_art and not self.cover_art_hash:
+            try:
+                self.cover_art.seek(0)
+                file_content = self.cover_art.read()
+                self.cover_art_hash = hashlib.sha256(file_content).hexdigest()
+                self.cover_art.seek(0)
+            except Exception:
+                pass
+        
+        super().save(*args, **kwargs)
     
 
 
@@ -208,12 +332,29 @@ class Track(models.Model):
 
     album = models.ForeignKey(Album, on_delete=models.SET_NULL, null=True, blank=True)
     
-    cover_art = models.ImageField(upload_to='track_covers/', default=get_default_track_cover_image)
+    cover_art = models.ImageField(
+        upload_to=secure_image_upload_path, 
+        default=get_default_track_cover_image,
+        validators=[validate_image_file_size, validate_image_file_type]
+    )
 
-    audio_file = models.FileField(upload_to='tracks/')
+    audio_file = models.FileField(
+        upload_to=secure_audio_upload_path,
+        validators=[validate_audio_file_size, validate_audio_file_type]
+    )
     
-    audio_file_mp3 = models.FileField(upload_to='tracks/mp3/', null=True, blank=True)
-    audio_file_wav = models.FileField(upload_to='tracks/wav/', null=True, blank=True)
+    audio_file_mp3 = models.FileField(
+        upload_to=secure_audio_upload_path, 
+        null=True, 
+        blank=True,
+        validators=[validate_audio_file_size, validate_audio_file_type]
+    )
+    audio_file_wav = models.FileField(
+        upload_to=secure_audio_upload_path, 
+        null=True, 
+        blank=True,
+        validators=[validate_audio_file_size, validate_audio_file_type]
+    )
 
     release_date = models.DateField(blank=True, null=True)
     isrc_code = models.CharField(max_length=30, unique=True, null=True, blank=True, help_text="International Standard Recording Code")
@@ -224,12 +365,32 @@ class Track(models.Model):
 
     publisher = models.ForeignKey('publishers.PublisherProfile', on_delete=models.SET_NULL, null=True, related_name='track_publishers')
 
+    # Enhanced security and processing fields
+    audio_file_hash = models.CharField(max_length=64, null=True, blank=True)  # SHA-256 hash
+    cover_art_hash = models.CharField(max_length=64, null=True, blank=True)  # SHA-256 hash
+    processing_status = models.CharField(
+        max_length=20, 
+        choices=[
+            ('pending', 'Pending'),
+            ('queued', 'Queued'),
+            ('processing', 'Processing'),
+            ('completed', 'Completed'),
+            ('failed', 'Failed')
+        ],
+        default='pending'
+    )
+    processing_error = models.TextField(null=True, blank=True)
+    processed_at = models.DateTimeField(null=True, blank=True)
+    
+    # Security scanning fields
+    last_malware_scan = models.DateTimeField(null=True, blank=True)
+    is_quarantined = models.BooleanField(default=False)
+    quarantine_reason = models.TextField(null=True, blank=True)
 
     fingerprinted = models.BooleanField(default=False)
     royalty_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
     status = models.CharField(max_length=50, choices=STATUS_CHOICES, default="Pending")
-
 
     is_archived = models.BooleanField(default=False)
     active = models.BooleanField(default=False)
@@ -272,8 +433,60 @@ class Track(models.Model):
         """Check if track can be published (has valid splits and required metadata)"""
         splits_valid, _ = self.validate_contributor_splits()
         has_required_metadata = bool(self.title and self.artist and self.audio_file)
+        processing_complete = self.processing_status == 'completed'
+        not_quarantined = not self.is_quarantined
         
-        return splits_valid and has_required_metadata
+        return splits_valid and has_required_metadata and processing_complete and not_quarantined
+    
+    def verify_audio_integrity(self):
+        """Verify audio file integrity using stored hash"""
+        if not self.audio_file or not self.audio_file_hash:
+            return False
+        
+        try:
+            self.audio_file.seek(0)
+            file_content = self.audio_file.read()
+            current_hash = hashlib.sha256(file_content).hexdigest()
+            self.audio_file.seek(0)
+            return current_hash == self.audio_file_hash
+        except Exception:
+            return False
+    
+    def verify_cover_art_integrity(self):
+        """Verify cover art integrity using stored hash"""
+        if not self.cover_art or not self.cover_art_hash:
+            return True  # No cover art is valid
+        
+        try:
+            self.cover_art.seek(0)
+            file_content = self.cover_art.read()
+            current_hash = hashlib.sha256(file_content).hexdigest()
+            self.cover_art.seek(0)
+            return current_hash == self.cover_art_hash
+        except Exception:
+            return False
+    
+    def save(self, *args, **kwargs):
+        # Generate file hashes if not present
+        if self.audio_file and not self.audio_file_hash:
+            try:
+                self.audio_file.seek(0)
+                file_content = self.audio_file.read()
+                self.audio_file_hash = hashlib.sha256(file_content).hexdigest()
+                self.audio_file.seek(0)
+            except Exception:
+                pass
+        
+        if self.cover_art and not self.cover_art_hash:
+            try:
+                self.cover_art.seek(0)
+                file_content = self.cover_art.read()
+                self.cover_art_hash = hashlib.sha256(file_content).hexdigest()
+                self.cover_art.seek(0)
+            except Exception:
+                pass
+        
+        super().save(*args, **kwargs)
 
 
 

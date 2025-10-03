@@ -6,6 +6,8 @@ from datetime import datetime
 from django.conf import settings
 from django.db import transaction, models
 from django.utils.timezone import now
+from django.utils import timezone
+from django.core.exceptions import ValidationError
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.authentication import TokenAuthentication
@@ -33,6 +35,8 @@ from .serializers import (
     PartnerRemittanceSerializer,
     ImportRequestSerializer,
     UploadRepertoireSerializer,
+    SecureFinancialFileUploadSerializer,
+    FileIntegrityVerificationSerializer,
 )
 
 
@@ -179,6 +183,10 @@ def ingest_repertoire(request, partner_id: int):
 @authentication_classes([TokenAuthentication])
 @permission_classes([IsAuthenticated])
 def ingest_repertoire_upload(request, partner_id: int):
+    """Enhanced secure repertoire upload with comprehensive validation and malware scanning"""
+    from .services.file_security_service import RoyaltyFileSecurityService
+    from accounts.models import AuditLog
+    
     try:
         partner = PartnerPRO.objects.get(id=partner_id)
     except PartnerPRO.DoesNotExist:
@@ -189,50 +197,163 @@ def ingest_repertoire_upload(request, partner_id: int):
     upload = request.FILES.get("file")
     dry_run = ser.validated_data.get("dry_run", False)
 
-    created = 0
-    updated = 0
-    skipped = 0
+    if not upload:
+        return Response({"detail": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        import io, csv
-        content = upload.read().decode("utf-8", errors="ignore")
-        reader = csv.DictReader(io.StringIO(content))
-        for row in reader:
-            isrc = (row.get("isrc") or "").strip()
-            title = (row.get("title") or "").strip()
-            work_title = (row.get("work_title") or "").strip() or None
-            duration = row.get("duration_seconds")
-            duration = int(duration) if (duration and str(duration).isdigit()) else None
+        # Enhanced security validation and processing
+        security_result = RoyaltyFileSecurityService.process_secure_financial_upload(
+            user=request.user,
+            partner_id=partner_id,
+            file=upload,
+            file_category='repertoire',
+            encrypt_storage=True,
+            process_async=False  # Process synchronously for immediate response
+        )
+        
+        # If security processing successful, proceed with repertoire ingestion
+        created = 0
+        updated = 0
+        skipped = 0
 
-            if not isrc and not title:
-                skipped += 1
-                continue
-            if dry_run:
-                continue
-            work = None
-            if work_title:
-                work, _ = ExternalWork.objects.get_or_create(
-                    origin_partner=partner,
-                    title=work_title,
-                    defaults={"iswc": None},
+        try:
+            import io, csv
+            upload.seek(0)  # Reset file pointer after security processing
+            content = upload.read().decode("utf-8", errors="ignore")
+            reader = csv.DictReader(io.StringIO(content))
+            
+            # Validate required columns
+            required_columns = ['isrc', 'title']
+            if not all(col in reader.fieldnames for col in required_columns):
+                missing = [col for col in required_columns if col not in reader.fieldnames]
+                return Response(
+                    {"detail": f"Missing required columns: {', '.join(missing)}"}, 
+                    status=status.HTTP_400_BAD_REQUEST
                 )
-            obj, created_flag = ExternalRecording.objects.update_or_create(
-                origin_partner=partner,
-                isrc=isrc or None,
-                defaults={
-                    "title": title or (work_title or "Unknown"),
-                    "work": work,
-                    "duration": duration,
-                },
-            )
-            if created_flag:
-                created += 1
-            else:
-                updated += 1
-    except Exception as e:
-        return Response({"detail": f"Failed to parse CSV: {e}"}, status=status.HTTP_400_BAD_REQUEST)
+            
+            for row_num, row in enumerate(reader, 1):
+                try:
+                    isrc = (row.get("isrc") or "").strip()
+                    title = (row.get("title") or "").strip()
+                    work_title = (row.get("work_title") or "").strip() or None
+                    duration = row.get("duration_seconds")
+                    duration = int(duration) if (duration and str(duration).isdigit()) else None
 
-    return Response({"created": created, "updated": updated, "skipped": skipped, "dry_run": dry_run})
+                    if not isrc and not title:
+                        skipped += 1
+                        continue
+                    if dry_run:
+                        continue
+                        
+                    work = None
+                    if work_title:
+                        work, _ = ExternalWork.objects.get_or_create(
+                            origin_partner=partner,
+                            title=work_title,
+                            defaults={"iswc": None},
+                        )
+                    obj, created_flag = ExternalRecording.objects.update_or_create(
+                        origin_partner=partner,
+                        isrc=isrc or None,
+                        defaults={
+                            "title": title or (work_title or "Unknown"),
+                            "work": work,
+                            "duration": duration,
+                        },
+                    )
+                    if created_flag:
+                        created += 1
+                    else:
+                        updated += 1
+                        
+                except Exception as row_error:
+                    # Log row processing error but continue
+                    AuditLog.objects.create(
+                        user=request.user,
+                        action='repertoire_row_processing_error',
+                        resource_type='RepertoireUpload',
+                        resource_id=security_result['upload_id'],
+                        request_data={
+                            'row_number': row_num,
+                            'error': str(row_error),
+                            'row_data': dict(row)
+                        }
+                    )
+                    skipped += 1
+                    
+        except Exception as e:
+            # Log processing error
+            AuditLog.objects.create(
+                user=request.user,
+                action='repertoire_processing_error',
+                resource_type='RepertoireUpload',
+                resource_id=security_result['upload_id'],
+                request_data={
+                    'error': str(e),
+                    'partner_id': partner_id,
+                    'filename': upload.name
+                }
+            )
+            return Response({"detail": f"Failed to parse CSV: {e}"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Log successful processing
+        AuditLog.objects.create(
+            user=request.user,
+            action='repertoire_upload_completed',
+            resource_type='RepertoireUpload',
+            resource_id=security_result['upload_id'],
+            request_data={
+                'partner_id': partner_id,
+                'filename': upload.name,
+                'created': created,
+                'updated': updated,
+                'skipped': skipped,
+                'dry_run': dry_run,
+                'file_hash': security_result['file_hash']
+            }
+        )
+
+        return Response({
+            "created": created, 
+            "updated": updated, 
+            "skipped": skipped, 
+            "dry_run": dry_run,
+            "upload_id": security_result['upload_id'],
+            "file_hash": security_result['file_hash'],
+            "security_scan": {
+                "threats_found": security_result['scan_result']['threats_count'],
+                "is_safe": security_result['scan_result']['is_safe']
+            }
+        })
+        
+    except ValidationError as e:
+        # Log security validation error
+        AuditLog.objects.create(
+            user=request.user,
+            action='repertoire_upload_security_error',
+            resource_type='RepertoireUpload',
+            resource_id=f'partner_{partner_id}',
+            request_data={
+                'partner_id': partner_id,
+                'filename': upload.name,
+                'security_errors': e.messages if hasattr(e, 'messages') else [str(e)]
+            }
+        )
+        return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        # Log unexpected error
+        AuditLog.objects.create(
+            user=request.user,
+            action='repertoire_upload_unexpected_error',
+            resource_type='RepertoireUpload',
+            resource_id=f'partner_{partner_id}',
+            request_data={
+                'partner_id': partner_id,
+                'filename': upload.name,
+                'error': str(e)
+            }
+        )
+        return Response({"detail": f"Upload processing failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(["POST"]) 
@@ -950,5 +1071,279 @@ def get_reciprocal_payments_summary(request, cycle_id):
             'total_payable': str(total_payable),
             'currency': 'GHS',
             'total_usages': sum(p['usage_count'] for p in payments_data)
+        }
+    })
+
+
+@api_view(["POST"])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def upload_secure_financial_file(request, partner_id: int):
+    """
+    Secure upload endpoint for financial data files with enhanced validation and malware scanning
+    """
+    from .services.file_security_service import RoyaltyFileSecurityService
+    from accounts.models import AuditLog
+    
+    try:
+        partner = PartnerPRO.objects.get(id=partner_id)
+    except PartnerPRO.DoesNotExist:
+        return Response({"detail": "Partner not found"}, status=status.HTTP_404_NOT_FOUND)
+    
+    upload = request.FILES.get("file")
+    if not upload:
+        return Response({"detail": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    file_category = request.data.get("file_category", "auto")
+    encrypt_storage = request.data.get("encrypt_storage", True)
+    process_async = request.data.get("process_async", True)
+    
+    try:
+        # Process secure financial upload
+        result = RoyaltyFileSecurityService.process_secure_financial_upload(
+            user=request.user,
+            partner_id=partner_id,
+            file=upload,
+            file_category=file_category,
+            encrypt_storage=encrypt_storage,
+            process_async=process_async
+        )
+        
+        return Response({
+            "upload_id": result['upload_id'],
+            "partner_id": partner_id,
+            "filename": result['filename'],
+            "file_category": result['file_category'],
+            "processing_status": result['processing_status'],
+            "file_hash": result['file_hash'],
+            "encrypted": result['encrypted'],
+            "security_scan": result['scan_result'],
+            "validation_passed": result['validation_result']['valid'],
+            "uploaded_at": timezone.now().isoformat()
+        }, status=status.HTTP_201_CREATED)
+        
+    except ValidationError as e:
+        return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        # Log unexpected error
+        AuditLog.objects.create(
+            user=request.user,
+            action='financial_file_upload_error',
+            resource_type='FinancialFile',
+            resource_id=f'partner_{partner_id}',
+            request_data={
+                'partner_id': partner_id,
+                'filename': upload.name,
+                'error': str(e)
+            }
+        )
+        return Response({"detail": f"Upload failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["GET"])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def get_financial_file_status(request, upload_id: str):
+    """
+    Get processing status of a financial file upload
+    """
+    from accounts.models import AuditLog
+    
+    # Find the upload record in audit logs
+    upload_log = AuditLog.objects.filter(
+        action='financial_file_uploaded',
+        resource_id=upload_id
+    ).first()
+    
+    if not upload_log:
+        return Response({"detail": "Upload not found"}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Find processing status
+    processing_log = AuditLog.objects.filter(
+        action__in=['financial_file_processed', 'financial_file_processing_failed'],
+        resource_id=upload_id
+    ).order_by('-created_at').first()
+    
+    status_info = {
+        'upload_id': upload_id,
+        'filename': upload_log.request_data.get('filename'),
+        'partner_id': upload_log.request_data.get('partner_id'),
+        'file_category': upload_log.request_data.get('file_category'),
+        'uploaded_at': upload_log.created_at.isoformat(),
+        'uploaded_by': upload_log.user.email if upload_log.user else 'System',
+        'processing_status': upload_log.request_data.get('processing_status', 'unknown')
+    }
+    
+    if processing_log:
+        status_info.update({
+            'processing_status': processing_log.request_data.get('processing_result', 'unknown'),
+            'processed_at': processing_log.created_at.isoformat(),
+            'processing_error': processing_log.request_data.get('error')
+        })
+    
+    return Response(status_info)
+
+
+@api_view(["GET"])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def get_financial_file_audit_trail(request):
+    """
+    Get audit trail for financial file operations
+    """
+    from accounts.models import AuditLog
+    
+    partner_id = request.GET.get('partner_id')
+    file_category = request.GET.get('file_category')
+    limit = int(request.GET.get('limit', 50))
+    
+    # Build query
+    queryset = AuditLog.objects.filter(
+        action__in=[
+            'financial_file_uploaded',
+            'financial_file_processed',
+            'financial_file_processing_failed',
+            'financial_file_threat_detected',
+            'repertoire_upload_completed'
+        ]
+    )
+    
+    if partner_id:
+        queryset = queryset.filter(
+            models.Q(request_data__partner_id=int(partner_id)) |
+            models.Q(resource_id__contains=f'partner_{partner_id}')
+        )
+    
+    if file_category:
+        queryset = queryset.filter(request_data__file_category=file_category)
+    
+    audit_logs = queryset.order_by('-created_at')[:limit]
+    
+    audit_data = []
+    for log in audit_logs:
+        audit_data.append({
+            'id': log.id,
+            'action': log.action,
+            'resource_id': log.resource_id,
+            'user': log.user.email if log.user else 'System',
+            'timestamp': log.created_at.isoformat(),
+            'details': {
+                'partner_id': log.request_data.get('partner_id'),
+                'filename': log.request_data.get('filename'),
+                'file_category': log.request_data.get('file_category'),
+                'processing_status': log.request_data.get('processing_status'),
+                'threats_found': log.request_data.get('threats', []),
+                'error': log.request_data.get('error')
+            }
+        })
+    
+    return Response({
+        'audit_trail': audit_data,
+        'total_count': queryset.count(),
+        'limit': limit,
+        'filters': {
+            'partner_id': partner_id,
+            'file_category': file_category
+        }
+    })
+
+
+@api_view(["POST"])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def verify_financial_file_integrity(request):
+    """
+    Verify integrity of stored financial files
+    """
+    from .services.file_security_service import RoyaltyFileSecurityService
+    from .services.encryption_service import RoyaltyFileEncryption
+    from accounts.models import AuditLog
+    
+    upload_ids = request.data.get('upload_ids', [])
+    if not upload_ids:
+        return Response({"detail": "upload_ids required"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    verification_results = []
+    
+    for upload_id in upload_ids:
+        # Find the upload record
+        upload_log = AuditLog.objects.filter(
+            action='financial_file_uploaded',
+            resource_id=upload_id
+        ).first()
+        
+        if not upload_log:
+            verification_results.append({
+                'upload_id': upload_id,
+                'status': 'not_found',
+                'error': 'Upload record not found'
+            })
+            continue
+        
+        try:
+            stored_path = upload_log.request_data.get('stored_path')
+            expected_hash = upload_log.request_data.get('file_hash')
+            encrypted = upload_log.request_data.get('encrypted', False)
+            
+            if not stored_path or not os.path.exists(stored_path):
+                verification_results.append({
+                    'upload_id': upload_id,
+                    'status': 'file_missing',
+                    'error': 'Stored file not found'
+                })
+                continue
+            
+            # Verify file integrity
+            if encrypted:
+                # For encrypted files, we need to decrypt temporarily to verify
+                temp_path = stored_path.replace('.enc', '.verify_tmp')
+                if RoyaltyFileEncryption.decrypt_file(stored_path, temp_path):
+                    integrity_ok = RoyaltyFileEncryption.verify_file_integrity(temp_path, expected_hash)
+                    os.unlink(temp_path)  # Clean up
+                else:
+                    integrity_ok = False
+            else:
+                integrity_ok = RoyaltyFileEncryption.verify_file_integrity(stored_path, expected_hash)
+            
+            verification_results.append({
+                'upload_id': upload_id,
+                'status': 'verified' if integrity_ok else 'integrity_failed',
+                'filename': upload_log.request_data.get('filename'),
+                'encrypted': encrypted,
+                'file_exists': True,
+                'integrity_check': integrity_ok,
+                'verified_at': timezone.now().isoformat()
+            })
+            
+        except Exception as e:
+            verification_results.append({
+                'upload_id': upload_id,
+                'status': 'verification_error',
+                'error': str(e)
+            })
+    
+    # Log verification activity
+    AuditLog.objects.create(
+        user=request.user,
+        action='financial_files_integrity_verified',
+        resource_type='FinancialFile',
+        resource_id='batch_verification',
+        request_data={
+            'upload_ids': upload_ids,
+            'results_summary': {
+                'total_checked': len(verification_results),
+                'verified': len([r for r in verification_results if r['status'] == 'verified']),
+                'failed': len([r for r in verification_results if r['status'] != 'verified'])
+            }
+        }
+    )
+    
+    return Response({
+        'verification_results': verification_results,
+        'summary': {
+            'total_checked': len(verification_results),
+            'verified': len([r for r in verification_results if r['status'] == 'verified']),
+            'failed': len([r for r in verification_results if r['status'] != 'verified']),
+            'verified_at': timezone.now().isoformat()
         }
     })

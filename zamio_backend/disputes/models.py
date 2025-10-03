@@ -83,9 +83,45 @@ class Dispute(models.Model):
         super().save(*args, **kwargs)
 
 
+def secure_evidence_upload_path(instance, filename):
+    """Generate secure file upload path for dispute evidence with user isolation"""
+    from django.utils import timezone
+    import uuid
+    import os
+    
+    # Sanitize filename
+    name, ext = os.path.splitext(filename)
+    safe_name = "".join(c for c in name if c.isalnum() or c in (' ', '-', '_')).rstrip()
+    
+    # Generate unique filename with timestamp
+    timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+    unique_id = uuid.uuid4().hex[:8]
+    final_filename = f"{safe_name}_{timestamp}_{unique_id}{ext}"
+    
+    # Create secure path with dispute and user isolation
+    dispute_id = instance.dispute.id
+    user_id = instance.uploaded_by.id
+    return f"dispute_evidence/{dispute_id}/{user_id}/{final_filename}"
+
+
+def validate_evidence_file(file):
+    """Validate evidence file using the security service"""
+    from disputes.services.evidence_security_service import EvidenceFileValidator
+    
+    # Get dispute_id from the instance (will be set during model save)
+    dispute_id = getattr(file, 'dispute_id', 0)
+    
+    try:
+        validation_result = EvidenceFileValidator.validate_evidence_file(file, dispute_id)
+        return validation_result
+    except Exception as e:
+        from django.core.exceptions import ValidationError
+        raise ValidationError(f"File validation failed: {str(e)}")
+
+
 class DisputeEvidence(models.Model):
     """
-    Evidence and documentation attached to disputes
+    Evidence and documentation attached to disputes with enhanced security
     """
     dispute = models.ForeignKey(Dispute, on_delete=models.CASCADE, related_name='evidence')
     uploaded_by = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -93,10 +129,32 @@ class DisputeEvidence(models.Model):
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     
-    # File attachments
-    file = models.FileField(upload_to='dispute_evidence/', null=True, blank=True)
-    file_type = models.CharField(max_length=50, blank=True)  # audio, image, document, etc.
+    # Enhanced file attachments with security
+    file = models.FileField(
+        upload_to=secure_evidence_upload_path, 
+        null=True, 
+        blank=True,
+        validators=[validate_evidence_file]
+    )
+    file_type = models.CharField(max_length=100, blank=True)  # MIME type
     file_size = models.PositiveIntegerField(null=True, blank=True)
+    file_hash = models.CharField(max_length=64, blank=True)  # SHA-256 hash for integrity
+    file_category = models.CharField(
+        max_length=20, 
+        choices=[
+            ('document', 'Document'),
+            ('image', 'Image'),
+            ('audio', 'Audio'),
+            ('video', 'Video'),
+        ],
+        blank=True
+    )
+    
+    # Security and access tracking
+    access_count = models.PositiveIntegerField(default=0)
+    last_accessed = models.DateTimeField(null=True, blank=True)
+    is_quarantined = models.BooleanField(default=False)
+    quarantine_reason = models.TextField(blank=True)
     
     # Text evidence
     text_content = models.TextField(blank=True)
@@ -104,13 +162,109 @@ class DisputeEvidence(models.Model):
     # External references
     external_url = models.URLField(blank=True)
     
+    # Retention policy tracking
+    retention_policy = models.CharField(max_length=50, blank=True)
+    delete_after = models.DateTimeField(null=True, blank=True)
+    
     uploaded_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
         ordering = ['-uploaded_at']
+        indexes = [
+            models.Index(fields=['dispute', 'uploaded_at']),
+            models.Index(fields=['uploaded_by', 'uploaded_at']),
+            models.Index(fields=['file_hash']),
+            models.Index(fields=['is_quarantined']),
+            models.Index(fields=['delete_after']),
+        ]
     
     def __str__(self):
         return f"Evidence: {self.title} for {self.dispute.dispute_id}"
+    
+    def save(self, *args, **kwargs):
+        # Set dispute_id for file validation
+        if self.file and hasattr(self.file, 'file'):
+            self.file.file.dispute_id = self.dispute_id if self.dispute_id else 0
+        
+        # Validate and process file if it's new or changed
+        if self.file and (not self.pk or 'file' in kwargs.get('update_fields', [])):
+            self._process_file_upload()
+        
+        # Update retention policy
+        self._update_retention_policy()
+        
+        super().save(*args, **kwargs)
+    
+    def _process_file_upload(self):
+        """Process file upload with security validation"""
+        from disputes.services.evidence_security_service import EvidenceFileValidator
+        
+        try:
+            # Validate file
+            validation_result = EvidenceFileValidator.validate_evidence_file(
+                self.file, 
+                self.dispute_id if self.dispute_id else 0
+            )
+            
+            # Store validation results
+            self.file_type = validation_result['mime_type']
+            self.file_size = validation_result['file_size']
+            self.file_hash = validation_result['sha256_hash']
+            self.file_category = validation_result['file_category']
+            
+        except Exception as e:
+            # If validation fails, quarantine the file
+            self.is_quarantined = True
+            self.quarantine_reason = f"File validation failed: {str(e)}"
+    
+    def _update_retention_policy(self):
+        """Update retention policy based on dispute status"""
+        from disputes.services.evidence_security_service import EvidenceRetentionService
+        
+        if self.dispute:
+            policy = EvidenceRetentionService.get_retention_policy(
+                self.dispute.status,
+                self.dispute.resolved_at
+            )
+            self.retention_policy = policy['policy']
+            self.delete_after = policy['delete_after']
+    
+    def verify_file_integrity(self) -> bool:
+        """Verify file integrity using stored hash"""
+        if not self.file or not self.file_hash:
+            return True  # No file or hash to verify
+        
+        try:
+            import hashlib
+            self.file.seek(0)
+            content = self.file.read()
+            self.file.seek(0)
+            
+            current_hash = hashlib.sha256(content).hexdigest()
+            return current_hash == self.file_hash
+            
+        except Exception:
+            return False
+    
+    def increment_access_count(self):
+        """Increment access count and update last accessed time"""
+        from django.utils import timezone
+        self.access_count += 1
+        self.last_accessed = timezone.now()
+        self.save(update_fields=['access_count', 'last_accessed'])
+    
+    def quarantine_file(self, reason: str):
+        """Quarantine the evidence file"""
+        self.is_quarantined = True
+        self.quarantine_reason = reason
+        self.save(update_fields=['is_quarantined', 'quarantine_reason'])
+    
+    def unquarantine_file(self):
+        """Remove quarantine from the evidence file"""
+        self.is_quarantined = False
+        self.quarantine_reason = ''
+        self.save(update_fields=['is_quarantined', 'quarantine_reason'])
 
 
 class DisputeAuditLog(models.Model):

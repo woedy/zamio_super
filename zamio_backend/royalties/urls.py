@@ -39,4 +39,10 @@ urlpatterns = [
     path("cycles/<int:cycle_id>/process-reciprocal/", views.process_reciprocal_cycle),
     path("generate-pro-report/", views.generate_pro_report),
     path("cycles/<int:cycle_id>/reciprocal-summary/", views.get_reciprocal_payments_summary),
+    
+    # Secure Financial File Processing
+    path("partners/<int:partner_id>/upload-secure/", views.upload_secure_financial_file),
+    path("files/<str:upload_id>/status/", views.get_financial_file_status),
+    path("files/audit-trail/", views.get_financial_file_audit_trail),
+    path("files/verify-integrity/", views.verify_financial_file_integrity),
 ]

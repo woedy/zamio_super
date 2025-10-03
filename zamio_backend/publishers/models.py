@@ -1,10 +1,51 @@
 import uuid
+import hashlib
+import os
 from django.db import models
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
+from django.utils import timezone
+from django.core.files.storage import default_storage
 
 
 
 User = get_user_model()
+
+
+def secure_contract_upload_path(instance, filename):
+    """Generate secure upload path for contract files with user isolation"""
+    # Sanitize filename
+    name, ext = os.path.splitext(filename)
+    safe_name = "".join(c for c in name if c.isalnum() or c in (' ', '-', '_')).strip()
+    safe_filename = f"{safe_name}{ext}"
+    
+    # Create path with user isolation and date organization
+    if hasattr(instance, 'publisher'):
+        publisher_id = instance.publisher.publisher_id or instance.publisher.id
+    else:
+        publisher_id = 'unknown'
+    
+    date_path = timezone.now().strftime('%Y/%m')
+    return f'contracts/{publisher_id}/{date_path}/{safe_filename}'
+
+
+def validate_contract_file(file):
+    """Validate contract file upload"""
+    from publishers.services.contract_security_service import ContractFileValidator
+    
+    if file:
+        try:
+            # Get publisher ID for validation context
+            publisher_id = 0  # Default, will be set by the calling model
+            validation_result = ContractFileValidator.validate_contract_file(file, publisher_id)
+            
+            if not validation_result['is_valid']:
+                raise ValidationError("Contract file validation failed")
+                
+        except ValidationError as e:
+            raise e
+        except Exception as e:
+            raise ValidationError(f"Contract file validation error: {str(e)}")
 
 
 
@@ -93,7 +134,47 @@ class PublishingAgreement(models.Model):
     writer_share = models.DecimalField(max_digits=5, decimal_places=2)
     publisher_share = models.DecimalField(max_digits=5, decimal_places=2)
 
-    contract_file = models.FileField(upload_to='contracts/', blank=True)
+    # Enhanced contract file field with security
+    contract_file = models.FileField(
+        upload_to=secure_contract_upload_path, 
+        blank=True,
+        validators=[validate_contract_file],
+        help_text="Upload contract document (PDF, DOC, DOCX, or image files only)"
+    )
+    
+    # File security and integrity fields
+    file_hash = models.CharField(max_length=64, blank=True, help_text="SHA-256 hash for file integrity")
+    file_size = models.PositiveIntegerField(default=0, help_text="File size in bytes")
+    file_type = models.CharField(max_length=100, blank=True, help_text="MIME type of the file")
+    original_filename = models.CharField(max_length=255, blank=True, help_text="Original filename")
+    
+    # Version tracking
+    version = models.PositiveIntegerField(default=1, help_text="Contract version number")
+    previous_version = models.ForeignKey(
+        'self', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='newer_versions',
+        help_text="Reference to previous version of this contract"
+    )
+    
+    # Access tracking
+    access_count = models.PositiveIntegerField(default=0, help_text="Number of times file has been accessed")
+    last_accessed = models.DateTimeField(null=True, blank=True, help_text="Last time file was accessed")
+    
+    # Security flags
+    is_quarantined = models.BooleanField(default=False, help_text="File quarantined for security reasons")
+    quarantine_reason = models.TextField(blank=True, help_text="Reason for quarantine")
+    quarantined_at = models.DateTimeField(null=True, blank=True)
+    quarantined_by = models.ForeignKey(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='quarantined_agreements'
+    )
+
     verified_by_admin = models.BooleanField(default=False)
 
     agreement_date = models.DateField(auto_now_add=True)
@@ -103,6 +184,131 @@ class PublishingAgreement(models.Model):
     active = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['publisher', 'status']),
+            models.Index(fields=['songwriter', 'status']),
+            models.Index(fields=['track', 'status']),
+            models.Index(fields=['version', 'created_at']),
+        ]
+    
+    def save(self, *args, **kwargs):
+        """Override save to handle file security processing"""
+        if self.contract_file and self.contract_file.name:
+            # Process file security if it's a new file
+            if not self.file_hash or self._state.adding:
+                self._process_file_security()
+        
+        super().save(*args, **kwargs)
+    
+    def _process_file_security(self):
+        """Process file for security metadata"""
+        if self.contract_file:
+            try:
+                # Calculate file hash
+                self.contract_file.seek(0)
+                file_content = self.contract_file.read()
+                self.contract_file.seek(0)
+                
+                self.file_hash = hashlib.sha256(file_content).hexdigest()
+                self.file_size = len(file_content)
+                
+                # Store original filename
+                if hasattr(self.contract_file, 'name'):
+                    self.original_filename = os.path.basename(self.contract_file.name)
+                
+                # Detect file type
+                import mimetypes
+                self.file_type, _ = mimetypes.guess_type(self.contract_file.name)
+                if not self.file_type:
+                    self.file_type = 'application/octet-stream'
+                    
+            except Exception as e:
+                # Log error but don't fail the save
+                pass
+    
+    def verify_file_integrity(self) -> bool:
+        """Verify file integrity using stored hash"""
+        if not self.contract_file or not self.file_hash:
+            return True  # No file or hash to verify
+        
+        try:
+            self.contract_file.seek(0)
+            content = self.contract_file.read()
+            self.contract_file.seek(0)
+            
+            current_hash = hashlib.sha256(content).hexdigest()
+            return current_hash == self.file_hash
+            
+        except Exception:
+            return False
+    
+    def quarantine_file(self, reason: str, quarantined_by: User = None):
+        """Quarantine the contract file for security reasons"""
+        self.is_quarantined = True
+        self.quarantine_reason = reason
+        self.quarantined_at = timezone.now()
+        self.quarantined_by = quarantined_by
+        self.save()
+    
+    def unquarantine_file(self):
+        """Remove quarantine from the contract file"""
+        self.is_quarantined = False
+        self.quarantine_reason = ''
+        self.quarantined_at = None
+        self.quarantined_by = None
+        self.save()
+    
+    def increment_access_count(self):
+        """Increment access count and update last accessed time"""
+        self.access_count += 1
+        self.last_accessed = timezone.now()
+        self.save(update_fields=['access_count', 'last_accessed'])
+    
+    def create_new_version(self, new_file, updated_by: User = None):
+        """Create a new version of this contract"""
+        # Create new agreement with incremented version
+        new_agreement = PublishingAgreement.objects.create(
+            publisher=self.publisher,
+            songwriter=self.songwriter,
+            track=self.track,
+            writer_share=self.writer_share,
+            publisher_share=self.publisher_share,
+            contract_file=new_file,
+            version=self.version + 1,
+            previous_version=self,
+            status='pending',
+            verified_by_admin=False
+        )
+        
+        return new_agreement
+    
+    def get_version_history(self):
+        """Get all versions of this contract"""
+        versions = []
+        current = self
+        
+        # Get newer versions
+        newer_versions = PublishingAgreement.objects.filter(
+            previous_version=self
+        ).order_by('version')
+        
+        # Get older versions
+        while current.previous_version:
+            versions.insert(0, current.previous_version)
+            current = current.previous_version
+        
+        # Add current version
+        versions.append(self)
+        
+        # Add newer versions
+        versions.extend(newer_versions)
+        
+        return versions
+    
+    def __str__(self):
+        return f"Agreement {self.publisher.company_name} - {self.songwriter.stage_name} (v{self.version})"
 
 
 class PublisherArtistRelationship(models.Model):
@@ -136,7 +342,47 @@ class PublisherArtistRelationship(models.Model):
     # Contract details
     start_date = models.DateField()
     end_date = models.DateField(null=True, blank=True)
-    contract_file = models.FileField(upload_to='publisher_contracts/', blank=True)
+    
+    # Enhanced contract file field with security
+    contract_file = models.FileField(
+        upload_to=secure_contract_upload_path, 
+        blank=True,
+        validators=[validate_contract_file],
+        help_text="Upload contract document (PDF, DOC, DOCX, or image files only)"
+    )
+    
+    # File security and integrity fields
+    file_hash = models.CharField(max_length=64, blank=True, help_text="SHA-256 hash for file integrity")
+    file_size = models.PositiveIntegerField(default=0, help_text="File size in bytes")
+    file_type = models.CharField(max_length=100, blank=True, help_text="MIME type of the file")
+    original_filename = models.CharField(max_length=255, blank=True, help_text="Original filename")
+    
+    # Version tracking
+    version = models.PositiveIntegerField(default=1, help_text="Contract version number")
+    previous_version = models.ForeignKey(
+        'self', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='newer_versions',
+        help_text="Reference to previous version of this contract"
+    )
+    
+    # Access tracking
+    access_count = models.PositiveIntegerField(default=0, help_text="Number of times file has been accessed")
+    last_accessed = models.DateTimeField(null=True, blank=True, help_text="Last time file was accessed")
+    
+    # Security flags
+    is_quarantined = models.BooleanField(default=False, help_text="File quarantined for security reasons")
+    quarantine_reason = models.TextField(blank=True, help_text="Reason for quarantine")
+    quarantined_at = models.DateTimeField(null=True, blank=True)
+    quarantined_by = models.ForeignKey(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='quarantined_relationships'
+    )
     
     # Status and approval
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
@@ -208,5 +454,123 @@ class PublisherArtistRelationship(models.Model):
             raise ValidationError('End date must be after start date')
     
     def save(self, *args, **kwargs):
+        """Override save to handle file security processing"""
+        if self.contract_file and self.contract_file.name:
+            # Process file security if it's a new file
+            if not self.file_hash or self._state.adding:
+                self._process_file_security()
+        
         self.clean()
         super().save(*args, **kwargs)
+    
+    def _process_file_security(self):
+        """Process file for security metadata"""
+        if self.contract_file:
+            try:
+                # Calculate file hash
+                self.contract_file.seek(0)
+                file_content = self.contract_file.read()
+                self.contract_file.seek(0)
+                
+                self.file_hash = hashlib.sha256(file_content).hexdigest()
+                self.file_size = len(file_content)
+                
+                # Store original filename
+                if hasattr(self.contract_file, 'name'):
+                    self.original_filename = os.path.basename(self.contract_file.name)
+                
+                # Detect file type
+                import mimetypes
+                self.file_type, _ = mimetypes.guess_type(self.contract_file.name)
+                if not self.file_type:
+                    self.file_type = 'application/octet-stream'
+                    
+            except Exception as e:
+                # Log error but don't fail the save
+                pass
+    
+    def verify_file_integrity(self) -> bool:
+        """Verify file integrity using stored hash"""
+        if not self.contract_file or not self.file_hash:
+            return True  # No file or hash to verify
+        
+        try:
+            self.contract_file.seek(0)
+            content = self.contract_file.read()
+            self.contract_file.seek(0)
+            
+            current_hash = hashlib.sha256(content).hexdigest()
+            return current_hash == self.file_hash
+            
+        except Exception:
+            return False
+    
+    def quarantine_file(self, reason: str, quarantined_by: User = None):
+        """Quarantine the contract file for security reasons"""
+        self.is_quarantined = True
+        self.quarantine_reason = reason
+        self.quarantined_at = timezone.now()
+        self.quarantined_by = quarantined_by
+        self.save()
+    
+    def unquarantine_file(self):
+        """Remove quarantine from the contract file"""
+        self.is_quarantined = False
+        self.quarantine_reason = ''
+        self.quarantined_at = None
+        self.quarantined_by = None
+        self.save()
+    
+    def increment_access_count(self):
+        """Increment access count and update last accessed time"""
+        self.access_count += 1
+        self.last_accessed = timezone.now()
+        self.save(update_fields=['access_count', 'last_accessed'])
+    
+    def create_new_version(self, new_file, updated_by: User = None):
+        """Create a new version of this contract"""
+        # Create new relationship with incremented version
+        new_relationship = PublisherArtistRelationship.objects.create(
+            publisher=self.publisher,
+            artist=self.artist,
+            relationship_type=self.relationship_type,
+            territory=self.territory,
+            worldwide=self.worldwide,
+            royalty_split_percentage=self.royalty_split_percentage,
+            advance_amount=self.advance_amount,
+            start_date=self.start_date,
+            end_date=self.end_date,
+            contract_file=new_file,
+            version=self.version + 1,
+            previous_version=self,
+            status='pending',
+            approved_by_admin=False,
+            approved_by_artist=False,
+            created_by=updated_by,
+            notes=self.notes
+        )
+        
+        return new_relationship
+    
+    def get_version_history(self):
+        """Get all versions of this contract"""
+        versions = []
+        current = self
+        
+        # Get newer versions
+        newer_versions = PublisherArtistRelationship.objects.filter(
+            previous_version=self
+        ).order_by('version')
+        
+        # Get older versions
+        while current.previous_version:
+            versions.insert(0, current.previous_version)
+            current = current.previous_version
+        
+        # Add current version
+        versions.append(self)
+        
+        # Add newer versions
+        versions.extend(newer_versions)
+        
+        return versions

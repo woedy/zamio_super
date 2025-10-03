@@ -19,22 +19,96 @@ class UserBasicSerializer(serializers.ModelSerializer):
 
 class DisputeEvidenceSerializer(serializers.ModelSerializer):
     uploaded_by = UserBasicSerializer(read_only=True)
-    file_url = serializers.SerializerMethodField()
+    secure_url = serializers.SerializerMethodField()
+    file_integrity_status = serializers.SerializerMethodField()
+    retention_info = serializers.SerializerMethodField()
     
     class Meta:
         model = DisputeEvidence
         fields = [
-            'id', 'title', 'description', 'file', 'file_url', 'file_type',
-            'file_size', 'text_content', 'external_url', 'uploaded_by', 'uploaded_at'
+            'id', 'title', 'description', 'file_type', 'file_size', 'file_category',
+            'file_hash', 'access_count', 'last_accessed', 'is_quarantined',
+            'quarantine_reason', 'text_content', 'external_url', 'uploaded_by',
+            'uploaded_at', 'updated_at', 'secure_url', 'file_integrity_status',
+            'retention_info', 'retention_policy', 'delete_after'
         ]
-        read_only_fields = ['id', 'uploaded_by', 'uploaded_at', 'file_size']
+        read_only_fields = [
+            'id', 'uploaded_by', 'uploaded_at', 'updated_at', 'file_size',
+            'file_hash', 'file_category', 'access_count', 'last_accessed',
+            'secure_url', 'file_integrity_status', 'retention_info'
+        ]
     
-    def get_file_url(self, obj):
-        if obj.file:
+    def get_secure_url(self, obj):
+        """Get secure URL for evidence file download"""
+        if obj.file and not obj.is_quarantined:
             request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.file.url)
+            if request and request.user:
+                try:
+                    from disputes.services.evidence_security_service import EvidenceAccessService
+                    
+                    # Check if user has access
+                    if EvidenceAccessService.check_evidence_access_permission(request.user, obj.id):
+                        url_data = EvidenceAccessService.get_secure_evidence_url(request.user, obj.id)
+                        return url_data['evidence_url']
+                except Exception:
+                    pass
         return None
+    
+    def get_file_integrity_status(self, obj):
+        """Get file integrity verification status"""
+        if obj.file and obj.file_hash:
+            try:
+                is_valid = obj.verify_file_integrity()
+                return {
+                    'verified': is_valid,
+                    'hash': obj.file_hash,
+                    'last_checked': obj.updated_at.isoformat() if obj.updated_at else None
+                }
+            except Exception:
+                return {
+                    'verified': False,
+                    'hash': obj.file_hash,
+                    'error': 'Verification failed'
+                }
+        return None
+    
+    def get_retention_info(self, obj):
+        """Get retention policy information"""
+        if obj.retention_policy:
+            return {
+                'policy': obj.retention_policy,
+                'delete_after': obj.delete_after.isoformat() if obj.delete_after else None,
+                'days_remaining': self._calculate_days_remaining(obj.delete_after) if obj.delete_after else None
+            }
+        return None
+    
+    def _calculate_days_remaining(self, delete_after):
+        """Calculate days remaining until deletion"""
+        if delete_after:
+            from django.utils import timezone
+            delta = delete_after - timezone.now()
+            return max(0, delta.days)
+        return None
+    
+    def to_representation(self, instance):
+        """Customize representation based on user permissions"""
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+        
+        # Hide sensitive information for non-admin users
+        if request and request.user and not (request.user.is_staff or request.user.admin):
+            # Remove file hash for security
+            data.pop('file_hash', None)
+            
+            # Hide quarantine details if not quarantined
+            if not instance.is_quarantined:
+                data.pop('quarantine_reason', None)
+        
+        # Remove secure_url if file is quarantined
+        if instance.is_quarantined:
+            data['secure_url'] = None
+        
+        return data
 
 
 class DisputeCommentSerializer(serializers.ModelSerializer):

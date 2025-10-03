@@ -1,7 +1,12 @@
 import uuid
+import os
+import hashlib
+import mimetypes
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.db.models.signals import post_save, pre_save
+from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 from core.utils import unique_station_id_generator
 
@@ -10,6 +15,70 @@ User = get_user_model()
 
 def get_default_station_image():
     return "defaults/default_profile_image.png"
+
+
+def validate_station_image_size(file):
+    """Validate station image file size - max 5MB"""
+    max_size = 5 * 1024 * 1024  # 5MB
+    if file.size > max_size:
+        raise ValidationError(f'Image size cannot exceed {max_size // (1024*1024)}MB')
+
+
+def validate_station_image_type(file):
+    """Validate station image file type for security"""
+    allowed_types = {'image/jpeg', 'image/png', 'image/gif', 'image/webp'}
+    
+    # Dangerous file extensions to block
+    dangerous_extensions = {
+        '.exe', '.bat', '.cmd', '.com', '.pif', '.scr', '.vbs', '.js',
+        '.jar', '.php', '.asp', '.aspx', '.jsp', '.py', '.rb', '.pl',
+        '.sh', '.ps1', '.msi', '.deb', '.rpm', '.svg'  # SVG can contain scripts
+    }
+    
+    if hasattr(file, 'content_type'):
+        content_type = file.content_type
+    else:
+        content_type, _ = mimetypes.guess_type(file.name)
+    
+    # Check file extension
+    _, ext = os.path.splitext(file.name.lower())
+    if ext in dangerous_extensions:
+        raise ValidationError(f'File extension {ext} is not allowed for security reasons')
+    
+    # Check content type
+    if content_type not in allowed_types:
+        raise ValidationError(f'Image type {content_type} is not allowed')
+    
+    # Check for null bytes in filename (security issue)
+    if '\x00' in file.name:
+        raise ValidationError('File name contains invalid characters')
+    
+    # Basic image content validation
+    if content_type and content_type.startswith('image/'):
+        try:
+            from PIL import Image
+            file.seek(0)
+            img = Image.open(file)
+            img.verify()  # Verify it's a valid image
+            file.seek(0)
+        except Exception:
+            raise ValidationError('Invalid image file or corrupted image')
+
+
+def secure_station_image_path(instance, filename):
+    """Generate secure file upload path for station images"""
+    # Sanitize filename
+    name, ext = os.path.splitext(filename)
+    safe_name = "".join(c for c in name if c.isalnum() or c in (' ', '-', '_')).rstrip()
+    
+    # Generate unique filename with timestamp
+    timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+    unique_id = uuid.uuid4().hex[:8]
+    final_filename = f"{safe_name}_{timestamp}_{unique_id}{ext}"
+    
+    # Create station-specific path
+    station_id = instance.station_id or 'temp'
+    return f"stations/photos/{station_id}/{final_filename}"
 
 
 
@@ -42,7 +111,13 @@ class Station(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='station_user')
 
     name = models.CharField(max_length=100)
-    photo = models.ImageField(upload_to='stations/', null=True, blank=True, default=get_default_station_image)
+    photo = models.ImageField(
+        upload_to=secure_station_image_path, 
+        null=True, 
+        blank=True, 
+        default=get_default_station_image,
+        validators=[validate_station_image_size, validate_station_image_type]
+    )
     phone = models.CharField(max_length=255, null=True, blank=True)
     
     city = models.CharField(max_length=255, null=True, blank=True)

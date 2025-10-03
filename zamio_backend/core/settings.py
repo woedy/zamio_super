@@ -80,6 +80,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "django_celery_beat",
 
+    "core",
     "accounts",
     "activities",
     "artists",
@@ -87,7 +88,7 @@ INSTALLED_APPS = [
     "mr_admin",
     "stations",
     "music_monitor",
-    #"streamer",
+    "streamer",
     "fan",
     #"storages",
     "notifications",

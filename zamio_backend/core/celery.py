@@ -35,6 +35,39 @@ def ensure_task_registration(sender, **kwargs):
             generate_analytics_report_task,
             cleanup_old_data_task
         )
+        # Import media processing tasks
+        from artists.services.media_file_service import (
+            process_track_media,
+            scan_media_files_for_malware
+        )
+        # Import dispute evidence tasks
+        from disputes.tasks import (
+            verify_evidence_file_integrity,
+            cleanup_expired_evidence_files,
+            update_evidence_retention_policies,
+            auto_escalate_old_disputes,
+            send_dispute_reminders,
+            cleanup_old_notifications,
+            generate_dispute_analytics,
+            send_email_notifications,
+            auto_assign_disputes
+        )
+        # Import file security tasks
+        from core.tasks.file_security_tasks import (
+            scan_uploaded_file,
+            handle_security_threat,
+            quarantine_threatening_file,
+            send_security_threat_alert,
+            update_user_security_status,
+            send_suspicious_user_alert,
+            cleanup_quarantined_files,
+            batch_scan_existing_files
+        )
+        # Import file security monitoring tasks
+        from core.services.file_security_monitor import (
+            monitor_file_security,
+            generate_daily_security_report
+        )
     except ImportError as e:
         # Log import errors but don't fail startup
         import logging
@@ -59,6 +92,30 @@ app.conf.update(
         'accounts.tasks.send_user_invitation_email_task': {'queue': 'normal'},
         'accounts.tasks.send_notification_email_task': {'queue': 'normal'},
         'accounts.tasks.send_bulk_notification_email_task': {'queue': 'low'},
+        # Media processing tasks routing
+        'artists.services.media_file_service.process_track_media': {'queue': 'high'},
+        'artists.services.media_file_service.scan_media_files_for_malware': {'queue': 'normal'},
+        'artists.tasks.verify_media_file_integrity': {'queue': 'normal'},
+        'artists.tasks.cleanup_failed_uploads': {'queue': 'low'},
+        # Dispute evidence tasks routing
+        'disputes.tasks.verify_evidence_file_integrity': {'queue': 'normal'},
+        'disputes.tasks.cleanup_expired_evidence_files': {'queue': 'low'},
+        'disputes.tasks.update_evidence_retention_policies': {'queue': 'normal'},
+        'disputes.tasks.auto_escalate_old_disputes': {'queue': 'normal'},
+        'disputes.tasks.send_dispute_reminders': {'queue': 'normal'},
+        'disputes.tasks.cleanup_old_notifications': {'queue': 'low'},
+        'disputes.tasks.generate_dispute_analytics': {'queue': 'analytics'},
+        'disputes.tasks.send_email_notifications': {'queue': 'high'},
+        'disputes.tasks.auto_assign_disputes': {'queue': 'normal'},
+        # File security tasks routing
+        'core.tasks.file_security_tasks.scan_uploaded_file': {'queue': 'high'},
+        'core.tasks.file_security_tasks.handle_security_threat': {'queue': 'critical'},
+        'core.tasks.file_security_tasks.quarantine_threatening_file': {'queue': 'critical'},
+        'core.tasks.file_security_tasks.send_security_threat_alert': {'queue': 'critical'},
+        'core.tasks.file_security_tasks.update_user_security_status': {'queue': 'normal'},
+        'core.tasks.file_security_tasks.send_suspicious_user_alert': {'queue': 'high'},
+        'core.tasks.file_security_tasks.cleanup_quarantined_files': {'queue': 'low'},
+        'core.tasks.file_security_tasks.batch_scan_existing_files': {'queue': 'normal'},
     },
     
     # Queue definitions with priorities
@@ -131,6 +188,91 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'core.enhanced_tasks.warm_cache_task',
         'schedule': crontab(minute=0),  # every hour at minute 0
         'options': {'queue': 'low'}
+    },
+    # Media security tasks
+    'scan-media-files-for-malware': {
+        'task': 'artists.services.media_file_service.scan_media_files_for_malware',
+        'schedule': crontab(hour=3, minute=0),  # daily at 3 AM
+        'options': {'queue': 'normal'}
+    },
+    'verify-media-file-integrity': {
+        'task': 'artists.tasks.verify_media_file_integrity',
+        'schedule': crontab(hour=4, minute=0),  # daily at 4 AM
+        'options': {'queue': 'normal'}
+    },
+    'cleanup-failed-uploads': {
+        'task': 'artists.tasks.cleanup_failed_uploads',
+        'schedule': crontab(hour=5, minute=0),  # daily at 5 AM
+        'options': {'queue': 'low'}
+    },
+    
+    # Dispute evidence security tasks
+    'verify-evidence-file-integrity': {
+        'task': 'disputes.tasks.verify_evidence_file_integrity',
+        'schedule': crontab(hour=6, minute=0),  # daily at 6 AM
+        'options': {'queue': 'normal'}
+    },
+    'cleanup-expired-evidence-files': {
+        'task': 'disputes.tasks.cleanup_expired_evidence_files',
+        'schedule': crontab(hour=7, minute=0),  # daily at 7 AM
+        'options': {'queue': 'low'}
+    },
+    'update-evidence-retention-policies': {
+        'task': 'disputes.tasks.update_evidence_retention_policies',
+        'schedule': crontab(hour=8, minute=0),  # daily at 8 AM
+        'options': {'queue': 'normal'}
+    },
+    'auto-escalate-old-disputes': {
+        'task': 'disputes.tasks.auto_escalate_old_disputes',
+        'schedule': crontab(hour=9, minute=0),  # daily at 9 AM
+        'options': {'queue': 'normal'}
+    },
+    'send-dispute-reminders': {
+        'task': 'disputes.tasks.send_dispute_reminders',
+        'schedule': crontab(hour=10, minute=0),  # daily at 10 AM
+        'options': {'queue': 'normal'}
+    },
+    'cleanup-old-notifications': {
+        'task': 'disputes.tasks.cleanup_old_notifications',
+        'schedule': crontab(hour=11, minute=0),  # daily at 11 AM
+        'options': {'queue': 'low'}
+    },
+    'generate-dispute-analytics': {
+        'task': 'disputes.tasks.generate_dispute_analytics',
+        'schedule': crontab(hour=12, minute=0),  # daily at 12 PM
+        'options': {'queue': 'analytics'}
+    },
+    'send-email-notifications': {
+        'task': 'disputes.tasks.send_email_notifications',
+        'schedule': crontab(minute='*/15'),  # every 15 minutes
+        'options': {'queue': 'high'}
+    },
+    'auto-assign-disputes': {
+        'task': 'disputes.tasks.auto_assign_disputes',
+        'schedule': crontab(hour='*/2', minute=0),  # every 2 hours
+        'options': {'queue': 'normal'}
+    },
+    
+    # File security monitoring tasks
+    'monitor-file-security': {
+        'task': 'core.services.file_security_monitor.monitor_file_security',
+        'schedule': crontab(minute='*/30'),  # every 30 minutes
+        'options': {'queue': 'normal'}
+    },
+    'generate-daily-security-report': {
+        'task': 'core.services.file_security_monitor.generate_daily_security_report',
+        'schedule': crontab(hour=1, minute=30),  # daily at 1:30 AM
+        'options': {'queue': 'analytics'}
+    },
+    'cleanup-quarantined-files': {
+        'task': 'core.tasks.file_security_tasks.cleanup_quarantined_files',
+        'schedule': crontab(hour=2, minute=30),  # daily at 2:30 AM
+        'options': {'queue': 'low'}
+    },
+    'batch-scan-existing-files': {
+        'task': 'core.tasks.file_security_tasks.batch_scan_existing_files',
+        'schedule': crontab(hour=3, minute=30),  # daily at 3:30 AM
+        'options': {'queue': 'normal'}
     },
 }
 

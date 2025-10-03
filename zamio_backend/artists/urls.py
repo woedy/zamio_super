@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import path, include
 
 from artists.views.albums_views import add_album, archive_album, delete_album, edit_album, get_album_details_view, get_all_albums_view, get_all_archived_albums_view, unarchive_album
 from artists.views.artist_analytics_view import get_artist_analytics_view
@@ -84,4 +84,7 @@ urlpatterns = [
     path('dashboard/', get_artist_homedata, name='get_artist_homedata'),
     path('playlogs/', get_all_track_playlog_view, name='get_all_track_playlog_view'),
     path('analytics/', get_artist_analytics_view, name='get_artist_analytics_view'),
+    
+    # Enhanced secure media file endpoints
+    path('api/', include('artists.api.media_urls')),
 ]

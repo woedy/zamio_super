@@ -298,3 +298,231 @@ def auto_assign_disputes():
             logger.error(f"Failed to auto-assign dispute {dispute.dispute_id}: {str(e)}")
     
     return f"Auto-assigned {assigned_count} disputes"
+
+
+@shared_task
+def verify_evidence_file_integrity():
+    """
+    Verify integrity of evidence files using stored hashes
+    """
+    from .models import DisputeEvidence
+    from accounts.models import AuditLog
+    
+    # Get evidence files that have hashes and haven't been checked recently
+    check_date = timezone.now() - timedelta(days=7)  # Check weekly
+    
+    evidence_files = DisputeEvidence.objects.filter(
+        file__isnull=False,
+        file_hash__isnull=False,
+        is_quarantined=False,
+        updated_at__lt=check_date
+    )[:100]  # Limit to 100 files per run
+    
+    verified_count = 0
+    corrupted_count = 0
+    error_count = 0
+    
+    # Get system user for audit logging
+    system_user, _ = User.objects.get_or_create(
+        username='system',
+        defaults={
+            'email': 'system@zamio.com',
+            'user_type': 'Admin',
+            'is_active': False
+        }
+    )
+    
+    for evidence in evidence_files:
+        try:
+            is_valid = evidence.verify_file_integrity()
+            
+            if is_valid:
+                verified_count += 1
+                # Update the updated_at field to mark as recently checked
+                evidence.save(update_fields=['updated_at'])
+                
+            else:
+                corrupted_count += 1
+                # Quarantine corrupted file
+                evidence.quarantine_file("File integrity check failed - file may be corrupted")
+                
+                # Log corruption
+                AuditLog.objects.create(
+                    user=system_user,
+                    action='evidence_integrity_failure',
+                    resource_type='DisputeEvidence',
+                    resource_id=str(evidence.id),
+                    request_data={
+                        'dispute_id': str(evidence.dispute.dispute_id),
+                        'file_path': evidence.file.name,
+                        'stored_hash': evidence.file_hash,
+                        'check_timestamp': timezone.now().isoformat(),
+                        'action_taken': 'quarantined'
+                    }
+                )
+                
+                logger.warning(f"Evidence file {evidence.id} failed integrity check and was quarantined")
+                
+        except Exception as e:
+            error_count += 1
+            logger.error(f"Error checking integrity of evidence {evidence.id}: {str(e)}")
+    
+    # Log summary
+    AuditLog.objects.create(
+        user=system_user,
+        action='evidence_integrity_check_completed',
+        resource_type='System',
+        resource_id='integrity_check',
+        request_data={
+            'files_checked': len(evidence_files),
+            'verified': verified_count,
+            'corrupted': corrupted_count,
+            'errors': error_count,
+            'timestamp': timezone.now().isoformat()
+        }
+    )
+    
+    return f"Integrity check completed: {verified_count} verified, {corrupted_count} corrupted, {error_count} errors"
+
+
+@shared_task
+def cleanup_expired_evidence_files():
+    """
+    Clean up evidence files that have exceeded their retention period
+    """
+    from .services.evidence_security_service import EvidenceRetentionService
+    from accounts.models import AuditLog
+    
+    # Get system user for audit logging
+    system_user, _ = User.objects.get_or_create(
+        username='system',
+        defaults={
+            'email': 'system@zamio.com',
+            'user_type': 'Admin',
+            'is_active': False
+        }
+    )
+    
+    try:
+        # Get files eligible for deletion
+        eligible_files = EvidenceRetentionService.get_evidence_files_for_deletion()
+        
+        if not eligible_files:
+            return "No evidence files are eligible for deletion"
+        
+        # Limit to 50 files per run to avoid overwhelming the system
+        files_to_delete = eligible_files[:50]
+        
+        deleted_count = 0
+        error_count = 0
+        
+        for file_info in files_to_delete:
+            evidence_id = file_info['evidence_id']
+            reason = f"Retention policy: {file_info['reason']}"
+            
+            try:
+                success = EvidenceRetentionService.delete_evidence_file(
+                    evidence_id=evidence_id,
+                    reason=reason,
+                    deleted_by=system_user
+                )
+                
+                if success:
+                    deleted_count += 1
+                    logger.info(f"Deleted evidence {evidence_id} due to retention policy")
+                else:
+                    error_count += 1
+                    logger.error(f"Failed to delete evidence {evidence_id}")
+                    
+            except Exception as e:
+                error_count += 1
+                logger.error(f"Error deleting evidence {evidence_id}: {str(e)}")
+        
+        # Log cleanup summary
+        AuditLog.objects.create(
+            user=system_user,
+            action='evidence_retention_cleanup',
+            resource_type='System',
+            resource_id='retention_cleanup',
+            request_data={
+                'total_eligible': len(eligible_files),
+                'processed': len(files_to_delete),
+                'deleted': deleted_count,
+                'errors': error_count,
+                'timestamp': timezone.now().isoformat()
+            }
+        )
+        
+        return f"Retention cleanup completed: {deleted_count} files deleted, {error_count} errors"
+        
+    except Exception as e:
+        logger.error(f"Evidence retention cleanup failed: {str(e)}")
+        return f"Retention cleanup failed: {str(e)}"
+
+
+@shared_task
+def update_evidence_retention_policies():
+    """
+    Update retention policies for evidence files based on current dispute status
+    """
+    from .models import DisputeEvidence
+    from .services.evidence_security_service import EvidenceRetentionService
+    from accounts.models import AuditLog
+    
+    # Get system user for audit logging
+    system_user, _ = User.objects.get_or_create(
+        username='system',
+        defaults={
+            'email': 'system@zamio.com',
+            'user_type': 'Admin',
+            'is_active': False
+        }
+    )
+    
+    try:
+        # Get evidence files that need policy updates
+        evidence_files = DisputeEvidence.objects.select_related('dispute').filter(
+            dispute__updated_at__gte=timezone.now() - timedelta(days=1)  # Updated in last day
+        )
+        
+        updated_count = 0
+        
+        for evidence in evidence_files:
+            try:
+                # Get current retention policy
+                policy = EvidenceRetentionService.get_retention_policy(
+                    evidence.dispute.status,
+                    evidence.dispute.resolved_at
+                )
+                
+                # Update if policy has changed
+                if (evidence.retention_policy != policy['policy'] or 
+                    evidence.delete_after != policy['delete_after']):
+                    
+                    evidence.retention_policy = policy['policy']
+                    evidence.delete_after = policy['delete_after']
+                    evidence.save(update_fields=['retention_policy', 'delete_after'])
+                    
+                    updated_count += 1
+                    
+            except Exception as e:
+                logger.error(f"Error updating retention policy for evidence {evidence.id}: {str(e)}")
+        
+        # Log update summary
+        AuditLog.objects.create(
+            user=system_user,
+            action='evidence_retention_policies_updated',
+            resource_type='System',
+            resource_id='retention_update',
+            request_data={
+                'files_processed': len(evidence_files),
+                'policies_updated': updated_count,
+                'timestamp': timezone.now().isoformat()
+            }
+        )
+        
+        return f"Retention policy update completed: {updated_count} policies updated"
+        
+    except Exception as e:
+        logger.error(f"Evidence retention policy update failed: {str(e)}")
+        return f"Retention policy update failed: {str(e)}"
