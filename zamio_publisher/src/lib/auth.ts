@@ -1,43 +1,4 @@
-import api from "./api";
-
-const safeRead = (reader: () => string | null): string => {
-  try {
-    return reader() || '';
-  } catch {
-    return '';
-  }
-};
-
-const safeWrite = (writer: () => void) => {
-  try {
-    writer();
-  } catch {
-    /* ignore storage write failures */
-  }
-};
-
-export const getStationId = (): string => {
-  const fromLocal = safeRead(() => localStorage.getItem('station_id'));
-  if (fromLocal) {
-    return fromLocal;
-  }
-  return safeRead(() => sessionStorage.getItem('station_id'));
-};
-
-export const persistStationId = (stationId: string): void => {
-  const trimmed = typeof stationId === 'string' ? stationId.trim() : '';
-  if (!trimmed) {
-    return;
-  }
-
-  safeWrite(() => localStorage.setItem('station_id', trimmed));
-  safeWrite(() => sessionStorage.setItem('station_id', trimmed));
-};
-
-export const clearStationId = (): void => {
-  safeWrite(() => localStorage.removeItem('station_id'));
-  safeWrite(() => sessionStorage.removeItem('station_id'));
-};
+import api from './api';
 
 export const getToken = (): string => {
   try {
@@ -47,9 +8,17 @@ export const getToken = (): string => {
   }
 };
 
+export const getPublisherId = (): string => {
+  try {
+    return localStorage.getItem('publisher_id') || '';
+  } catch {
+    return '';
+  }
+};
+
 const LOCAL_SESSION_KEYS = [
   'token',
-  'station_id',
+  'publisher_id',
   'user_id',
   'first_name',
   'last_name',
@@ -85,16 +54,15 @@ export const clearSession = () => {
   }
 };
 
-
 export const logoutUser = async () => {
-  const stationId = getStationId();
+  const publisherId = getPublisherId();
 
   try {
-    const payload = stationId ? { station_id: stationId } : {};
+    const payload = publisherId ? { publisher_id: publisherId } : {};
     await api.post('api/accounts/logout/', payload);
   } catch (error) {
     // eslint-disable-next-line no-console
-    console.error('Failed to log out station user', error);
+    console.error('Failed to log out publisher user', error);
   } finally {
     clearSession();
 
@@ -116,4 +84,4 @@ export const logoutWithConfirmation = async (): Promise<boolean> => {
 };
 
 // Keep backward compatibility
-export const logoutStation = logoutUser;
+export const logoutPublisher = logoutUser;

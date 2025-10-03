@@ -96,14 +96,13 @@
 
 - [x] 6. Implement Logout Functionality in zamio_frontend
 
-
   - Create logout utility function in `src/lib/auth.ts`
   - Add logout button to header/navigation components
   - Implement proper session cleanup (localStorage, sessionStorage)
   - Add logout confirmation and redirect logic
   - _Requirements: 2.1, 2.5_
 
-- [ ] 7. Implement Logout Functionality in zamio_admin
+- [x] 7. Implement Logout Functionality in zamio_admin
 
   - Create logout utility function in `src/lib/auth.ts`
   - Add logout button to admin dashboard header
@@ -111,7 +110,7 @@
   - Add proper redirect to login page
   - _Requirements: 2.4, 2.5_
 
-- [ ] 8. Implement Logout Functionality in zamio_stations
+- [x] 8. Implement Logout Functionality in zamio_stations
 
   - Create logout utility function in `src/lib/auth.ts`
   - Add logout button to station dashboard
@@ -119,7 +118,9 @@
   - Add redirect to login with proper state cleanup
   - _Requirements: 2.2, 2.5_
 
-- [ ] 9. Implement Logout Functionality in zamio_publisher
+- [x] 9. Implement Logout Functionality in zamio_publisher
+
+
   - Create logout utility function in `src/lib/auth.ts`
   - Add logout button to publisher dashboard
   - Implement session cleanup and audit trail

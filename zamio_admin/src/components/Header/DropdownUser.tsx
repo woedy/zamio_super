@@ -1,12 +1,58 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import UserOne from '../../images/user/user-01.png';
 import { baseUrlMedia, firstName, userEmail, username, userPhoto } from '../../constants';
+import { logoutWithConfirmation } from '../../lib/auth';
 import ClickOutside from '../Sidebar/ClickOutside';
 
 const DropdownUser = () => {
   console.log(username);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [userData, setUserData] = useState({
+    firstName: localStorage.getItem('first_name') || firstName || '',
+    email: localStorage.getItem('email') || userEmail || '',
+    photo: localStorage.getItem('photo') || userPhoto || ''
+  });
+
+  // Listen for storage events to update the user data when it changes
+  useEffect(() => {
+    const handleStorageChange = () => {
+      setUserData({
+        firstName: localStorage.getItem('first_name') || firstName || '',
+        email: localStorage.getItem('email') || userEmail || '',
+        photo: localStorage.getItem('photo') || userPhoto || ''
+      });
+    };
+
+    // Listen for storage events from other tabs/windows
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Also listen for custom event that we'll dispatch after user data update
+    window.addEventListener('userDataUpdated', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('userDataUpdated', handleStorageChange);
+    };
+  }, []);
+
+  const handleLogout = async () => {
+    if (isLoggingOut) return;
+
+    setIsLoggingOut(true);
+    setDropdownOpen(false);
+
+    try {
+      const confirmed = await logoutWithConfirmation();
+      if (!confirmed) {
+        setIsLoggingOut(false);
+      }
+    } catch (error) {
+      console.error('Logout error:', error);
+      setIsLoggingOut(false);
+    }
+  };
 
   return (
     <ClickOutside onClick={() => setDropdownOpen(false)} className="relative">
@@ -17,16 +63,21 @@ const DropdownUser = () => {
       >
         <span className="hidden text-right lg:block">
           <span className="block text-sm font-medium text-black dark:text-white">
-            {`${firstName}`}
+            {userData.firstName}
           </span>
-          <span className="block text-xs">{userEmail}</span>
+          <span className="block text-xs text-text-secondary">{userData.email}</span>
         </span>
 
         <span className="block h-12 w-12 rounded-full overflow-hidden">
           <img
-            src={`${baseUrlMedia}${userPhoto}`}
+            src={userData.photo ? `${baseUrlMedia}${userData.photo}` : '/images/default-avatar.png'}
             alt="User"
             className="object-cover w-full h-full"
+            onError={(e) => {
+              // If the image fails to load, show the default avatar
+              const target = e.target as HTMLImageElement;
+              target.src = '/images/default-avatar.png';
+            }}
           />
         </span>
 
@@ -104,7 +155,12 @@ const DropdownUser = () => {
               </Link>
             </li>
           </ul>
-          <button className="flex items-center gap-3.5 px-6 py-4 text-sm font-medium duration-300 ease-in-out hover:text-primary lg:text-base">
+          <button
+            type="button"
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            className="flex items-center gap-3.5 px-6 py-4 text-sm font-medium text-left text-text transition-colors duration-300 ease-in-out hover:text-primary disabled:cursor-not-allowed disabled:opacity-60 lg:text-base"
+          >
             <svg
               className="fill-current"
               width="22"
@@ -122,7 +178,7 @@ const DropdownUser = () => {
                 fill=""
               />
             </svg>
-            Log Out
+            {isLoggingOut ? 'Logging out…' : 'Log Out'}
           </button>
         </div>
       )}

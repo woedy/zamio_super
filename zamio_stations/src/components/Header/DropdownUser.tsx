@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { baseUrlMedia, userEmail, userPhoto } from '../../constants';
 import ClickOutside from '../Sidebar/ClickOutside';
-import { logoutStation } from '../../lib/auth';
+import { logoutWithConfirmation } from '../../lib/auth';
 
 const DropdownUser = () => {
   // Derive display name from stored profile data
@@ -16,16 +16,17 @@ const DropdownUser = () => {
 
   const handleLogout = async () => {
     if (isLoggingOut) return;
-    
+
     setIsLoggingOut(true);
     setDropdownOpen(false);
 
     try {
-      await logoutStation();
-      navigate('/sign-in');
+      const confirmed = await logoutWithConfirmation();
+      if (!confirmed) {
+        setIsLoggingOut(false);
+      }
     } catch (error) {
-      console.error('Logout failed:', error);
-    } finally {
+      console.error('Logout error:', error);
       setIsLoggingOut(false);
     }
   };
@@ -148,7 +149,7 @@ const DropdownUser = () => {
                 fill=""
               />
             </svg>
-            {isLoggingOut ? 'Logging out...' : 'Log Out'}
+            {isLoggingOut ? 'Logging out…' : 'Log Out'}
           </button>
         </div>
       )}

@@ -1,22 +1,64 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import UserOne from '../../images/user/user-01.png';
 import { baseUrlMedia } from '../../constants';
+import { logoutWithConfirmation } from '../../lib/auth';
 import ClickOutside from '../Sidebar/ClickOutside';
 
 const DropdownUser = () => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [userData, setUserData] = useState({
+    displayName: '',
+    email: '',
+    photo: ''
+  });
 
-  // Read current values at render time so they reflect latest login
-  const { displayName, email, photo } = useMemo(() => {
-    const email = localStorage.getItem('email') || '';
-    const first = localStorage.getItem('first_name') || '';
-    const last = localStorage.getItem('last_name') || '';
-    const username = localStorage.getItem('username') || '';
-    const displayName = username || [first, last].filter(Boolean).join(' ') || email || 'User';
-    const photo = localStorage.getItem('photo') || '';
-    return { displayName, email, photo };
+  // Update user data from localStorage
+  useEffect(() => {
+    const updateUserData = () => {
+      const email = localStorage.getItem('email') || '';
+      const first = localStorage.getItem('first_name') || '';
+      const last = localStorage.getItem('last_name') || '';
+      const username = localStorage.getItem('username') || '';
+      const displayName = username || [first, last].filter(Boolean).join(' ') || email || 'User';
+      const photo = localStorage.getItem('photo') || '';
+      
+      setUserData({ displayName, email, photo });
+    };
+
+    updateUserData();
+
+    // Listen for storage events to update the user data when it changes
+    const handleStorageChange = () => {
+      updateUserData();
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('userDataUpdated', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('userDataUpdated', handleStorageChange);
+    };
   }, []);
+
+  const handleLogout = async () => {
+    if (isLoggingOut) return;
+
+    setIsLoggingOut(true);
+    setDropdownOpen(false);
+
+    try {
+      const confirmed = await logoutWithConfirmation();
+      if (!confirmed) {
+        setIsLoggingOut(false);
+      }
+    } catch (error) {
+      console.error('Logout error:', error);
+      setIsLoggingOut(false);
+    }
+  };
 
   return (
     <ClickOutside onClick={() => setDropdownOpen(false)} className="relative">
@@ -27,18 +69,23 @@ const DropdownUser = () => {
       >
         <span className="hidden text-right lg:block">
           <span className="block text-sm font-medium text-black dark:text-white">
-            {displayName}
+            {userData.displayName}
           </span>
-          <span className="block text-xs">{email}</span>
+          <span className="block text-xs text-text-secondary">{userData.email}</span>
         </span>
 
         <span className="block h-12 w-12 rounded-full overflow-hidden">
-  <img
-    src={`${baseUrlMedia}${photo}`}
-    alt="User"
-    className="object-cover w-full h-full"
-  />
-</span>
+          <img
+            src={userData.photo ? `${baseUrlMedia}${userData.photo}` : '/images/default-avatar.png'}
+            alt="User"
+            className="object-cover w-full h-full"
+            onError={(e) => {
+              // If the image fails to load, show the default avatar
+              const target = e.target as HTMLImageElement;
+              target.src = '/images/default-avatar.png';
+            }}
+          />
+        </span>
 
         <svg
           className="hidden fill-current sm:block"
@@ -114,7 +161,12 @@ const DropdownUser = () => {
               </Link>
             </li>
           </ul>
-          <button className="flex items-center gap-3.5 px-6 py-4 text-sm font-medium duration-300 ease-in-out hover:text-primary lg:text-base">
+          <button
+            type="button"
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            className="flex items-center gap-3.5 px-6 py-4 text-sm font-medium text-left text-text transition-colors duration-300 ease-in-out hover:text-primary disabled:cursor-not-allowed disabled:opacity-60 lg:text-base"
+          >
             <svg
               className="fill-current"
               width="22"
@@ -132,7 +184,7 @@ const DropdownUser = () => {
                 fill=""
               />
             </svg>
-            Log Out
+            {isLoggingOut ? 'Logging out…' : 'Log Out'}
           </button>
         </div>
       )}
