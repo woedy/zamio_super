@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { baseUrlMedia } from '../../constants';
-import { logoutArtist } from '../../lib/auth';
+import { logoutUser, logoutWithConfirmation } from '../../lib/auth';
 import ClickOutside from '../Sidebar/ClickOutside';
 
 const DropdownUser = () => {
@@ -42,8 +42,12 @@ const DropdownUser = () => {
     setDropdownOpen(false);
 
     try {
-      await logoutArtist();
-    } finally {
+      const confirmed = await logoutWithConfirmation();
+      if (!confirmed) {
+        setIsLoggingOut(false);
+      }
+    } catch (error) {
+      console.error('Logout error:', error);
       setIsLoggingOut(false);
     }
   };

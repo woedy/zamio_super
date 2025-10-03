@@ -25,26 +25,42 @@ const LOCAL_SESSION_KEYS = [
   'email',
   'photo',
   'username',
+  'theme',
+  'preferences',
 ];
 
 export const clearSession = () => {
   try {
+    // Clear localStorage
     LOCAL_SESSION_KEYS.forEach((key) => {
       localStorage.removeItem(key);
     });
-    sessionStorage.removeItem('token');
-  } catch {}
+    
+    // Clear sessionStorage completely
+    sessionStorage.clear();
+    
+    // Clear any cached data or temporary storage
+    if ('caches' in window) {
+      caches.keys().then((names) => {
+        names.forEach((name) => {
+          caches.delete(name);
+        });
+      });
+    }
+  } catch (error) {
+    console.error('Error clearing session:', error);
+  }
 };
 
-export const logoutArtist = async () => {
+export const logoutUser = async () => {
   const artistId = getArtistId();
 
   try {
     const payload = artistId ? { artist_id: artistId } : {};
-    await api.post('api/accounts/logout-artist/', payload);
+    await api.post('api/accounts/logout/', payload);
   } catch (error) {
     // eslint-disable-next-line no-console
-    console.error('Failed to log out artist', error);
+    console.error('Failed to log out user', error);
   } finally {
     clearSession();
 
@@ -52,5 +68,19 @@ export const logoutArtist = async () => {
       window.location.replace('/sign-in');
     }
   }
+};
+
+// Keep the old function for backward compatibility
+export const logoutArtist = logoutUser;
+
+export const logoutWithConfirmation = async (): Promise<boolean> => {
+  const confirmed = window.confirm('Are you sure you want to log out?');
+  
+  if (confirmed) {
+    await logoutUser();
+    return true;
+  }
+  
+  return false;
 };
 
