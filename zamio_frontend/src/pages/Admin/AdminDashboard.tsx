@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Bell, Settings, User, HelpCircle, MessageSquare, Upload, Clock, CreditCard, MapPin } from "lucide-react";
+import { Search, Bell, Settings, User, HelpCircle, MessageSquare, Upload, Clock, CreditCard, MapPin, LayoutDashboard } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from "recharts";
 
 export default function AdminDashboard() {
@@ -26,7 +26,7 @@ export default function AdminDashboard() {
   ];
 
   const navigationItems = [
-    { name: "Dashboard", icon: <Settings className="w-5 h-5" /> },
+    { name: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" /> },
     { name: "Play History", icon: <Clock className="w-5 h-5" /> },
     { name: "Upload/Management", icon: <Upload className="w-5 h-5" /> },
     { name: "Payments", icon: <CreditCard className="w-5 h-5" /> },

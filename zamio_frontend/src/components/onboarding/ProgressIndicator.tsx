@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { Check, AlertTriangle } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 
 interface ProgressItem {
@@ -64,14 +64,14 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({
                   className="w-5 h-5 rounded-full flex items-center justify-center"
                   style={{ backgroundColor: theme.colors.success }}
                 >
-                  <CheckIcon className="w-3 h-3 text-white" />
+                  <Check className="w-3 h-3 text-white" />
                 </div>
               ) : item.hasError ? (
                 <div
                   className="w-5 h-5 rounded-full flex items-center justify-center"
                   style={{ backgroundColor: theme.colors.error }}
                 >
-                  <ExclamationTriangleIcon className="w-3 h-3 text-white" />
+                  <AlertTriangle className="w-3 h-3 text-white" />
                 </div>
               ) : (
                 <div
@@ -120,7 +120,7 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({
           className="mt-4 p-3 rounded-lg flex items-center space-x-2"
           style={{ backgroundColor: theme.colors.success + '20' }}
         >
-          <CheckIcon className="w-5 h-5" style={{ color: theme.colors.success }} />
+          <Check className="w-5 h-5" style={{ color: theme.colors.success }} />
           <span className="text-sm font-medium" style={{ color: theme.colors.success }}>
             Profile setup complete! You're ready to start using ZamIO.
           </span>

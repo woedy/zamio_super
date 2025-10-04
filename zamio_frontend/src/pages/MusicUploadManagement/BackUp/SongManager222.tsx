@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Search, UserPlus, Music } from 'lucide-react'; // Added relevant icons
+import { Search, Plus, Music } from 'lucide-react'; // Added relevant icons
 import { Link, useLocation } from 'react-router-dom';
 import { baseUrl, userToken } from '../../constants';
 import { getArtistId } from '../../../lib/auth';

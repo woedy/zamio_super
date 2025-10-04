@@ -3,7 +3,7 @@ import DropdownMessage from './DropdownMessage';
 import DropdownNotification from './DropdownNotification';
 import DropdownUser from './DropdownUser';
 import LogoIcon from '../../images/logo/logo-icon.svg';
-import ThemeToggle from '../ThemeToggle';
+import { ThemeToggle } from '../ThemeToggle';
 
 const Header = (props: {
   sidebarOpen: string | boolean | undefined;
@@ -106,7 +106,7 @@ const Header = (props: {
           <ul className="flex items-center gap-2 2xsm:gap-4">
             {/* <!-- Theme Toggler --> */}
             <li>
-              <ThemeToggle size="md" />
+              <ThemeToggle />
             </li>
             {/* <!-- Theme Toggler --> */}
 

@@ -1,11 +1,11 @@
 import React, { useState, useCallback } from 'react';
 import { 
-  DocumentIcon, 
-  CloudArrowUpIcon, 
-  CheckCircleIcon,
-  ExclamationTriangleIcon,
-  XMarkIcon
-} from '@heroicons/react/24/outline';
+  FileText, 
+  Upload, 
+  CheckCircle,
+  AlertTriangle,
+  X
+} from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 
 interface KYCDocument {
@@ -51,13 +51,13 @@ const KYCUpload: React.FC<KYCUploadProps> = ({
   const getStatusIcon = (status: KYCDocument['status']) => {
     switch (status) {
       case 'verified':
-        return <CheckCircleIcon className="w-5 h-5" style={{ color: theme.colors.success }} />;
+        return <CheckCircle className="w-5 h-5" style={{ color: theme.colors.success }} />;
       case 'rejected':
-        return <ExclamationTriangleIcon className="w-5 h-5" style={{ color: theme.colors.error }} />;
+        return <AlertTriangle className="w-5 h-5" style={{ color: theme.colors.error }} />;
       case 'uploaded':
-        return <CloudArrowUpIcon className="w-5 h-5" style={{ color: theme.colors.info }} />;
+        return <Upload className="w-5 h-5" style={{ color: theme.colors.info }} />;
       default:
-        return <DocumentIcon className="w-5 h-5" style={{ color: theme.colors.textSecondary }} />;
+        return <FileText className="w-5 h-5" style={{ color: theme.colors.textSecondary }} />;
     }
   };
 
@@ -166,7 +166,7 @@ const KYCUpload: React.FC<KYCUploadProps> = ({
 
                   {document.file && (
                     <div className="flex items-center space-x-2 text-xs" style={{ color: theme.colors.textSecondary }}>
-                      <DocumentIcon className="w-4 h-4" />
+                      <FileText className="w-4 h-4" />
                       <span>{document.file.name}</span>
                       <span>({(document.file.size / 1024 / 1024).toFixed(2)} MB)</span>
                     </div>
@@ -206,7 +206,7 @@ const KYCUpload: React.FC<KYCUploadProps> = ({
                     className="p-1.5 rounded hover:bg-red-50 transition-colors"
                     disabled={isLoading}
                   >
-                    <XMarkIcon className="w-4 h-4" style={{ color: theme.colors.error }} />
+                    <X className="w-4 h-4" style={{ color: theme.colors.error }} />
                   </button>
                 )}
               </div>
@@ -220,7 +220,7 @@ const KYCUpload: React.FC<KYCUploadProps> = ({
                   borderColor: draggedOver === document.id ? theme.colors.primary : theme.colors.border
                 }}
               >
-                <CloudArrowUpIcon 
+                <Upload 
                   className="w-8 h-8 mx-auto mb-2" 
                   style={{ color: theme.colors.textSecondary }} 
                 />

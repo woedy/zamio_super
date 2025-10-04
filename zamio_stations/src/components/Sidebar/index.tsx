@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Bell, Settings, User, HelpCircle, Clock, CreditCard, Radio, AudioWaveformIcon, BarChart2 } from "lucide-react";
+import { Bell, Settings, User, HelpCircle, Clock, CreditCard, Radio, AudioWaveformIcon, BarChart2, LayoutDashboard } from "lucide-react";
 
 
 interface SidebarProps {
@@ -24,7 +24,7 @@ const Sidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
 
   const navigationItems = [
     // Dashboards
-    { name: "Dashboard", icon: <BarChart2 className="w-5 h-5" />, route: "/dashboard" },
+    { name: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" />, route: "/dashboard" },
     
     // Monitoring
     { name: "Match Log Viewer", icon: <Clock className="w-5 h-5" />, route: "/match-logs" },

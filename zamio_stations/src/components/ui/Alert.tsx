@@ -2,11 +2,11 @@ import React, { forwardRef } from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '../../utils/cn';
 import { 
-  CheckCircleIcon, 
-  ExclamationTriangleIcon, 
-  InformationCircleIcon, 
-  XCircleIcon 
-} from '@heroicons/react/24/outline';
+  CheckCircle, 
+  AlertTriangle, 
+  Info, 
+  XCircle 
+} from 'lucide-react';
 
 const alertVariants = cva(
   'relative w-full rounded-lg border p-4 [&>svg~*]:pl-7 [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground',
@@ -72,15 +72,15 @@ const AlertIcon: React.FC<{ variant?: 'default' | 'destructive' | 'success' | 'w
   
   switch (variant) {
     case 'success':
-      return <CheckCircleIcon className={iconClass} />;
+      return <CheckCircle className={iconClass} />;
     case 'warning':
-      return <ExclamationTriangleIcon className={iconClass} />;
+      return <AlertTriangle className={iconClass} />;
     case 'destructive':
-      return <XCircleIcon className={iconClass} />;
+      return <XCircle className={iconClass} />;
     case 'info':
-      return <InformationCircleIcon className={iconClass} />;
+      return <Info className={iconClass} />;
     default:
-      return <InformationCircleIcon className={iconClass} />;
+      return <Info className={iconClass} />;
   }
 };
 

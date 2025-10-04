@@ -4,7 +4,7 @@
 
 @layer base {
   :root {
-    /* CSS Custom Properties for dynamic theming */
+    /* Light mode colors */
     --color-primary: #14002C;
     --color-secondary: #80CAEE;
     --color-background: #FFFFFF;
@@ -18,10 +18,26 @@
     --color-info: #259AE6;
   }
 
+  .dark {
+    /* Dark mode colors */
+    --color-primary: #AA00BA;
+    --color-secondary: #80CAEE;
+    --color-background: #0b1220;
+    --color-surface: #1A222C;
+    --color-text: #FFFFFF;
+    --color-text-secondary: #AEB7C0;
+    --color-border: #2E3A47;
+    --color-error: #FF6766;
+    --color-warning: #FFBA00;
+    --color-success: #10B981;
+    --color-info: #259AE6;
+  }
+
   body {
     @apply font-satoshi font-normal text-base relative z-1;
     background-color: var(--color-background);
     color: var(--color-text);
+    transition: background-color 0.3s ease, color 0.3s ease;
   }
 }
 

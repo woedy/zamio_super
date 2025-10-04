@@ -224,7 +224,31 @@ class User(AbstractBaseUser):
     
     fcm_token = models.TextField(blank=True, null=True)
     otp_code = models.CharField(max_length=10, blank=True, null=True)
+    
+    # Enhanced email verification fields
     email_token = models.CharField(max_length=64, blank=True, null=True)  # Expanded for secure tokens
+    verification_code = models.CharField(max_length=4, blank=True, null=True)  # 4-digit verification code
+    verification_code_hash = models.CharField(max_length=64, blank=True, null=True)  # Hashed verification code
+    verification_method = models.CharField(
+        max_length=10,
+        choices=[('code', 'Code'), ('link', 'Link')],
+        default='link',
+        blank=True,
+        null=True
+    )
+    verification_expires_at = models.DateTimeField(blank=True, null=True)
+    verification_attempts = models.IntegerField(default=0)
+    verification_blocked_until = models.DateTimeField(blank=True, null=True)
+    last_verification_request = models.DateTimeField(blank=True, null=True)
+    
+    # Password reset fields
+    reset_token = models.CharField(max_length=64, blank=True, null=True)  # Password reset token
+    reset_code = models.CharField(max_length=4, blank=True, null=True)  # 4-digit reset code
+    reset_code_hash = models.CharField(max_length=64, blank=True, null=True)  # Hashed reset code
+    reset_expires_at = models.DateTimeField(blank=True, null=True)
+    reset_attempts = models.IntegerField(default=0)
+    reset_blocked_until = models.DateTimeField(blank=True, null=True)
+    last_reset_request = models.DateTimeField(blank=True, null=True)
     
 
     profile_complete = models.BooleanField(default=False)

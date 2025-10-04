@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { baseUrl } from '../../../constants';
 import api from '../../../lib/api';
 import ButtonLoader from '../../../common/button_loader';
-import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
+import { Eye, EyeOff } from 'lucide-react';
 
 const NewPassword = () => {
   const [password, setPassword] = useState('');
@@ -124,9 +124,9 @@ const NewPassword = () => {
                   tabIndex={-1}
                 >
                   {showPassword ? (
-                    <EyeSlashIcon className="w-6 h-6" />
+                    <EyeOff className="w-6 h-6" />
                   ) : (
-                    <EyeIcon className="w-6 h-6" />
+                    <Eye className="w-6 h-6" />
                   )}
                 </button>
               </div>
@@ -147,9 +147,9 @@ const NewPassword = () => {
                   tabIndex={-1}
                 >
                   {showPassword ? (
-                    <EyeSlashIcon className="w-6 h-6" />
+                    <EyeOff className="w-6 h-6" />
                   ) : (
-                    <EyeIcon className="w-6 h-6" />
+                    <Eye className="w-6 h-6" />
                   )}
                 </button>
               </div>

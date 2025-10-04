@@ -1,20 +1,53 @@
-# Use the official Node.js image.
-FROM node:16
+# Stage 1: Base - Set up shared dependencies
+FROM node:16 AS base
+WORKDIR /app
 
-# Set the working directory.
-WORKDIR /zamio_admin_pro
+# Copy shared package first (from root context)
+COPY packages/ui-theme ./packages/ui-theme
 
-# Copy package.json and package-lock.json (if available).
-COPY package*.json ./
+# Copy application package files
+COPY zamio_admin/package*.json ./zamio_admin/
 
-# Install dependencies.
-RUN npm install
+# Install dependencies
+WORKDIR /app/zamio_admin
+RUN npm ci --no-audit --no-fund --maxsockets 1
 
-# Copy the rest of the application files.
-COPY . .
+# Stage 2: Development - For local development with hot reload
+FROM base AS development
+WORKDIR /app/zamio_admin
 
-# Expose the port the app runs on.
-#EXPOSE 5173
+# Copy application source code
+COPY zamio_admin .
 
-# Command to run the app.
+# Expose the port the app runs on
+EXPOSE 4176
+
+# Command to run the app in development mode
 CMD ["npm", "run", "dev"]
+
+# Stage 3: Builder - Build the production bundle
+FROM base AS builder
+WORKDIR /app/zamio_admin
+
+# Copy application source code
+COPY zamio_admin .
+
+# Build the application
+RUN npm run build
+
+# Stage 4: Production - Serve the production build
+FROM node:16-alpine AS production
+WORKDIR /app
+
+# Copy built assets from builder stage
+COPY --from=builder /app/zamio_admin/dist ./dist
+COPY --from=builder /app/zamio_admin/package*.json ./
+
+# Install only production dependencies
+RUN npm ci --only=production --no-audit --no-fund
+
+# Expose the port the app runs on
+EXPOSE 4176
+
+# Command to serve the production build
+CMD ["npm", "run", "preview"]

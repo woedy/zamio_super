@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Route, Routes, useLocation } from 'react-router-dom';
+import { ThemeProvider } from './contexts/ThemeContext';
 
 import Loader from './common/Loader';
 import PageTitle from './components/PageTitle';
@@ -42,6 +43,7 @@ import AuditLogViewer from './pages/Admin/UserManagement/AuditLogViewer';
 import SystemHealthDashboard from './pages/Admin/SystemHealth/SystemHealthDashboard';
 import RoyaltyManagementDashboard from './pages/Admin/RoyaltyManagement/RoyaltyManagementDashboard';
 import FinancialOversightDashboard from './pages/Admin/RoyaltyManagement/FinancialOversightDashboard';
+import SharedPackageTest from './pages/SharedPackageTest';
 
 const hiddenOnRoutes = [
   '/',
@@ -70,9 +72,11 @@ function App() {
   // Determine if the current route should skip the layout
   const shouldUseDefaultLayout = !hiddenOnRoutes.includes(location.pathname);
 
-  return loading ? (
-    <Loader />
-  ) : shouldUseDefaultLayout ? (
+  return (
+    <ThemeProvider>
+      {loading ? (
+        <Loader />
+      ) : shouldUseDefaultLayout ? (
     <DefaultLayout hiddenOnRoutes={hiddenOnRoutes}>
       <Routes>
         {/* Protected routes */}
@@ -315,6 +319,15 @@ function App() {
             </>
           }
         />
+        <Route
+          path="/shared-package-test"
+          element={
+            <>
+              <PageTitle title="Shared Package Test | ZamIO-Admin" />
+              <SharedPackageTest />
+            </>
+          }
+        />
         </Route>
       </Routes>
     </DefaultLayout>
@@ -406,6 +419,8 @@ function App() {
         />
       </Routes>
     </>
+  )}
+    </ThemeProvider>
   );
 }
 

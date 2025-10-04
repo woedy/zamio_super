@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AxiosError } from 'axios';
 import ButtonLoader from '../../common/button_loader';
-import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
+import { Eye, EyeOff } from 'lucide-react';
 import {
   registerAdmin,
   type ApiErrorPayload,
@@ -211,9 +211,9 @@ const SignUp = () => {
                   tabIndex={-1}
                 >
                   {showPassword ? (
-                    <EyeSlashIcon className="w-6 h-6" />
+                    <EyeOff className="w-6 h-6" />
                   ) : (
-                    <EyeIcon className="w-6 h-6" />
+                    <Eye className="w-6 h-6" />
                   )}
                 </button>
               </div>
@@ -234,9 +234,9 @@ const SignUp = () => {
                   tabIndex={-1}
                 >
                   {showPassword ? (
-                    <EyeSlashIcon className="w-6 h-6" />
+                    <EyeOff className="w-6 h-6" />
                   ) : (
-                    <EyeIcon className="w-6 h-6" />
+                    <Eye className="w-6 h-6" />
                   )}
                 </button>
               </div>

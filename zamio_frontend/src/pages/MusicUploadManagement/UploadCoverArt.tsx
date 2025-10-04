@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import ButtonLoader from '../../common/button_loader';
-import { UploadCloud } from 'lucide-react';
+import { Upload } from 'lucide-react';
 import { baseUrl, userToken } from '../../constants';
 import { getArtistId } from '../../lib/auth';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -157,7 +157,7 @@ const CoverUploader = () => {
                 type="submit"
                 className="inline-flex items-center px-6 py-3 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500"
               >
-                <UploadCloud className="w-5 h-5 mr-2" /> Update Track
+                <Upload className="w-5 h-5 mr-2" /> Update Track
               </button>
             )}
           </div>

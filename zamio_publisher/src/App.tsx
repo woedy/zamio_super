@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Route, Routes, useLocation } from 'react-router-dom';
+import { ThemeProvider } from './contexts/ThemeContext';
 
 import Loader from './common/Loader';
 import PageTitle from './components/PageTitle';
@@ -30,6 +31,7 @@ import ContractDetails from './pages/ContractManagement/ContractDetails';
 import DisputesList from './pages/Disputes/DisputesList';
 import DisputeDetails from './pages/Disputes/DisputeDetails';
 import AddContract from './pages/ContractManagement/AddContract';
+import SharedPackageTest from './pages/SharedPackageTest';
 
 const hiddenOnRoutes = [
   '/',
@@ -57,9 +59,11 @@ function App() {
 
   const shouldUseDefaultLayout = !hiddenOnRoutes.includes(location.pathname);
 
-  return loading ? (
-    <Loader />
-  ) : shouldUseDefaultLayout ? (
+  return (
+    <ThemeProvider>
+      {loading ? (
+        <Loader />
+      ) : shouldUseDefaultLayout ? (
     <DefaultLayout hiddenOnRoutes={hiddenOnRoutes}>
       <Routes>
         {/* Protected routes */}
@@ -202,6 +206,15 @@ function App() {
             </>
           }
         />
+        <Route
+          path="/shared-package-test"
+          element={
+            <>
+              <PageTitle title="Shared Package Test | ZamIO Publishers" />
+              <SharedPackageTest />
+            </>
+          }
+        />
       </Routes>
     </DefaultLayout>
   ) : (
@@ -282,6 +295,8 @@ function App() {
         />
       </Routes>
     </>
+  )}
+    </ThemeProvider>
   );
 }
 

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CreditCardIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
+import { CreditCard, Info } from 'lucide-react';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { OnboardingStepProps } from '../../../components/onboarding/OnboardingWizard';
 import { getArtistId } from '../../../lib/auth';
@@ -77,7 +77,7 @@ const PaymentInfo: React.FC<PaymentInfoProps> = ({ onNext, onSkip, onBack }) => 
           className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center"
           style={{ backgroundColor: theme.colors.primary + '20' }}
         >
-          <CreditCardIcon className="w-8 h-8" style={{ color: theme.colors.primary }} />
+          <CreditCard className="w-8 h-8" style={{ color: theme.colors.primary }} />
         </div>
         <h2 className="text-2xl font-bold mb-2" style={{ color: theme.colors.text }}>
           Set Up Royalty Payouts
@@ -169,7 +169,7 @@ const PaymentInfo: React.FC<PaymentInfoProps> = ({ onNext, onSkip, onBack }) => 
           }}
         >
           <div className="flex items-start space-x-3">
-            <InformationCircleIcon className="w-5 h-5 mt-0.5" style={{ color: theme.colors.info }} />
+            <Info className="w-5 h-5 mt-0.5" style={{ color: theme.colors.info }} />
             <div>
               <h4 className="text-sm font-medium mb-1" style={{ color: theme.colors.text }}>
                 Why we need this information

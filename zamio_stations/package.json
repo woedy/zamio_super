@@ -15,6 +15,7 @@
     "url": "https://zamiostations.com"
   },
   "dependencies": {
+    "@zamio/ui-theme": "file:../packages/ui-theme",
     "@chakra-ui/react": "^3.15.0",
     "@heroicons/react": "^2.2.0",
     "@monaco-editor/react": "^4.7.0",

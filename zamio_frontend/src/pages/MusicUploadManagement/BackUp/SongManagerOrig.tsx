@@ -8,7 +8,7 @@ import {
   Delete,
   DeleteIcon,
   LucideDelete,
-  RemoveFormattingIcon,
+  Trash2,
   Plus,
   Search,
   Logs,
@@ -169,7 +169,7 @@ const ArtistTracksView = () => {
                         </Link>
 
                         <Archive className="w-4 h-4 mr-2" />
-                        <RemoveFormattingIcon className="w-4 h-4 mr-2" />
+                        <Trash2 className="w-4 h-4 mr-2" />
                       </div>
                     </td>
                   </tr>

@@ -6,7 +6,9 @@ import {
   CreditCard,
   Download,
   MapPin,
-  UserPlus,
+  Info,
+  Edit,
+  Users,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
@@ -258,28 +260,28 @@ export default function TractDetails() {
       <div className="flex mb-3 gap-3">
         <Link to="/more-track-details">
           <button className="flex items-center px-4 py-2 bg-indigo-900 rounded-full hover:bg-indigo-800 transition">
-            <UserPlus className="w-4 h-4 mr-2" /> More Info
+            <Info className="w-4 h-4 mr-2" /> More Info
           </button>
         </Link>
         <Link to="/edit-track-details" state={{ track_id: track_id }}>
           <button className="flex items-center px-4 py-2 bg-indigo-900 rounded-full hover:bg-indigo-800 transition">
-            <UserPlus className="w-4 h-4 mr-2" /> Edit Track Info
+            <Edit className="w-4 h-4 mr-2" /> Edit Track Info
           </button>
         </Link>
 
         <Link to="/track-contributors" state={{ track_id: track_id }}>
           <button className="flex items-center px-4 py-2 bg-indigo-900 rounded-full hover:bg-indigo-800 transition">
-            <UserPlus className="w-4 h-4 mr-2" /> View Contributors
+            <Users className="w-4 h-4 mr-2" /> View Contributors
           </button>
         </Link>
         <Link to="/track-fingerprint-details">
           <button className="flex items-center px-4 py-2 bg-indigo-900 rounded-full hover:bg-indigo-800 transition">
-            <UserPlus className="w-4 h-4 mr-2" /> Fingerprint Details
+            <Info className="w-4 h-4 mr-2" /> Fingerprint Details
           </button>
         </Link>
         <Link to="/add-track-cover" state={{ track_id: track_id }}>
           <button className="flex items-center px-4 py-2 bg-indigo-900 rounded-full hover:bg-indigo-800 transition">
-            <UserPlus className="w-4 h-4 mr-2" /> Change Cover
+            <Edit className="w-4 h-4 mr-2" /> Change Cover
           </button>
         </Link>
       </div>

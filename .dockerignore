@@ -1,0 +1,105 @@
+# Git
+.git
+.gitignore
+.github
+
+# Node modules (will be installed in container)
+**/node_modules
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+**/pnpm-debug.log*
+**/lerna-debug.log*
+
+# Build artifacts
+**/dist
+**/build
+**/.next
+**/.nuxt
+**/.cache
+**/.vite
+**/.tmp
+
+# Python
+**/__pycache__
+**/*.py[cod]
+**/*$py.class
+**/.pytest_cache
+**/.venv
+**/venv
+**/*.egg-info
+**/.tox
+**/.coverage
+**/htmlcov
+
+# Environment files (sensitive)
+**/.env
+**/.env.local
+**/.env.*.local
+**/.env.production
+**/.env.development
+
+# IDE and editor files
+**/.vscode
+**/.idea
+**/*.swp
+**/*.swo
+**/*~
+**/.DS_Store
+
+# Documentation
+**/*.md
+!**/README.md
+**/docs
+**/_TestingGuide
+**/.SuperTest
+**/CHANGELOG.md
+**/LICENSE.md
+
+# Test files
+**/test
+**/tests
+**/__tests__
+**/*.test.ts
+**/*.test.tsx
+**/*.test.js
+**/*.test.jsx
+**/*.spec.ts
+**/*.spec.tsx
+**/*.spec.js
+**/*.spec.jsx
+**/coverage
+
+# Database files
+**/*.sqlite3
+**/*.db
+
+# Media and static files (will be handled separately)
+**/media
+**/static_cdn
+**/sent_emails
+
+# Flutter/Dart
+zamio_app/.dart_tool
+zamio_app/build
+zamio_app/.flutter-plugins-dependencies
+zamio_app/.metadata
+
+# Deployment and CI/CD
+deploy
+.github
+**/.coolify
+
+# Logs
+**/*.log
+**/logs
+
+# Temporary files
+**/.tmp
+**/tmp
+**/*.tmp
+
+# Docker files (avoid recursion)
+**/Dockerfile*
+**/docker-compose*.yml
+**/.dockerignore

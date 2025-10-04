@@ -11,7 +11,7 @@ from datetime import date, timedelta
 import uuid
 
 from accounts.models import User
-from artists.models import Artist, Track, TrackContributor
+from artists.models import Artist, Track, Contributor
 from stations.models import Station, StationProfile
 from publishers.models import PublisherProfile, PublisherArtistRelationship
 from music_monitor.models import PlayLog, AudioDetection, FingerprintData
@@ -120,15 +120,15 @@ class TrackFactory(DjangoModelFactory):
     fingerprint_status = 'completed'
 
 
-class TrackContributorFactory(DjangoModelFactory):
+class ContributorFactory(DjangoModelFactory):
     """Factory for creating Track contributors."""
     
     class Meta:
-        model = TrackContributor
+        model = Contributor
     
     track = SubFactory(TrackFactory)
     user = SubFactory(ArtistUserFactory)
-    role = 'Artist'
+    role = 'Composer'
     percent_split = 100.0
     publisher = None
 

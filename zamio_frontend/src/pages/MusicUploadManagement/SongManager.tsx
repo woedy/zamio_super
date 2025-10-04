@@ -4,7 +4,7 @@ import {
   Grid3X3,
   Eye,
   Archive,
-  RemoveFormattingIcon,
+  Trash2,
   Plus,
   Search,
   Logs,
@@ -252,7 +252,7 @@ const ArtistTracksView = () => {
                             title="Remove from playlists"
                             aria-label="Remove from playlists"
                           >
-                            <RemoveFormattingIcon className="h-4 w-4" />
+                            <Trash2 className="h-4 w-4" />
                           </button>
                         </div>
                       </td>

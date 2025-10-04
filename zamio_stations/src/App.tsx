@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Route, Routes, useLocation } from 'react-router-dom';
+import { ThemeProvider } from './contexts/ThemeContext';
 
 import Loader from './common/Loader';
 import PageTitle from './components/PageTitle';
@@ -26,6 +27,7 @@ import PaymentInfo from './pages/Authentication/Onboarding/PaymentInfo';
 import AddStaff from './pages/Authentication/Onboarding/AddStaff';
 import RequireStationOnboarding from './components/auth/RequireStationOnboarding';
 import StationDashboard2 from './pages/Dashboard/StationDashboard2';
+import SharedPackageTest from './pages/SharedPackageTest';
 
 const hiddenOnRoutes = [
   '/',
@@ -58,9 +60,11 @@ function App() {
   console.log('Should use default layout:', shouldUseDefaultLayout);
   console.log('Loading state:', loading);
 
-  return loading ? (
-    <Loader />
-  ) : shouldUseDefaultLayout ? (
+  return (
+    <ThemeProvider>
+      {loading ? (
+        <Loader />
+      ) : shouldUseDefaultLayout ? (
     <DefaultLayout hiddenOnRoutes={hiddenOnRoutes}>
       <Routes>
         <Route path="/dashboard" element={
@@ -170,6 +174,15 @@ function App() {
               </>
             }
           />
+          <Route
+            path="/shared-package-test"
+            element={
+              <>
+                <PageTitle title="Shared Package Test | ZamIO Stations" />
+                <SharedPackageTest />
+              </>
+            }
+          />
       
          
         </Route>
@@ -246,6 +259,8 @@ function App() {
         </Route>
       </Routes>
     </>
+  )}
+    </ThemeProvider>
   );
 }
 

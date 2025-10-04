@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
-  ShieldCheckIcon, 
-  DocumentIcon,
-  InformationCircleIcon
-} from '@heroicons/react/24/outline';
+  ShieldCheck, 
+  FileText,
+  Info
+} from 'lucide-react';
 import { useTheme } from '../../../../contexts/ThemeContext';
 import { OnboardingStepProps } from '../../../../components/onboarding/OnboardingWizard';
 import KYCUpload from '../../../../components/onboarding/KYCUpload';
@@ -172,31 +172,31 @@ const KYCStep: React.FC<OnboardingStepProps> = ({ onNext, onSkip, onBack }) => {
         return {
           message: 'KYC verification not started',
           color: theme.colors.textSecondary,
-          icon: DocumentIcon
+          icon: FileText
         };
       case 'incomplete':
         return {
           message: 'KYC documents uploaded, under review',
           color: theme.colors.warning,
-          icon: InformationCircleIcon
+          icon: Info
         };
       case 'verified':
         return {
           message: 'KYC verification completed',
           color: theme.colors.success,
-          icon: ShieldCheckIcon
+          icon: ShieldCheck
         };
       case 'rejected':
         return {
           message: 'KYC verification rejected, please resubmit',
           color: theme.colors.error,
-          icon: InformationCircleIcon
+          icon: Info
         };
       default:
         return {
           message: 'KYC status unknown',
           color: theme.colors.textSecondary,
-          icon: DocumentIcon
+          icon: FileText
         };
     }
   };
@@ -214,7 +214,7 @@ const KYCStep: React.FC<OnboardingStepProps> = ({ onNext, onSkip, onBack }) => {
       <div className="text-center mb-8">
         <div className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center"
              style={{ backgroundColor: theme.colors.primary + '20' }}>
-          <ShieldCheckIcon className="w-8 h-8" style={{ color: theme.colors.primary }} />
+          <ShieldCheck className="w-8 h-8" style={{ color: theme.colors.primary }} />
         </div>
         <h2 className="text-2xl font-bold mb-2" style={{ color: theme.colors.text }}>
           Identity Verification (KYC)
@@ -298,7 +298,7 @@ const KYCStep: React.FC<OnboardingStepProps> = ({ onNext, onSkip, onBack }) => {
         <div className="mb-6 p-4 rounded-lg"
              style={{ backgroundColor: theme.colors.info + '10' }}>
           <div className="flex items-center space-x-3">
-            <InformationCircleIcon className="w-5 h-5" style={{ color: theme.colors.info }} />
+            <Info className="w-5 h-5" style={{ color: theme.colors.info }} />
             <div>
               <p className="font-medium" style={{ color: theme.colors.text }}>
                 Documents Under Review

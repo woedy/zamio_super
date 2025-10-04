@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Music2Icon, UploadCloud, FileMusic } from 'lucide-react';
+import { Music2, Upload, FileAudio } from 'lucide-react';
 import { baseUrl, userToken } from '../../constants';
 import { getArtistId } from '../../lib/auth';
 import ButtonLoader from '../../common/button_loader';

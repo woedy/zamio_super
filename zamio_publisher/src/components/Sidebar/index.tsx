@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Search, Bell, Settings, User, HelpCircle, MessageSquare, Upload, Clock, CreditCard, MapPin, ReceiptPoundSterling, Receipt, ReceiptCent, HelpingHand, Radio, AudioWaveformIcon } from "lucide-react";
+import { Search, Bell, Settings, User, HelpCircle, MessageSquare, Upload, Clock, CreditCard, MapPin, ReceiptPoundSterling, Receipt, ReceiptCent, HelpingHand, Radio, AudioWaveformIcon, LayoutDashboard } from "lucide-react";
 
 
 interface SidebarProps {
@@ -23,7 +23,7 @@ const Sidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
 
 
   const navigationItems = [
-    { name: "Dashboard", icon: <Settings className="w-5 h-5" />, route: "/dashboard"},
+    { name: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" />, route: "/dashboard"},
     { name: " All managed Artists", icon: <Clock className="w-5 h-5" />, route: "/all-artists" },
     { name: "Match Dispute Management", icon: <CreditCard className="w-5 h-5" />, route: "/match-logs" },
     { name: "Contract Management", icon: <CreditCard className="w-5 h-5" />, route: "/artists-contracts" },

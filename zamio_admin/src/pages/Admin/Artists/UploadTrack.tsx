@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Music2Icon, UploadCloud, FileMusic } from "lucide-react";
+import { Music2, Upload, FileAudio } from "lucide-react";
 
 export default function UploadTrack() {
   const [trackData, setTrackData] = useState({
@@ -99,7 +99,7 @@ export default function UploadTrack() {
     <div className="flex-1 flex flex-col p-6">
       <div className="mb-8">
         <h2 className="text-3xl font-semibold text-emerald-300 flex items-center mb-4">
-          <Music2Icon className="w-7 h-7 mr-3" /> Upload New Track
+          <Music2 className="w-7 h-7 mr-3" /> Upload New Track
         </h2>
         <p className="text-gray-500">Share your latest music with your fans!</p>
       </div>
