@@ -11,7 +11,7 @@ from datetime import timedelta
 from publishers.models import PublisherProfile, PublishingAgreement, PublisherArtistRelationship
 from artists.models import Artist, Track
 from music_monitor.models import PlayLog
-from royalties.models import RoyaltyPayment
+from royalties.models import RoyaltyWithdrawal
 
 User = get_user_model()
 
@@ -35,9 +35,10 @@ def get_publisher_metrics_view(request):
 
         publisher_metrics = []
         for publisher in publishers:
-            # Calculate total earnings from royalty payments
-            total_earnings = RoyaltyPayment.objects.filter(
-                user=publisher.user
+            # Calculate total earnings from royalty withdrawals
+            total_earnings = RoyaltyWithdrawal.objects.filter(
+                requester=publisher.user,
+                status__in=['approved', 'processed']
             ).aggregate(total=Sum('amount'))['total'] or 0
 
             # Calculate total plays for publisher's tracks
@@ -113,8 +114,9 @@ def get_publisher_analytics_view(request):
         publisher_analytics = []
         for publisher in top_publishers:
             # Calculate earnings
-            total_earnings = RoyaltyPayment.objects.filter(
-                user=publisher.user
+            total_earnings = RoyaltyWithdrawal.objects.filter(
+                requester=publisher.user,
+                status__in=['approved', 'processed']
             ).aggregate(total=Sum('amount'))['total'] or 0
 
             if total_earnings > 0:  # Only include publishers with earnings
@@ -210,8 +212,9 @@ def get_publisher_detail_view(request):
                 publishingagreement__status='accepted'
             ).count()
 
-            artist_earnings = RoyaltyPayment.objects.filter(
-                user=artist.user
+            artist_earnings = RoyaltyWithdrawal.objects.filter(
+                requester=artist.user,
+                status__in=['approved', 'processed']
             ).aggregate(total=Sum('amount'))['total'] or 0
 
             artists_data.append({
@@ -244,8 +247,9 @@ def get_publisher_detail_view(request):
             })
 
         # Calculate total metrics
-        total_earnings = RoyaltyPayment.objects.filter(
-            user=publisher.user
+        total_earnings = RoyaltyWithdrawal.objects.filter(
+            requester=publisher.user,
+            status__in=['approved', 'processed']
         ).aggregate(total=Sum('amount'))['total'] or 0
 
         total_tracks = Track.objects.filter(

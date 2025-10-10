@@ -6,6 +6,7 @@
   :root {
     /* Light mode colors - Enhanced for WCAG AA compliance */
     --color-primary: #14002C;
+    --color-primary-rgb: 20, 0, 44;
     --color-secondary: #0066CC; /* Improved contrast: 7.5:1 */
     --color-background: #FFFFFF;
     --color-surface: #F8FAFC;
@@ -21,6 +22,7 @@
   .dark {
     /* Dark mode colors - Enhanced for WCAG AA compliance */
     --color-primary: #C084FC; /* Improved contrast: 7.1:1 */
+    --color-primary-rgb: 192, 132, 252;
     --color-secondary: #60A5FA; /* Improved contrast: 6.8:1 */
     --color-background: #0F172A; /* Darker for better contrast */
     --color-surface: #1E293B;
@@ -71,12 +73,14 @@
 
   /* Focus styles for better accessibility */
   .focus-visible-ring {
-    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary/50;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
+    --tw-ring-color: rgb(var(--color-primary-rgb, 20 0 44) / 0.5);
   }
 
   /* High contrast focus for critical elements */
   .focus-high-contrast {
-    @apply focus:outline-none focus:ring-4 focus:ring-primary/75 focus:ring-offset-2;
+    @apply focus:outline-none focus:ring-4 focus:ring-offset-2;
+    --tw-ring-color: rgb(var(--color-primary-rgb, 20 0 44) / 0.75);
   }
 
   /* Skip link styles */

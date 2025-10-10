@@ -5,15 +5,18 @@ import os
 import hashlib
 from decimal import Decimal
 from django.db import models
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.db.models import Sum
 from django.db.models.signals import pre_save
 from django.dispatch import receiver
+from django.conf import settings
 from accounts.models import AuditLog
 from fan.models import Fan
 from publishers.models import PublisherProfile
+
+User = get_user_model()
 
 
 # File validation functions
@@ -139,7 +142,7 @@ class UploadProcessingStatus(models.Model):
     ]
     
     upload_id = models.CharField(max_length=64, unique=True, db_index=True)
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     upload_type = models.CharField(max_length=20, choices=UPLOAD_TYPES)
     
     # File information
@@ -237,7 +240,7 @@ class Artist(models.Model):
     ]
     
     artist_id = models.CharField(max_length=255, blank=True, null=True, unique=True)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='artists')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='artists')
     stage_name = models.CharField(max_length=255)
     bio = models.TextField(blank=True, null=True)
     location = models.CharField(max_length=255, blank=True, null=True)
@@ -488,7 +491,7 @@ class Contributor(models.Model):
     ]
 
     contributor_id = models.CharField(max_length=255, blank=True, null=True, unique=True)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='contributor')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='contributor')
 
     role = models.CharField(max_length=50, choices=ROLE_CHOICES)
     track = models.ForeignKey(Track, on_delete=models.CASCADE, related_name='contributors')
@@ -643,7 +646,7 @@ class TrackFeedback(models.Model):
 class TrackEditHistory(models.Model):
     """Track edit history for version tracking"""
     track = models.ForeignKey(Track, on_delete=models.CASCADE, related_name='edit_history')
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     
     # Track what changed
     changed_fields = models.JSONField(default=dict)
