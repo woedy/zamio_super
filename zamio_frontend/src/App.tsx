@@ -1,41 +1,16 @@
 import { useEffect, useState } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { ErrorBoundary } from '@zamio/ui-theme';
 
 import Loader from './common/Loader';
 import PageTitle from './components/PageTitle';
 
 import DefaultLayout from './layout/DefaultLayout';
 import ProtectedRoute from './components/ProtectedRoute';
-import SignUp from './pages/Authentication/SignUp';
 
-import ZamIOLandingPage from './pages/Landing/LandingPage';
-import SignIn from './pages/Authentication/SignIn';
-import VerifyEmail from './pages/Authentication/VerifyEmail';
-import ForgotPassword from './pages/Authentication/Password/ForgotPassword';
-import ConfirmPasswordOTP from './pages/Authentication/Password/ConfirmPasswordOTP';
-import NewPassword from './pages/Authentication/Password/NewPassword';
-import ArtistDashboard from './pages/Dashboard/Dashboard';
-import SongManager from './pages/MusicUploadManagement/SongManager';
-import UploadTrack from './pages/MusicUploadManagement/UploadTrack';
-import TractDetails from './pages/MusicUploadManagement/TrackDetails';
-import EditTractDetails from './pages/MusicUploadManagement/EditSong';
-import CoverUploader from './pages/MusicUploadManagement/UploadCoverArt';
-import TrackContributors from './pages/MusicUploadManagement/Contributors';
-import AddContributor from './pages/MusicUploadManagement/AddContributors';
-import MatchLogViewer from './pages/PlaylogsMatchLog/FullDetectionTable';
-import ArtistAnalyticsPage from './pages/PlatformAnalytics/ArtistAnalyticsPage';
-import RoyaltyDashboard from './pages/PaymentsOversight/ViewPaymentHistory';
-import NotificationCenter from './pages/NotificationCenter/NotificationCenter';
-import LegalCompliancePage from './pages/LegalCompliance/LegalComplains';
-import EducationSupport from './pages/TechSupport/HelpSupport';
-import FeedbackReviewsPage from './pages/FeedbackReview/FeedbackReview';
-import ArtistProfilePage from './pages/Profile/ArtistProfile';
-import AddAlbum from './pages/MusicUploadManagement/AddAlbum';
-import EnhancedArtistOnboarding from './pages/Authentication/Onboarding/EnhancedArtistOnboarding';
-import ComponentShowcase from './components/ComponentShowcase';
-import ComponentTest from './components/ComponentTest';
-import SharedPackageTest from './pages/SharedPackageTest';
+// Lazy-loaded components
+import * as LazyRoutes from './routes/LazyRoutes';
 import api from './lib/api';
 
 const hiddenOnRoutes = [
@@ -91,10 +66,11 @@ function App() {
   const shouldUseDefaultLayout = !hiddenOnRoutes.includes(location.pathname);
 
   return (
-    <ThemeProvider>
-      {loading ? (
-        <Loader />
-      ) : shouldUseDefaultLayout ? (
+    <ErrorBoundary>
+      <ThemeProvider>
+        {loading ? (
+          <Loader />
+        ) : shouldUseDefaultLayout ? (
     <DefaultLayout hiddenOnRoutes={hiddenOnRoutes}>
       <Routes>
         {/* Protected routes */}
@@ -104,7 +80,7 @@ function App() {
           element={
             <>
               <PageTitle title="Artist Dasboard | ZamIO-Artists" />
-              <ArtistDashboard />
+              <LazyRoutes.ArtistDashboard />
             </>
           }
         />
@@ -114,7 +90,7 @@ function App() {
           element={
             <>
               <PageTitle title="Song Manager | ZamIO-Artists" />
-              <SongManager />
+              <LazyRoutes.SongManager />
             </>
           }
         />
@@ -125,7 +101,17 @@ function App() {
           element={
             <>
               <PageTitle title="Upload | ZamIO-Artists" />
-              <UploadTrack />
+              <LazyRoutes.UploadTrack />
+            </>
+          }
+        />
+
+        <Route
+          path="/upload-track-v2"
+          element={
+            <>
+              <PageTitle title="Non-Blocking Upload | ZamIO-Artists" />
+              <LazyRoutes.NonBlockingUploadTrack />
             </>
           }
         />
@@ -135,7 +121,17 @@ function App() {
           element={
             <>
               <PageTitle title="Add Album | ZamIO-Artists" />
-              <AddAlbum />
+              <LazyRoutes.AddAlbum />
+            </>
+          }
+        />
+
+        <Route
+          path="/edit-album"
+          element={
+            <>
+              <PageTitle title="Edit Album | ZamIO-Artists" />
+              <LazyRoutes.EditAlbum />
             </>
           }
         />
@@ -146,7 +142,7 @@ function App() {
           element={
             <>
               <PageTitle title="Song Details | ZamIO-Artists" />
-              <TractDetails />
+              <LazyRoutes.TractDetails />
             </>
           }
         />
@@ -155,7 +151,7 @@ function App() {
           element={
             <>
               <PageTitle title="Edit Song Details | ZamIO-Artists" />
-              <EditTractDetails />
+              <LazyRoutes.EditTractDetails />
             </>
           }
         />
@@ -164,7 +160,7 @@ function App() {
           element={
             <>
               <PageTitle title="Add Song Cover | ZamIO-Artists" />
-              <CoverUploader />
+              <LazyRoutes.CoverUploader />
             </>
           }
         />
@@ -173,7 +169,7 @@ function App() {
           element={
             <>
               <PageTitle title="Song Contributors | ZamIO-Artists" />
-              <TrackContributors />
+              <LazyRoutes.TrackContributors />
             </>
           }
         />
@@ -182,7 +178,7 @@ function App() {
           element={
             <>
               <PageTitle title="Add Song Contributor | ZamIO-Artists" />
-              <AddContributor />
+              <LazyRoutes.AddContributor />
             </>
           }
         />
@@ -191,7 +187,7 @@ function App() {
           element={
             <>
               <PageTitle title="Add Song Contributor | ZamIO-Artists" />
-              <MatchLogViewer />
+              <LazyRoutes.MatchLogViewer />
             </>
           }
         />
@@ -200,7 +196,7 @@ function App() {
           element={
             <>
               <PageTitle title="Add Song Contributor | ZamIO-Artists" />
-              <ArtistAnalyticsPage />
+              <LazyRoutes.ArtistAnalyticsPage />
             </>
           }
         />
@@ -209,7 +205,7 @@ function App() {
           element={
             <>
               <PageTitle title="Royalty & Payments | ZamIO-Artists" />
-              <RoyaltyDashboard />
+              <LazyRoutes.RoyaltyDashboard />
             </>
           }
         />
@@ -218,7 +214,7 @@ function App() {
           element={
             <>
               <PageTitle title="Notification Center | ZamIO-Artists" />
-              <NotificationCenter />
+              <LazyRoutes.NotificationCenter />
             </>
           }
         />
@@ -227,7 +223,7 @@ function App() {
           element={
             <>
               <PageTitle title="Legal & Compliance | ZamIO-Artists" />
-              <LegalCompliancePage />
+              <LazyRoutes.LegalCompliancePage />
             </>
           }
         />
@@ -236,7 +232,7 @@ function App() {
           element={
             <>
               <PageTitle title="Help & Support | ZamIO-Artists" />
-              <EducationSupport />
+              <LazyRoutes.EducationSupport />
             </>
           }
         />
@@ -245,7 +241,7 @@ function App() {
           element={
             <>
               <PageTitle title="Feedback & Compliance | ZamIO-Artists" />
-              <FeedbackReviewsPage />
+              <LazyRoutes.FeedbackReviewsPage />
             </>
           }
         />
@@ -254,7 +250,25 @@ function App() {
           element={
             <>
               <PageTitle title="Artist Page | ZamIO-Artists" />
-              <ArtistProfilePage />
+              <LazyRoutes.ArtistProfilePage />
+            </>
+          }
+        />
+        <Route
+          path="/profile/edit"
+          element={
+            <>
+              <PageTitle title="Edit Profile | ZamIO-Artists" />
+              <LazyRoutes.EditProfile />
+            </>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <>
+              <PageTitle title="Settings | ZamIO-Artists" />
+              <LazyRoutes.Settings />
             </>
           }
         />
@@ -263,7 +277,7 @@ function App() {
           element={
             <>
               <PageTitle title="Component Showcase | ZamIO-Artists" />
-              <ComponentShowcase />
+              <LazyRoutes.ComponentShowcase />
             </>
           }
         />
@@ -272,7 +286,7 @@ function App() {
           element={
             <>
               <PageTitle title="Component Test | ZamIO-Artists" />
-              <ComponentTest />
+              <LazyRoutes.ComponentTest />
             </>
           }
         />
@@ -281,7 +295,7 @@ function App() {
           element={
             <>
               <PageTitle title="Shared Package Test | ZamIO-Artists" />
-              <SharedPackageTest />
+              <LazyRoutes.SharedPackageTest />
             </>
           }
         />
@@ -296,7 +310,7 @@ function App() {
           element={
             <>
               <PageTitle title="Home | ZamIO-Artists" />
-              <ZamIOLandingPage />
+              <LazyRoutes.ZamIOLandingPage />
             </>
           }
         />
@@ -306,7 +320,7 @@ function App() {
           element={
             <>
               <PageTitle title="Sign In | ZamIO-Artists" />
-              <SignIn />
+              <LazyRoutes.SignIn />
             </>
           }
         />
@@ -315,7 +329,7 @@ function App() {
           element={
             <>
               <PageTitle title="Sign Up | ZamIO-Artists" />
-              <SignUp />
+              <LazyRoutes.SignUp />
             </>
           }
         />
@@ -324,7 +338,7 @@ function App() {
           element={
             <>
               <PageTitle title="Verify Email | ZamIO-Artists" />
-              <VerifyEmail />
+              <LazyRoutes.VerifyEmail />
             </>
           }
         />
@@ -333,7 +347,7 @@ function App() {
           element={
             <>
               <PageTitle title="Artist Onboarding | ZamIO-Artists" />
-              <EnhancedArtistOnboarding />
+              <LazyRoutes.EnhancedArtistOnboarding />
             </>
           }
         />
@@ -362,7 +376,7 @@ function App() {
           element={
             <>
               <PageTitle title="Forgot Password | ZamIO-Artists" />
-              <ForgotPassword />
+              <LazyRoutes.ForgotPassword />
             </>
           }
         />
@@ -371,7 +385,7 @@ function App() {
           element={
             <>
               <PageTitle title="Confirm Password OTP | ZamIO-Artists" />
-              <ConfirmPasswordOTP />
+              <LazyRoutes.ConfirmPasswordOTP />
             </>
           }
         />
@@ -380,14 +394,15 @@ function App() {
           element={
             <>
               <PageTitle title="New Password Reset | ZamIO-Artists" />
-              <NewPassword />
+              <LazyRoutes.NewPassword />
             </>
           }
         />
       </Routes>
     </>
   )}
-    </ThemeProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
 

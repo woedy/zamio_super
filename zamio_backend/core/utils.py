@@ -231,3 +231,31 @@ def get_duration(duration):
     hours, remainder = divmod(total_seconds, 3600)
     minutes, seconds = divmod(remainder, 60)
     return f"{hours:02}:{minutes:02}:{seconds:02}"
+
+
+def log_audit_event(user, action, resource_type=None, resource_id=None, 
+                   request_data=None, response_data=None, status_code=None,
+                   ip_address=None, user_agent=None, trace_id=None):
+    """
+    Create comprehensive audit log entry
+    This is a utility function to create audit logs from anywhere in the application
+    """
+    try:
+        import uuid
+        from accounts.models import AuditLog
+        
+        AuditLog.objects.create(
+            user=user,
+            action=action,
+            resource_type=resource_type or 'system',
+            resource_id=resource_id,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            request_data=request_data or {},
+            response_data=response_data or {},
+            status_code=status_code,
+            trace_id=trace_id or uuid.uuid4()
+        )
+    except Exception as e:
+        # Log audit creation failure but don't break the main flow
+        print(f"Failed to create audit log: {str(e)}")

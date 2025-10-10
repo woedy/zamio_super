@@ -249,8 +249,32 @@ export default function ZamIOLandingPage() {
         <div className="absolute bottom-[-200px] right-[-120px] h-[420px] w-[420px] rounded-full bg-violet-500/20 blur-[180px]" />
       </div>
 
+      {/* Skip Links for Accessibility */}
+      <a 
+        href="#main-content" 
+        className="skip-link"
+        onFocus={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+        onBlur={(e) => e.currentTarget.style.transform = 'translateY(-100%)'}
+      >
+        Skip to main content
+      </a>
+      <a 
+        href="#navigation" 
+        className="skip-link"
+        style={{ left: '120px' }}
+        onFocus={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+        onBlur={(e) => e.currentTarget.style.transform = 'translateY(-100%)'}
+      >
+        Skip to navigation
+      </a>
+
       <header className="relative">
-        <nav className="container mx-auto flex items-center justify-between px-4 py-6">
+        <nav 
+          id="navigation"
+          className="container mx-auto flex items-center justify-between px-4 py-6"
+          role="navigation"
+          aria-label="Main navigation"
+        >
           <a href="/" className="flex items-center space-x-2">
             <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-500/20 text-indigo-300">
               <Music className="h-5 w-5" />
@@ -289,10 +313,11 @@ export default function ZamIOLandingPage() {
           <button
             type="button"
             onClick={() => setIsMenuOpen((prev) => !prev)}
-            className="rounded-lg border border-white/10 p-2 text-slate-200 transition hover:border-indigo-400 hover:text-white md:hidden"
-            aria-label="Toggle navigation"
+            className="rounded-lg border border-white/10 p-2 text-slate-200 transition hover:border-indigo-400 hover:text-white md:hidden focus-visible-ring"
+            aria-label={isMenuOpen ? "Close navigation menu" : "Open navigation menu"}
+            aria-expanded={isMenuOpen}
+            aria-controls="mobile-menu"
           >
-            <span className="sr-only">Toggle navigation</span>
             <div className="space-y-1">
               <span
                 className={`block h-0.5 w-6 transform bg-current transition duration-200 ${
@@ -314,7 +339,12 @@ export default function ZamIOLandingPage() {
         </nav>
 
         {isMenuOpen ? (
-          <div className="mx-4 mb-6 rounded-2xl border border-white/10 bg-slate-900/80 p-6 shadow-2xl backdrop-blur md:hidden">
+          <div 
+            id="mobile-menu"
+            className="mx-4 mb-6 rounded-2xl border border-white/10 bg-slate-900/80 p-6 shadow-2xl backdrop-blur md:hidden"
+            role="menu"
+            aria-labelledby="mobile-menu-button"
+          >
             <div className="space-y-4">
               {navigation.map((item) => (
                 <a
@@ -345,17 +375,17 @@ export default function ZamIOLandingPage() {
         ) : null}
       </header>
 
-      <main className="relative">
+      <main id="main-content" className="relative" role="main">
         <section className="container mx-auto grid gap-12 px-4 pb-20 pt-10 lg:grid-cols-[minmax(0,1fr)_520px] lg:pb-28 lg:pt-20">
           <div>
             <div className="inline-flex items-center space-x-3 rounded-full border border-white/20 bg-white/5 px-4 py-2 text-xs font-medium uppercase tracking-widest text-slate-200">
               <ShieldCheck className="h-4 w-4" />
               <span>Royalty intelligence for Ghana & beyond</span>
             </div>
-            <h1 className="mt-6 text-4xl font-semibold leading-tight sm:text-5xl lg:text-6xl">
+            <h1 className="mt-6 text-4xl font-semibold leading-tight sm:text-5xl lg:text-6xl text-white">
               Present a PRO-ready royalty platform artists and societies trust.
             </h1>
-            <p className="mt-6 max-w-xl text-lg text-slate-300">
+            <p className="mt-6 max-w-xl text-lg text-slate-200">
               Zamio unifies detection, reconciliation, payouts, and compliance so Ghanaian and international catalogs receive every cedi they are owed.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">

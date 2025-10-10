@@ -9,6 +9,7 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.db import transaction
 from django.views.decorators.csrf import csrf_exempt
+from django.conf import settings
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.permissions import IsAuthenticated
@@ -512,5 +513,697 @@ def authentication_audit_logs_view(request):
         return Response({
             'message': 'Error',
             'errors': {'system': ['Failed to retrieve audit logs']},
+            'trace_id': str(trace_id)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([])
+@authentication_classes([])
+@csrf_exempt
+def location_search_view(request):
+    """
+    Location search API with autocomplete functionality
+    Provides location suggestions based on query parameter
+    """
+    payload = {}
+    data = {}
+    
+    try:
+        query = request.GET.get('q', '').strip()
+        
+        if not query:
+            return Response({
+                'message': 'Error',
+                'errors': {'query': ['Query parameter "q" is required']}
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if len(query) < 2:
+            return Response({
+                'message': 'Error',
+                'errors': {'query': ['Query must be at least 2 characters long']}
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # For now, we'll provide a basic list of common locations
+        # In a production environment, this would integrate with a proper geocoding service
+        # like Google Places API, Mapbox, or OpenStreetMap Nominatim
+        
+        common_locations = [
+            # Major cities worldwide
+            "New York, NY, USA",
+            "Los Angeles, CA, USA", 
+            "Chicago, IL, USA",
+            "Houston, TX, USA",
+            "Phoenix, AZ, USA",
+            "Philadelphia, PA, USA",
+            "San Antonio, TX, USA",
+            "San Diego, CA, USA",
+            "Dallas, TX, USA",
+            "San Jose, CA, USA",
+            "Austin, TX, USA",
+            "Jacksonville, FL, USA",
+            "Fort Worth, TX, USA",
+            "Columbus, OH, USA",
+            "Charlotte, NC, USA",
+            "San Francisco, CA, USA",
+            "Indianapolis, IN, USA",
+            "Seattle, WA, USA",
+            "Denver, CO, USA",
+            "Washington, DC, USA",
+            "Boston, MA, USA",
+            "El Paso, TX, USA",
+            "Nashville, TN, USA",
+            "Detroit, MI, USA",
+            "Oklahoma City, OK, USA",
+            "Portland, OR, USA",
+            "Las Vegas, NV, USA",
+            "Memphis, TN, USA",
+            "Louisville, KY, USA",
+            "Baltimore, MD, USA",
+            "Milwaukee, WI, USA",
+            "Albuquerque, NM, USA",
+            "Tucson, AZ, USA",
+            "Fresno, CA, USA",
+            "Sacramento, CA, USA",
+            "Mesa, AZ, USA",
+            "Kansas City, MO, USA",
+            "Atlanta, GA, USA",
+            "Long Beach, CA, USA",
+            "Colorado Springs, CO, USA",
+            "Raleigh, NC, USA",
+            "Miami, FL, USA",
+            "Virginia Beach, VA, USA",
+            "Omaha, NE, USA",
+            "Oakland, CA, USA",
+            "Minneapolis, MN, USA",
+            "Tulsa, OK, USA",
+            "Arlington, TX, USA",
+            "Tampa, FL, USA",
+            "New Orleans, LA, USA",
+            # International cities
+            "London, UK",
+            "Paris, France",
+            "Berlin, Germany",
+            "Madrid, Spain",
+            "Rome, Italy",
+            "Amsterdam, Netherlands",
+            "Brussels, Belgium",
+            "Vienna, Austria",
+            "Prague, Czech Republic",
+            "Warsaw, Poland",
+            "Stockholm, Sweden",
+            "Oslo, Norway",
+            "Copenhagen, Denmark",
+            "Helsinki, Finland",
+            "Dublin, Ireland",
+            "Lisbon, Portugal",
+            "Athens, Greece",
+            "Budapest, Hungary",
+            "Zurich, Switzerland",
+            "Toronto, Canada",
+            "Vancouver, Canada",
+            "Montreal, Canada",
+            "Calgary, Canada",
+            "Ottawa, Canada",
+            "Sydney, Australia",
+            "Melbourne, Australia",
+            "Brisbane, Australia",
+            "Perth, Australia",
+            "Adelaide, Australia",
+            "Tokyo, Japan",
+            "Osaka, Japan",
+            "Seoul, South Korea",
+            "Beijing, China",
+            "Shanghai, China",
+            "Hong Kong",
+            "Singapore",
+            "Mumbai, India",
+            "Delhi, India",
+            "Bangalore, India",
+            "Chennai, India",
+            "Kolkata, India",
+            "São Paulo, Brazil",
+            "Rio de Janeiro, Brazil",
+            "Buenos Aires, Argentina",
+            "Mexico City, Mexico",
+            "Lima, Peru",
+            "Bogotá, Colombia",
+            "Santiago, Chile",
+            "Caracas, Venezuela",
+            "Cairo, Egypt",
+            "Lagos, Nigeria",
+            "Johannesburg, South Africa",
+            "Cape Town, South Africa",
+            "Nairobi, Kenya",
+            "Casablanca, Morocco",
+            "Tel Aviv, Israel",
+            "Dubai, UAE",
+            "Riyadh, Saudi Arabia",
+            "Kuwait City, Kuwait",
+            "Doha, Qatar",
+            "Bangkok, Thailand",
+            "Manila, Philippines",
+            "Jakarta, Indonesia",
+            "Kuala Lumpur, Malaysia",
+            "Ho Chi Minh City, Vietnam",
+            "Hanoi, Vietnam"
+        ]
+        
+        # Filter locations based on query (case-insensitive)
+        query_lower = query.lower()
+        matching_locations = [
+            location for location in common_locations 
+            if query_lower in location.lower()
+        ]
+        
+        # Limit results to 10 for better UX
+        matching_locations = matching_locations[:10]
+        
+        # Format results
+        suggestions = []
+        for location in matching_locations:
+            suggestions.append({
+                'value': location,
+                'label': location,
+                'type': 'city'
+            })
+        
+        data = {
+            'query': query,
+            'suggestions': suggestions,
+            'count': len(suggestions)
+        }
+        
+        payload['message'] = 'Successful'
+        payload['data'] = data
+        
+        return Response(payload, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'message': 'Error',
+            'errors': {'system': ['An error occurred while searching locations']},
+            'debug': str(e) if settings.DEBUG else None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'PUT', 'PATCH'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+@csrf_exempt
+def user_profile_view(request):
+    """
+    Enhanced user profile management endpoint with comprehensive edit functionality
+    GET: Retrieve user profile data
+    PUT/PATCH: Update user profile data including location and photo
+    """
+    payload = {}
+    data = {}
+    errors = {}
+    
+    ip_address = get_client_ip(request)
+    user_agent = request.META.get('HTTP_USER_AGENT', '')
+    trace_id = uuid.uuid4()
+    
+    try:
+        user = request.user
+        
+        if request.method == 'GET':
+            # Return user profile data
+            profile_data = {
+                'user_id': str(user.user_id) if user.user_id else None,
+                'email': user.email,
+                'username': user.username,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'phone': user.phone,
+                'country': user.country,
+                'location': user.location,
+                'user_type': user.user_type,
+                'profile_complete': user.profile_complete,
+                'verified': user.verified,
+                'email_verified': user.email_verified,
+                'kyc_status': user.kyc_status,
+                'verification_status': user.verification_status,
+                'photo': user.photo.url if user.photo else None,
+                'timestamp': user.timestamp.isoformat() if user.timestamp else None,
+                'last_activity': user.last_activity.isoformat() if user.last_activity else None
+            }
+            
+            data = profile_data
+            payload['message'] = 'Successful'
+            payload['data'] = data
+            
+            # Log profile access
+            create_audit_log(
+                user=user,
+                action='profile_viewed',
+                resource_id=str(user.user_id) if user.user_id else None,
+                response_data={'fields_accessed': list(profile_data.keys())},
+                status_code=200,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                trace_id=trace_id
+            )
+            
+            return Response(payload, status=status.HTTP_200_OK)
+            
+        elif request.method in ['PUT', 'PATCH']:
+            # Update user profile data
+            with transaction.atomic():
+                # Extract data from request
+                first_name = request.data.get('first_name')
+                last_name = request.data.get('last_name')
+                username = request.data.get('username')
+                phone = request.data.get('phone')
+                country = request.data.get('country')
+                location = request.data.get('location')
+                photo = request.FILES.get('photo')
+                
+                # Password change fields
+                current_password = request.data.get('current_password')
+                new_password = request.data.get('new_password')
+                
+                # Store old values for audit logging
+                old_values = {
+                    'first_name': user.first_name,
+                    'last_name': user.last_name,
+                    'username': user.username,
+                    'phone': user.phone,
+                    'country': user.country,
+                    'location': user.location,
+                    'photo': user.photo.name if user.photo else None
+                }
+                
+                # Track changes
+                changes_made = {}
+                validation_errors = {}
+                
+                # Validate and update fields if provided
+                if first_name is not None:
+                    first_name = first_name.strip()
+                    if len(first_name) < 1:
+                        validation_errors['first_name'] = ['First name is required']
+                    elif len(first_name) > 255:
+                        validation_errors['first_name'] = ['First name is too long']
+                    elif first_name != old_values['first_name']:
+                        user.first_name = first_name
+                        changes_made['first_name'] = {'old': old_values['first_name'], 'new': first_name}
+                        
+                if last_name is not None:
+                    last_name = last_name.strip()
+                    if len(last_name) < 1:
+                        validation_errors['last_name'] = ['Last name is required']
+                    elif len(last_name) > 255:
+                        validation_errors['last_name'] = ['Last name is too long']
+                    elif last_name != old_values['last_name']:
+                        user.last_name = last_name
+                        changes_made['last_name'] = {'old': old_values['last_name'], 'new': last_name}
+                
+                if username is not None:
+                    username = username.strip().lower()
+                    if username and username != old_values['username']:
+                        # Check if username is already taken
+                        if User.objects.filter(username=username).exclude(id=user.id).exists():
+                            validation_errors['username'] = ['Username is already taken']
+                        elif len(username) < 3:
+                            validation_errors['username'] = ['Username must be at least 3 characters']
+                        elif len(username) > 255:
+                            validation_errors['username'] = ['Username is too long']
+                        else:
+                            user.username = username
+                            changes_made['username'] = {'old': old_values['username'], 'new': username}
+                        
+                if phone is not None:
+                    phone = phone.strip()
+                    if phone and phone != old_values['phone']:
+                        # Basic phone validation
+                        if len(phone) > 20:
+                            validation_errors['phone'] = ['Phone number is too long']
+                        else:
+                            user.phone = phone
+                            changes_made['phone'] = {'old': old_values['phone'], 'new': phone}
+                    elif not phone and old_values['phone']:
+                        user.phone = ''
+                        changes_made['phone'] = {'old': old_values['phone'], 'new': ''}
+                        
+                if country is not None:
+                    country = country.strip()
+                    if country != old_values['country']:
+                        if len(country) > 255:
+                            validation_errors['country'] = ['Country name is too long']
+                        else:
+                            user.country = country
+                            changes_made['country'] = {'old': old_values['country'], 'new': country}
+                        
+                if location is not None:
+                    location = location.strip()
+                    if location != old_values['location']:
+                        if len(location) > 255:
+                            validation_errors['location'] = ['Location is too long']
+                        else:
+                            user.location = location
+                            changes_made['location'] = {'old': old_values['location'], 'new': location}
+                
+                # Handle photo upload with enhanced validation
+                if photo:
+                    try:
+                        # Validate file type and size using existing validators
+                        from accounts.models import validate_file_type, validate_file_size
+                        validate_file_type(photo)
+                        validate_file_size(photo)
+                        
+                        # Delete old photo if it exists and is not the default
+                        if user.photo and 'default' not in user.photo.name:
+                            try:
+                                user.photo.delete(save=False)
+                            except Exception:
+                                pass  # Continue even if old photo deletion fails
+                        
+                        user.photo = photo
+                        changes_made['photo'] = {
+                            'old': old_values['photo'], 
+                            'new': photo.name,
+                            'size': photo.size,
+                            'content_type': getattr(photo, 'content_type', 'unknown')
+                        }
+                    except ValidationError as e:
+                        validation_errors['photo'] = e.messages if hasattr(e, 'messages') else [str(e)]
+                
+                # Handle password change
+                if new_password:
+                    if not current_password:
+                        validation_errors['current_password'] = ['Current password is required to change password']
+                    elif not user.check_password(current_password):
+                        validation_errors['current_password'] = ['Current password is incorrect']
+                    elif len(new_password) < 8:
+                        validation_errors['new_password'] = ['New password must be at least 8 characters long']
+                    else:
+                        user.set_password(new_password)
+                        changes_made['password'] = {'changed': True}
+                        
+                        # Invalidate all other sessions when password is changed
+                        from rest_framework.authtoken.models import Token
+                        Token.objects.filter(user=user).delete()
+                        Token.objects.create(user=user)  # Create new token
+                
+                # Return validation errors if any
+                if validation_errors:
+                    payload['message'] = 'Validation Error'
+                    payload['errors'] = validation_errors
+                    
+                    create_audit_log(
+                        user=user,
+                        action='profile_update_failed',
+                        resource_id=str(user.user_id) if user.user_id else None,
+                        request_data={'validation_errors': validation_errors},
+                        response_data={'error': 'validation_failed'},
+                        status_code=400,
+                        ip_address=ip_address,
+                        user_agent=user_agent,
+                        trace_id=trace_id
+                    )
+                    
+                    return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+                
+                # Save changes if any were made
+                if changes_made:
+                    user.save()
+                    
+                    # Create activity log
+                    try:
+                        AllActivity.objects.create(
+                            user=user,
+                            type="Profile",
+                            subject="Profile Updated",
+                            body=f"{user.email} updated their profile from {ip_address}"
+                        )
+                    except Exception:
+                        pass
+                
+                # Return updated profile data
+                updated_data = {
+                    'user_id': str(user.user_id) if user.user_id else None,
+                    'email': user.email,
+                    'username': user.username,
+                    'first_name': user.first_name,
+                    'last_name': user.last_name,
+                    'phone': user.phone,
+                    'country': user.country,
+                    'location': user.location,
+                    'user_type': user.user_type,
+                    'profile_complete': user.profile_complete,
+                    'verified': user.verified,
+                    'email_verified': user.email_verified,
+                    'kyc_status': user.kyc_status,
+                    'verification_status': user.verification_status,
+                    'photo': user.photo.url if user.photo else None,
+                    'changes_made': changes_made,
+                    'updated_at': timezone.now().isoformat()
+                }
+                
+                data = updated_data
+                payload['message'] = 'Successful'
+                payload['data'] = data
+                
+                # Log profile update
+                create_audit_log(
+                    user=user,
+                    action='profile_updated',
+                    resource_id=str(user.user_id) if user.user_id else None,
+                    request_data={
+                        'fields_updated': list(changes_made.keys()),
+                        'method': request.method
+                    },
+                    response_data={
+                        'success': True,
+                        'changes_made': changes_made
+                    },
+                    status_code=200,
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                    trace_id=trace_id
+                )
+                
+                return Response(payload, status=status.HTTP_200_OK)
+                
+    except Exception as e:
+        create_audit_log(
+            user=getattr(request, 'user', None),
+            action='profile_management_error',
+            request_data={'error': str(e), 'method': request.method},
+            status_code=500,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            trace_id=trace_id
+        )
+        
+        return Response({
+            'message': 'Error',
+            'errors': {'system': ['An error occurred while managing profile']},
+            'trace_id': str(trace_id)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'PATCH'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+@csrf_exempt
+def user_preferences_view(request):
+    """
+    User preferences management endpoint
+    GET: Retrieve user preferences
+    PATCH: Update user preferences
+    """
+    from accounts.models import UserPreferences
+    
+    payload = {}
+    data = {}
+    errors = {}
+    
+    ip_address = get_client_ip(request)
+    user_agent = request.META.get('HTTP_USER_AGENT', '')
+    trace_id = uuid.uuid4()
+    
+    try:
+        user = request.user
+        
+        # Get or create user preferences
+        preferences, created = UserPreferences.objects.get_or_create(
+            user=user,
+            defaults={
+                'email_notifications': True,
+                'sms_notifications': False,
+                'push_notifications': True,
+                'marketing_emails': False,
+                'royalty_alerts': True,
+                'match_notifications': True,
+                'weekly_reports': True,
+                'sound_notifications': True,
+                'privacy_profile_public': False,
+                'privacy_show_earnings': False,
+                'privacy_show_plays': True,
+                'theme_preference': 'system',
+                'language': 'en',
+                'timezone': 'UTC',
+            }
+        )
+        
+        if request.method == 'GET':
+            # Return user preferences data
+            preferences_data = {
+                'email_notifications': preferences.email_notifications,
+                'sms_notifications': preferences.sms_notifications,
+                'push_notifications': preferences.push_notifications,
+                'marketing_emails': preferences.marketing_emails,
+                'royalty_alerts': preferences.royalty_alerts,
+                'match_notifications': preferences.match_notifications,
+                'weekly_reports': preferences.weekly_reports,
+                'sound_notifications': preferences.sound_notifications,
+                'privacy_profile_public': preferences.privacy_profile_public,
+                'privacy_show_earnings': preferences.privacy_show_earnings,
+                'privacy_show_plays': preferences.privacy_show_plays,
+                'theme_preference': preferences.theme_preference,
+                'language': preferences.language,
+                'timezone': preferences.timezone,
+            }
+            
+            data = preferences_data
+            payload['message'] = 'Successful'
+            payload['data'] = data
+            
+            # Log preferences access
+            create_audit_log(
+                user=user,
+                action='preferences_viewed',
+                resource_id=str(user.user_id) if user.user_id else None,
+                response_data={'fields_accessed': list(preferences_data.keys())},
+                status_code=200,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                trace_id=trace_id
+            )
+            
+            return Response(payload, status=status.HTTP_200_OK)
+            
+        elif request.method == 'PATCH':
+            # Update user preferences
+            old_values = {
+                'email_notifications': preferences.email_notifications,
+                'sms_notifications': preferences.sms_notifications,
+                'push_notifications': preferences.push_notifications,
+                'marketing_emails': preferences.marketing_emails,
+                'royalty_alerts': preferences.royalty_alerts,
+                'match_notifications': preferences.match_notifications,
+                'weekly_reports': preferences.weekly_reports,
+                'sound_notifications': preferences.sound_notifications,
+                'privacy_profile_public': preferences.privacy_profile_public,
+                'privacy_show_earnings': preferences.privacy_show_earnings,
+                'privacy_show_plays': preferences.privacy_show_plays,
+                'theme_preference': preferences.theme_preference,
+                'language': preferences.language,
+                'timezone': preferences.timezone,
+            }
+            
+            # Track changes
+            changes_made = {}
+            
+            # Update notification preferences
+            for field in ['email_notifications', 'sms_notifications', 'push_notifications', 
+                         'marketing_emails', 'royalty_alerts', 'match_notifications', 
+                         'weekly_reports', 'sound_notifications']:
+                if field in request.data:
+                    new_value = request.data[field]
+                    if new_value != old_values[field]:
+                        setattr(preferences, field, new_value)
+                        changes_made[field] = {'old': old_values[field], 'new': new_value}
+            
+            # Update privacy preferences
+            for field in ['privacy_profile_public', 'privacy_show_earnings', 'privacy_show_plays']:
+                if field in request.data:
+                    new_value = request.data[field]
+                    if new_value != old_values[field]:
+                        setattr(preferences, field, new_value)
+                        changes_made[field] = {'old': old_values[field], 'new': new_value}
+            
+            # Update theme and appearance preferences
+            for field in ['theme_preference', 'language', 'timezone']:
+                if field in request.data:
+                    new_value = request.data[field]
+                    if new_value != old_values[field]:
+                        setattr(preferences, field, new_value)
+                        changes_made[field] = {'old': old_values[field], 'new': new_value}
+            
+            # Save changes
+            preferences.save()
+            
+            # Return updated preferences data
+            updated_data = {
+                'email_notifications': preferences.email_notifications,
+                'sms_notifications': preferences.sms_notifications,
+                'push_notifications': preferences.push_notifications,
+                'marketing_emails': preferences.marketing_emails,
+                'royalty_alerts': preferences.royalty_alerts,
+                'match_notifications': preferences.match_notifications,
+                'weekly_reports': preferences.weekly_reports,
+                'sound_notifications': preferences.sound_notifications,
+                'privacy_profile_public': preferences.privacy_profile_public,
+                'privacy_show_earnings': preferences.privacy_show_earnings,
+                'privacy_show_plays': preferences.privacy_show_plays,
+                'theme_preference': preferences.theme_preference,
+                'language': preferences.language,
+                'timezone': preferences.timezone,
+                'changes_made': changes_made
+            }
+            
+            data = updated_data
+            payload['message'] = 'Successful'
+            payload['data'] = data
+            
+            # Log preferences update
+            create_audit_log(
+                user=user,
+                action='preferences_updated',
+                resource_id=str(user.user_id) if user.user_id else None,
+                request_data={
+                    'fields_updated': list(changes_made.keys())
+                },
+                response_data={
+                    'success': True,
+                    'changes_made': changes_made
+                },
+                status_code=200,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                trace_id=trace_id
+            )
+            
+            # Create activity log
+            try:
+                AllActivity.objects.create(
+                    user=user,
+                    type="Preferences",
+                    subject="Preferences Updated",
+                    body=f"{user.email} updated their preferences from {ip_address}"
+                )
+            except Exception:
+                pass
+            
+            return Response(payload, status=status.HTTP_200_OK)
+            
+    except Exception as e:
+        create_audit_log(
+            user=getattr(request, 'user', None),
+            action='preferences_management_error',
+            request_data={'error': str(e)},
+            status_code=500,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            trace_id=trace_id
+        )
+        
+        return Response({
+            'message': 'Error',
+            'errors': {'system': ['An error occurred while managing preferences']},
             'trace_id': str(trace_id)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

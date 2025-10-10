@@ -210,12 +210,25 @@ class User(AbstractBaseUser):
 
     country = models.CharField(max_length=255, null=True, blank=True)
     phone = models.CharField(max_length=255, null=True, blank=True)
+    location = models.CharField(max_length=255, blank=True, null=True)
 
     user_type = models.CharField(max_length=100, choices=USER_TYPE, blank=True, null=True)
     
     # Enhanced authentication fields
     kyc_status = models.CharField(max_length=20, choices=KYC_STATUS_CHOICES, default='pending')
     kyc_documents = models.JSONField(default=dict, blank=True)
+    verification_status = models.CharField(
+        max_length=20,
+        choices=[
+            ('pending', 'Pending'),
+            ('verified', 'Verified'),
+            ('skipped', 'Skipped'),
+            ('incomplete', 'Incomplete'),
+        ],
+        default='pending'
+    )
+    verification_skipped_at = models.DateTimeField(null=True, blank=True)
+    verification_reminder_sent = models.BooleanField(default=False)
     two_factor_enabled = models.BooleanField(default=False)
     two_factor_secret = models.CharField(max_length=32, blank=True, null=True)
     last_activity = models.DateTimeField(auto_now=True)
@@ -477,3 +490,46 @@ class KYCDocument(models.Model):
             return current_hash == self.file_hash
         except Exception:
             return False
+
+
+class UserPreferences(models.Model):
+    """User preferences for notifications, privacy, and theme settings"""
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='preferences')
+    
+    # Notification preferences
+    email_notifications = models.BooleanField(default=True)
+    sms_notifications = models.BooleanField(default=False)
+    push_notifications = models.BooleanField(default=True)
+    marketing_emails = models.BooleanField(default=False)
+    royalty_alerts = models.BooleanField(default=True)
+    match_notifications = models.BooleanField(default=True)
+    weekly_reports = models.BooleanField(default=True)
+    sound_notifications = models.BooleanField(default=True)
+    
+    # Privacy preferences
+    privacy_profile_public = models.BooleanField(default=False)
+    privacy_show_earnings = models.BooleanField(default=False)
+    privacy_show_plays = models.BooleanField(default=True)
+    
+    # Theme and appearance preferences
+    theme_preference = models.CharField(
+        max_length=10,
+        choices=[
+            ('light', 'Light'),
+            ('dark', 'Dark'),
+            ('system', 'System'),
+        ],
+        default='system'
+    )
+    language = models.CharField(max_length=10, default='en')
+    timezone = models.CharField(max_length=50, default='UTC')
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = 'User Preferences'
+        verbose_name_plural = 'User Preferences'
+    
+    def __str__(self):
+        return f"Preferences for {self.user.email}"

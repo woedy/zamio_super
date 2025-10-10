@@ -25,6 +25,7 @@ const Sidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
   const navigationItems = [
     { name: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" />, route: "/dashboard"},
     { name: "User Management", icon: <Users className="w-5 h-5" />, route: "/user-management" },
+    { name: "Staff Management", icon: <Shield className="w-5 h-5" />, route: "/staff-management" },
     { name: "KYC Review", icon: <Shield className="w-5 h-5" />, route: "/kyc-review" },
     { name: "Audit Logs", icon: <Activity className="w-5 h-5" />, route: "/audit-logs" },
     { name: "System Health", icon: <Activity className="w-5 h-5" />, route: "/system-health" },

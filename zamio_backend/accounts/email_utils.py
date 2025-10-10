@@ -235,6 +235,69 @@ def send_welcome_email(user: User, base_url: Optional[str] = None) -> str:
     )
 
 
+def send_verification_reminder_email(user: User, base_url: Optional[str] = None) -> str:
+    """
+    Send verification reminder email to users who have skipped verification.
+    
+    Args:
+        user: User instance to send verification reminder to
+        base_url: Optional base URL for verification links
+        
+    Returns:
+        Task ID for tracking the email task
+        
+    Requirements: 20.1, 20.4 - Later verification process workflow
+    """
+    subject = "Complete your ZamIO account verification"
+    
+    message = f"""
+    Hi {user.first_name or 'there'},
+    
+    We noticed you skipped the identity verification step during your ZamIO account setup.
+    
+    While you can continue using basic features, completing verification unlocks:
+    • Royalty withdrawals to your bank account
+    • Publisher partnership opportunities
+    • Advanced analytics and reporting
+    • Priority customer support
+    • Dispute resolution capabilities
+    
+    Verification is quick and secure - it typically takes just 1-2 business days.
+    
+    Ready to complete verification? You can:
+    1. Log into your account and go to Profile Settings > Verification
+    2. Upload your identity documents (National ID + Utility Bill)
+    3. Wait for our team to review (1-2 business days)
+    
+    Questions? Our support team is here to help at support@zamio.com
+    
+    Thanks for being part of ZamIO!
+    """
+    
+    context_data = {
+        'user_type': user.user_type,
+        'verification_status': user.verification_status,
+        'skipped_at': user.verification_skipped_at.isoformat() if user.verification_skipped_at else None,
+        'features_locked': [
+            'Royalty withdrawals',
+            'Publisher partnerships', 
+            'Advanced analytics',
+            'Priority support',
+            'Dispute resolution'
+        ],
+        'verification_url': f"{base_url}/profile/verification" if base_url else None
+    }
+    
+    return send_notification_to_users(
+        user_ids=[user.id],
+        subject=subject,
+        message=message,
+        email_type='verification_reminder',
+        template_name='verification_reminder',
+        context_data=context_data
+    )
+
+
 def send_account_verification_complete_email(user: User) -> str:
     """
     Send email confirmation when account verification is complete.

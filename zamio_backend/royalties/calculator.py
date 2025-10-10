@@ -28,6 +28,8 @@ from .models import (
     PartnerRemittance
 )
 from music_monitor.models import PlayLog, AudioDetection, RoyaltyDistribution
+from artists.models import Track, Contributor
+from publishers.models import PublisherProfile
 from artists.models import Track, Contributor, Artist
 from stations.models import Station
 from publishers.models import PublisherProfile

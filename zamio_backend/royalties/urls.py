@@ -45,4 +45,12 @@ urlpatterns = [
     path("files/<str:upload_id>/status/", views.get_financial_file_status),
     path("files/audit-trail/", views.get_financial_file_audit_trail),
     path("files/verify-integrity/", views.verify_financial_file_integrity),
+    
+    # Royalty Withdrawal Management
+    path("withdrawals/", views.list_withdrawal_requests),
+    path("withdrawals/create/", views.create_withdrawal_request),
+    path("withdrawals/<str:withdrawal_id>/", views.get_withdrawal_request),
+    path("withdrawals/<str:withdrawal_id>/action/", views.process_withdrawal_action),
+    path("artists/<int:artist_id>/withdrawal-eligibility/", views.get_artist_withdrawal_eligibility),
+    path("publishers/<int:publisher_id>/withdrawal-summary/", views.get_publisher_withdrawal_summary),
 ]

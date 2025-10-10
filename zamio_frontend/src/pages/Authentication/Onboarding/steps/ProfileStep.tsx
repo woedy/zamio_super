@@ -7,6 +7,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { useTheme } from '../../../../contexts/ThemeContext';
 import { OnboardingStepProps } from '../../../../components/onboarding/OnboardingWizard';
+import LocationSearch from '../../../../components/LocationSearch';
 import api from '../../../../lib/api';
 import { getArtistId } from '../../../../lib/auth';
 
@@ -14,6 +15,7 @@ interface ProfileData {
   bio: string;
   country: string;
   region: string;
+  location: string;
   photo: File | null;
 }
 
@@ -23,6 +25,7 @@ const ProfileStep: React.FC<OnboardingStepProps> = ({ onNext, onBack }) => {
     bio: '',
     country: '',
     region: '',
+    location: '',
     photo: null
   });
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -74,6 +77,11 @@ const ProfileStep: React.FC<OnboardingStepProps> = ({ onNext, onBack }) => {
     // Region validation
     if (profileData.region.trim().length > 0) {
       newValidation.region = true;
+    }
+
+    // Location validation (optional)
+    if (profileData.location.trim().length > 0) {
+      newValidation.location = true;
     }
 
     // Photo validation
@@ -139,6 +147,7 @@ const ProfileStep: React.FC<OnboardingStepProps> = ({ onNext, onBack }) => {
       formData.append('bio', profileData.bio);
       formData.append('country', profileData.country);
       formData.append('region', profileData.region);
+      formData.append('location', profileData.location);
       if (profileData.photo) {
         formData.append('photo', profileData.photo);
       }
@@ -284,6 +293,23 @@ const ProfileStep: React.FC<OnboardingStepProps> = ({ onNext, onBack }) => {
               </span>
             )}
           </div>
+        </div>
+
+        {/* Location Search (Optional) */}
+        <div>
+          <label className="block text-sm font-medium mb-2" style={{ color: theme.colors.text }}>
+            Location (Optional)
+            {getFieldIcon('location')}
+          </label>
+          <LocationSearch
+            value={profileData.location}
+            onChange={(value) => handleInputChange('location', value)}
+            placeholder="Search for your specific location..."
+            error={errors.location}
+          />
+          <p className="text-xs mt-1" style={{ color: theme.colors.textSecondary }}>
+            This helps us provide location-relevant features and analytics
+          </p>
         </div>
 
         {/* Profile Photo */}

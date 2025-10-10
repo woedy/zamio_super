@@ -549,7 +549,11 @@ def complete_station_profile_view(request):
     bio = request.data.get('bio', "")
     country = request.data.get('country', "")
     region = request.data.get('region', "")
+    location_name = request.data.get('location_name', "")
+    lat = request.data.get('lat', None)
+    lng = request.data.get('lng', None)
     photo = request.data.get('photo', "")
+    stream_url = request.data.get('stream_url', "").strip()
 
     if not station_id:
         errors['station_id'] = ['Station ID is required.']
@@ -571,6 +575,54 @@ def complete_station_profile_view(request):
         station.country = country
     if region:
         station.region = region
+    if location_name:
+        station.location_name = location_name
+    if lat is not None:
+        station.lat = lat
+    if lng is not None:
+        station.lng = lng
+    
+    # Handle stream URL with validation
+    if stream_url:
+        try:
+            # Validate stream URL format using model validation
+            from stations.models import validate_stream_url
+            validate_stream_url(stream_url)
+            station.stream_url = stream_url
+            
+            # Test the stream URL and update status
+            station.stream_status = 'testing'
+            is_accessible, message = station.test_stream_url()
+            
+            # If stream is accessible, trigger a test scan using Celery
+            if is_accessible:
+                try:
+                    from music_monitor.tasks import scan_single_station_stream
+                    # Trigger async test scan (non-blocking)
+                    scan_single_station_stream.delay(station.id, stream_url, 10)
+                except Exception as scan_error:
+                    # Don't fail the profile completion if scan fails
+                    pass
+            
+            # Add stream test results to response data
+            data["stream_test_result"] = {
+                "accessible": is_accessible,
+                "message": message,
+                "status": station.stream_status
+            }
+            
+        except Exception as e:
+            errors['stream_url'] = [str(e)]
+    elif stream_url == "":  # Explicitly clearing stream URL
+        station.stream_url = None
+        station.stream_status = 'inactive'
+        station.stream_validation_errors = None
+
+    # Check for stream URL validation errors before proceeding
+    if errors:
+        payload['message'] = "Errors"
+        payload['errors'] = errors
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
     # Handle photo upload
     photo_url = None

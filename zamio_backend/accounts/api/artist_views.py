@@ -36,6 +36,69 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
+def calculate_profile_completion_percentage(artist):
+    """Calculate the completion percentage of an artist's profile"""
+    total_steps = 6  # profile, social, payment, publisher, kyc, track
+    completed_steps = 0
+    
+    if artist.profile_completed:
+        completed_steps += 1
+    if artist.social_media_added:
+        completed_steps += 1
+    if artist.payment_info_added:
+        completed_steps += 1
+    if artist.publisher_added:
+        completed_steps += 1
+    if artist.user.verification_status in ['verified', 'skipped']:
+        completed_steps += 1
+    if artist.track_uploaded:
+        completed_steps += 1
+    
+    return round((completed_steps / total_steps) * 100)
+
+
+def get_next_recommended_step(artist):
+    """Get the next recommended onboarding step for an artist"""
+    if not artist.profile_completed:
+        return 'profile'
+    elif not artist.social_media_added:
+        return 'social-media'
+    elif not artist.payment_info_added:
+        return 'payment'
+    elif not artist.publisher_added:
+        return 'publisher'
+    elif artist.user.verification_status == 'pending':
+        return 'kyc'
+    elif not artist.track_uploaded:
+        return 'track'
+    return 'done'
+
+
+def get_required_fields_status(artist):
+    """Get the status of required fields for an artist"""
+    return {
+        'profile_required': not artist.profile_completed,
+        'kyc_required': artist.user.verification_status == 'pending',
+        'payment_required': not artist.payment_info_added,
+        'publisher_required': not artist.publisher_added,
+        'social_media_optional': not artist.social_media_added,
+        'track_optional': not artist.track_uploaded,
+    }
+
+
+def get_verification_required_features(user):
+    """Get list of features that require verification"""
+    if user.verification_status == 'verified':
+        return []
+    
+    return [
+        'royalty_withdrawals',
+        'publisher_partnerships',
+        'advanced_analytics',
+        'priority_support'
+    ]
+
+
 
 @api_view(['POST', ])
 @permission_classes([])
@@ -54,6 +117,7 @@ def register_artist_view(request):
         phone = request.data.get('phone', "")
         photo = request.FILES.get('photo')
         country = request.data.get('country', "")
+        location = request.data.get('location', "")
         password = request.data.get('password', "")
         password2 = request.data.get('password2', "")
 
@@ -106,6 +170,8 @@ def register_artist_view(request):
         user.phone = phone
         if country:
             user.country = country
+        if location:
+            user.location = location
         if photo:
             user.photo = photo
         user.save()
@@ -130,6 +196,7 @@ def register_artist_view(request):
         data["last_name"] = user.last_name
         data['phone'] = user.phone
         data['country'] = user.country
+        data['location'] = user.location
         data['photo'] = user.photo.url if getattr(user.photo, 'url', None) else None
 
         # Token for client session (email must still be verified to log in)
@@ -560,6 +627,7 @@ def complete_artist_profile_view(request):
     bio = request.data.get('bio', "")
     country = request.data.get('country', "")
     region = request.data.get('region', "")
+    location = request.data.get('location', "")
     photo = request.FILES.get('photo')
 
     if not artist_id:
@@ -599,6 +667,7 @@ def complete_artist_profile_view(request):
         'bio': getattr(artist, 'bio', ''),
         'country': getattr(artist, 'country', ''),
         'region': getattr(artist, 'region', ''),
+        'location': getattr(artist.user, 'location', ''),
         'photo': artist.user.photo.name if artist.user.photo else None
     }
 
@@ -613,6 +682,10 @@ def complete_artist_profile_view(request):
     if region and region != old_values['region']:
         artist.region = region
         changes_made['region'] = {'old': old_values['region'], 'new': region}
+    if location and location != old_values['location']:
+        artist.user.location = location
+        artist.user.save()
+        changes_made['location'] = {'old': old_values['location'], 'new': location}
     
     # Handle photo upload
     photo_url = None
@@ -700,6 +773,785 @@ def skip_artist_onboarding_view(request):
     data["artist_id"] = artist.artist_id
     data["next_step"] = artist.onboarding_step
 
+    payload['message'] = "Successful"
+    payload['data'] = data
+    return Response(payload, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+@csrf_exempt
+def skip_verification_view(request):
+    """
+    Skip identity verification during onboarding
+    Allows artists to continue onboarding without completing KYC
+    """
+    payload = {}
+    data = {}
+    errors = {}
+    
+    # Get client IP for audit logging
+    def get_client_ip(request):
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+        return ip
+
+    ip_address = get_client_ip(request)
+    
+    artist_id = request.data.get('artist_id', "")
+    reason = request.data.get('reason', "")  # Optional reason for skipping
+
+    if not artist_id:
+        errors['artist_id'] = ['Artist ID is required.']
+
+    try:
+        artist = Artist.objects.get(artist_id=artist_id, user=request.user)
+    except Artist.DoesNotExist:
+        errors['artist_id'] = ['Artist not found or access denied.']
+        artist = None
+
+    if errors:
+        payload['message'] = "Errors"
+        payload['errors'] = errors
+        
+        # Log failed skip attempt
+        AuditLog.objects.create(
+            user=request.user,
+            action='skip_verification_failed',
+            resource_type='verification',
+            resource_id=artist_id,
+            ip_address=ip_address,
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            request_data={'artist_id': artist_id, 'errors': list(errors.keys())},
+            response_data={'error': 'validation_failed'},
+            status_code=400
+        )
+        
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
+    user = artist.user
+    
+    # Enhanced verification skip validation with better error handling
+    if user.verification_status not in ['pending', 'incomplete']:
+        error_messages = {
+            'verified': {
+                'message': 'Verification is already completed and cannot be skipped.',
+                'help_text': 'Your account is fully verified. All platform features are available.',
+                'suggested_actions': ['Continue using the platform', 'Contact support if you have questions']
+            },
+            'skipped': {
+                'message': 'Verification has already been skipped.',
+                'help_text': 'You can resume verification anytime from your profile settings.',
+                'suggested_actions': ['Resume verification process', 'Continue with limited features', 'Contact support for help']
+            }
+        }
+        
+        error_info = error_messages.get(user.verification_status, {
+            'message': f'Verification cannot be skipped. Current status: {user.verification_status}',
+            'help_text': 'Please check your verification status and try again.',
+            'suggested_actions': ['Check verification status', 'Contact support']
+        })
+        
+        errors['verification'] = [error_info['message']]
+        payload['message'] = "Errors"
+        payload['errors'] = errors
+        payload['error_details'] = {
+            'current_status': user.verification_status,
+            'help_text': error_info['help_text'],
+            'suggested_actions': error_info['suggested_actions'],
+            'can_resume': user.verification_status == 'skipped',
+            'features_available': user.verification_status == 'verified'
+        }
+        
+        # Log the failed skip attempt with enhanced context
+        AuditLog.objects.create(
+            user=user,
+            action='skip_verification_rejected',
+            resource_type='verification',
+            resource_id=str(artist.artist_id),
+            ip_address=ip_address,
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            request_data={
+                'artist_id': artist_id,
+                'reason': reason,
+                'current_status': user.verification_status,
+                'onboarding_context': True
+            },
+            response_data={
+                'error': 'invalid_status',
+                'current_status': user.verification_status,
+                'allowed_statuses': ['pending', 'incomplete'],
+                'error_details': error_info,
+                'user_guidance_provided': True
+            },
+            status_code=400
+        )
+        
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
+    # Store previous status for audit trail
+    previous_status = user.verification_status
+    
+    # Update verification status to skipped
+    user.verification_status = 'skipped'
+    user.verification_skipped_at = timezone.now()
+    user.verification_reminder_sent = False  # Reset reminder flag
+    user.save(update_fields=['verification_status', 'verification_skipped_at', 'verification_reminder_sent'])
+
+    # Create activity log
+    AllActivity.objects.create(
+        user=user,
+        subject="Verification Skipped",
+        body=f"{user.email} skipped identity verification during onboarding. Reason: {reason or 'Not provided'}"
+    )
+
+    # Create audit log with enhanced details
+    AuditLog.objects.create(
+        user=user,
+        action='verification_skipped',
+        resource_type='verification',
+        resource_id=str(artist.artist_id),
+        ip_address=ip_address,
+        user_agent=request.META.get('HTTP_USER_AGENT', ''),
+        request_data={
+            'artist_id': artist_id,
+            'reason': reason or 'No reason provided',
+            'skipped_at': user.verification_skipped_at.isoformat(),
+            'previous_status': previous_status,
+            'onboarding_context': True
+        },
+        response_data={
+            'success': True,
+            'verification_status': user.verification_status,
+            'can_verify_later': True,
+            'features_requiring_verification': get_verification_required_features(user),
+            'next_recommended_step': get_next_recommended_step(artist)
+        },
+        status_code=200
+    )
+
+    data = {
+        "artist_id": artist.artist_id,
+        "verification_status": user.verification_status,
+        "verification_skipped_at": user.verification_skipped_at.isoformat(),
+        "next_recommended_step": get_next_recommended_step(artist),
+        "can_verify_later": True,
+        "can_resume_verification": True,
+        "verification_required_for_features": get_verification_required_features(user),
+        "profile_completion_percentage": calculate_profile_completion_percentage(artist),
+        "onboarding_progress": {
+            "profile_completed": artist.profile_completed,
+            "social_media_added": artist.social_media_added,
+            "payment_info_added": artist.payment_info_added,
+            "publisher_added": artist.publisher_added,
+            "verification_skipped": True,
+            "track_uploaded": artist.track_uploaded
+        },
+        "skip_details": {
+            "reason": reason or "No reason provided",
+            "skipped_during_onboarding": True,
+            "can_continue_onboarding": True,
+            "verification_reminder_available": True
+        },
+        "feature_limitations": {
+            "royalty_withdrawals": "Disabled - Verification required",
+            "publisher_partnerships": "Limited - Self-publishing only",
+            "advanced_analytics": "Disabled - Basic analytics available",
+            "priority_support": "Disabled - Standard support available",
+            "dispute_resolution": "Disabled - Verification required"
+        },
+        "resume_instructions": {
+            "methods": [
+                "Go to Profile Settings > Verification",
+                "Use the 'Resume Verification' API endpoint",
+                "Click verification reminder email link"
+            ],
+            "required_documents": ["National ID Card", "Utility Bill"],
+            "estimated_time": "1-2 business days for review"
+        },
+        "message": "Verification skipped successfully. You can complete verification later from your profile settings.",
+        "help_text": "Some features like royalty withdrawals and publisher partnerships require identity verification. You can complete this process anytime from your profile settings.",
+        "support_resources": {
+            "verification_guide": "/help/verification-guide",
+            "faq": "/help/verification-faq",
+            "support_email": "support@zamio.com"
+        }
+    }
+
+    payload['message'] = "Successful"
+    payload['data'] = data
+    return Response(payload, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+@csrf_exempt
+def resume_verification_view(request):
+    """
+    Resume identity verification process for users who previously skipped it
+    """
+    payload = {}
+    data = {}
+    errors = {}
+    
+    # Get client IP for audit logging
+    def get_client_ip(request):
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+        return ip
+
+    ip_address = get_client_ip(request)
+    user = request.user
+
+    # Enhanced verification resume validation with better error handling
+    if user.verification_status not in ['skipped', 'incomplete']:
+        error_messages = {
+            'pending': {
+                'message': 'Verification is already in progress.',
+                'help_text': 'Your verification documents are being processed. Please wait for review completion.',
+                'suggested_actions': ['Check verification status', 'Wait for review completion', 'Contact support if urgent']
+            },
+            'verified': {
+                'message': 'Verification is already completed.',
+                'help_text': 'Your account is fully verified and all features are available.',
+                'suggested_actions': ['Continue using the platform', 'Explore all available features']
+            }
+        }
+        
+        error_info = error_messages.get(user.verification_status, {
+            'message': f'Verification cannot be resumed. Current status: {user.verification_status}',
+            'help_text': 'Please check your verification status and contact support if needed.',
+            'suggested_actions': ['Check verification status', 'Contact support']
+        })
+        
+        errors['verification'] = [error_info['message']]
+        payload['message'] = "Errors"
+        payload['errors'] = errors
+        payload['error_details'] = {
+            'current_status': user.verification_status,
+            'help_text': error_info['help_text'],
+            'suggested_actions': error_info['suggested_actions'],
+            'can_skip': False,
+            'already_completed': user.verification_status == 'verified'
+        }
+        
+        # Log the failed resume attempt with enhanced context
+        AuditLog.objects.create(
+            user=user,
+            action='resume_verification_rejected',
+            resource_type='verification',
+            ip_address=ip_address,
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            request_data={
+                'current_status': user.verification_status,
+                'attempted_at': timezone.now().isoformat(),
+                'user_guidance_needed': True
+            },
+            response_data={
+                'error': 'invalid_status',
+                'current_status': user.verification_status,
+                'allowed_statuses': ['skipped', 'incomplete'],
+                'error_details': error_info,
+                'user_guidance_provided': True
+            },
+            status_code=400
+        )
+        
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
+    # Reset verification status to pending
+    user.verification_status = 'pending'
+    user.verification_skipped_at = None
+    user.verification_reminder_sent = False
+    user.save(update_fields=['verification_status', 'verification_skipped_at', 'verification_reminder_sent'])
+
+    # Create activity log
+    AllActivity.objects.create(
+        user=user,
+        subject="Verification Resumed",
+        body=f"{user.email} resumed identity verification process"
+    )
+
+    # Create audit log
+    AuditLog.objects.create(
+        user=user,
+        action='verification_resumed',
+        resource_type='verification',
+        ip_address=ip_address,
+        user_agent=request.META.get('HTTP_USER_AGENT', ''),
+        request_data={'resumed_at': timezone.now().isoformat()},
+        response_data={
+            'success': True,
+            'verification_status': user.verification_status,
+            'previous_status': 'skipped'
+        },
+        status_code=200
+    )
+
+    data = {
+        "verification_status": user.verification_status,
+        "kyc_status": user.kyc_status,
+        "kyc_documents": user.kyc_documents,
+        "verification_resumed_at": timezone.now().isoformat(),
+        "next_steps": [
+            "Upload required identity documents",
+            "Wait for document review (1-2 business days)",
+            "Receive verification confirmation email"
+        ],
+        "required_documents": [
+            {
+                "type": "id_card",
+                "name": "National ID Card",
+                "description": "Government-issued identification"
+            },
+            {
+                "type": "utility_bill", 
+                "name": "Utility Bill",
+                "description": "Recent utility bill for address verification"
+            }
+        ],
+        "upload_guidelines": {
+            "accepted_formats": ["PDF", "JPG", "PNG"],
+            "max_file_size": "10MB per document",
+            "quality_requirements": [
+                "Clear, high-resolution images",
+                "All text must be readable",
+                "Full document visible (no cropping)",
+                "Documents must be valid and not expired"
+            ]
+        },
+        "estimated_processing_time": "1-2 business days",
+        "features_to_unlock": [
+            "Royalty withdrawals",
+            "Publisher partnerships",
+            "Advanced analytics",
+            "Priority support",
+            "Dispute resolution"
+        ],
+        "support_resources": {
+            "verification_guide": "/help/verification-guide",
+            "document_requirements": "/help/document-requirements",
+            "support_email": "support@zamio.com",
+            "faq": "/help/verification-faq"
+        },
+        "message": "Verification process resumed successfully. Please upload your identity documents to complete verification."
+    }
+
+    payload['message'] = "Successful"
+    payload['data'] = data
+    return Response(payload, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def verification_status_view(request):
+    """
+    Get current verification status and available actions for the user
+    """
+    payload = {}
+    data = {}
+    
+    user = request.user
+    
+    # Get artist profile if exists
+    artist = None
+    try:
+        artist = Artist.objects.get(user=user)
+    except Artist.DoesNotExist:
+        pass
+
+    # Calculate verification progress
+    verification_progress = {
+        'documents_uploaded': bool(user.kyc_documents),
+        'documents_count': len(user.kyc_documents) if user.kyc_documents else 0,
+        'required_documents': ['id_card', 'utility_bill'],
+        'optional_documents': ['passport', 'bank_statement'],
+        'completion_percentage': 0
+    }
+    
+    if user.kyc_documents:
+        required_uploaded = sum(1 for doc in verification_progress['required_documents'] 
+                              if doc in user.kyc_documents)
+        verification_progress['completion_percentage'] = (required_uploaded / len(verification_progress['required_documents'])) * 100
+
+    # Get verification workflow status
+    workflow_status = {
+        'current_step': 'not_started',
+        'available_actions': [],
+        'next_steps': []
+    }
+    
+    if user.verification_status == 'pending':
+        workflow_status['current_step'] = 'document_upload'
+        workflow_status['available_actions'] = ['upload_documents', 'skip_verification']
+        workflow_status['next_steps'] = ['Upload required identity documents', 'Or skip for now and verify later']
+    elif user.verification_status == 'skipped':
+        workflow_status['current_step'] = 'skipped'
+        workflow_status['available_actions'] = ['resume_verification']
+        workflow_status['next_steps'] = ['Resume verification process anytime from profile settings']
+    elif user.verification_status == 'incomplete':
+        workflow_status['current_step'] = 'under_review'
+        workflow_status['available_actions'] = ['check_status']
+        workflow_status['next_steps'] = ['Documents are being reviewed (1-2 business days)']
+    elif user.verification_status == 'verified':
+        workflow_status['current_step'] = 'completed'
+        workflow_status['available_actions'] = []
+        workflow_status['next_steps'] = ['Verification complete - all features unlocked']
+
+    data = {
+        "verification_status": user.verification_status,
+        "kyc_status": user.kyc_status,
+        "verification_skipped_at": user.verification_skipped_at.isoformat() if user.verification_skipped_at else None,
+        "verification_reminder_sent": user.verification_reminder_sent,
+        "can_skip_verification": user.verification_status in ['pending', 'incomplete'],
+        "can_resume_verification": user.verification_status in ['skipped', 'incomplete'],
+        "verification_required_for_features": get_verification_required_features(user),
+        "verification_progress": verification_progress,
+        "workflow_status": workflow_status,
+        "profile_completion_percentage": calculate_profile_completion_percentage(artist) if artist else 0,
+        "estimated_review_time": "1-2 business days" if user.verification_status == 'incomplete' else None,
+        "help_resources": {
+            "faq_url": "/help/verification-faq",
+            "support_email": "support@zamio.com",
+            "document_requirements": "https://zamio.com/help/kyc-requirements"
+        }
+    }
+
+    payload['message'] = "Successful"
+    payload['data'] = data
+    return Response(payload, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def send_verification_reminder_view(request):
+    """
+    Send verification reminder to users who have skipped verification
+    """
+    payload = {}
+    data = {}
+    errors = {}
+    
+    # Get client IP for audit logging
+    def get_client_ip(request):
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+        return ip
+
+    ip_address = get_client_ip(request)
+    user = request.user
+    
+    # Check if user has skipped verification
+    if user.verification_status != 'skipped':
+        errors['verification'] = ['Verification reminders can only be sent to users who have skipped verification.']
+        payload['message'] = "Errors"
+        payload['errors'] = errors
+        
+        # Log failed reminder attempt
+        AuditLog.objects.create(
+            user=user,
+            action='verification_reminder_rejected',
+            resource_type='verification',
+            ip_address=ip_address,
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            request_data={'current_status': user.verification_status},
+            response_data={
+                'error': 'invalid_status',
+                'current_status': user.verification_status,
+                'required_status': 'skipped'
+            },
+            status_code=400
+        )
+        
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Check if reminder was already sent recently (prevent spam)
+    if user.verification_reminder_sent:
+        errors['reminder'] = ['Verification reminder has already been sent. Please check your email.']
+        payload['message'] = "Errors"
+        payload['errors'] = errors
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        # Send verification reminder email using Celery
+        from accounts.email_utils import send_verification_reminder_email
+        task_id = send_verification_reminder_email(user)
+        
+        # Mark reminder as sent
+        user.verification_reminder_sent = True
+        user.save(update_fields=['verification_reminder_sent'])
+        
+        # Create activity log
+        AllActivity.objects.create(
+            user=user,
+            subject="Verification Reminder Sent",
+            body=f"Verification reminder email sent to {user.email}"
+        )
+        
+        # Create audit log
+        AuditLog.objects.create(
+            user=user,
+            action='verification_reminder_sent',
+            resource_type='verification',
+            ip_address=ip_address,
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            request_data={'email': user.email},
+            response_data={
+                'success': True,
+                'task_id': task_id,
+                'reminder_sent': True
+            },
+            status_code=200
+        )
+        
+        data = {
+            "message": "Verification reminder sent successfully",
+            "email": user.email,
+            "task_id": task_id,
+            "reminder_sent": True,
+            "next_steps": [
+                "Check your email for verification instructions",
+                "Click the verification link or use the resume verification endpoint"
+            ]
+        }
+        
+        payload['message'] = "Successful"
+        payload['data'] = data
+        return Response(payload, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Failed to send verification reminder: {str(e)}")
+        
+        # Log failed reminder attempt
+        AuditLog.objects.create(
+            user=user,
+            action='verification_reminder_failed',
+            resource_type='verification',
+            ip_address=ip_address,
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            request_data={'email': user.email},
+            response_data={
+                'error': 'email_send_failed',
+                'error_message': str(e)
+            },
+            status_code=500
+        )
+        
+        errors['email'] = ['Failed to send verification reminder. Please try again later.']
+        payload['message'] = "Errors"
+        payload['errors'] = errors
+        return Response(payload, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def verification_requirements_view(request):
+    """
+    Get detailed verification requirements and guidelines for the user
+    """
+    payload = {}
+    data = {}
+    
+    user = request.user
+    
+    # Get artist profile if exists
+    artist = None
+    try:
+        artist = Artist.objects.get(user=user)
+    except Artist.DoesNotExist:
+        pass
+    
+    # Define verification requirements
+    requirements = {
+        "required_documents": [
+            {
+                "type": "id_card",
+                "name": "National ID Card",
+                "description": "Government-issued national identification card",
+                "accepted_formats": ["PDF", "JPG", "PNG"],
+                "max_size_mb": 10,
+                "requirements": [
+                    "Clear, high-resolution image",
+                    "All text must be readable",
+                    "Full document visible (no cropping)",
+                    "Valid and not expired"
+                ]
+            },
+            {
+                "type": "utility_bill",
+                "name": "Utility Bill",
+                "description": "Recent utility bill for address verification",
+                "accepted_formats": ["PDF", "JPG", "PNG"],
+                "max_size_mb": 10,
+                "requirements": [
+                    "Issued within the last 3 months",
+                    "Shows full name and address",
+                    "From recognized utility provider",
+                    "All text clearly visible"
+                ]
+            }
+        ],
+        "optional_documents": [
+            {
+                "type": "passport",
+                "name": "Passport",
+                "description": "International passport (alternative to national ID)",
+                "accepted_formats": ["PDF", "JPG", "PNG"],
+                "max_size_mb": 10,
+                "requirements": [
+                    "Valid and not expired",
+                    "Photo page clearly visible",
+                    "All text readable"
+                ]
+            },
+            {
+                "type": "bank_statement",
+                "name": "Bank Statement",
+                "description": "Recent bank statement for additional verification",
+                "accepted_formats": ["PDF"],
+                "max_size_mb": 10,
+                "requirements": [
+                    "Issued within the last 3 months",
+                    "Shows account holder name",
+                    "From recognized financial institution"
+                ]
+            }
+        ]
+    }
+    
+    # Get current verification status
+    current_status = {
+        "verification_status": user.verification_status,
+        "kyc_status": user.kyc_status,
+        "documents_uploaded": bool(user.kyc_documents),
+        "uploaded_documents": list(user.kyc_documents.keys()) if user.kyc_documents else [],
+        "verification_skipped_at": user.verification_skipped_at.isoformat() if user.verification_skipped_at else None
+    }
+    
+    # Define features requiring verification
+    restricted_features = {
+        "royalty_withdrawals": {
+            "name": "Royalty Withdrawals",
+            "description": "Request withdrawal of earned royalties to your bank account",
+            "impact": "Cannot withdraw earnings until verified"
+        },
+        "publisher_partnerships": {
+            "name": "Publisher Partnerships",
+            "description": "Enter into publishing agreements with music publishers",
+            "impact": "Limited to self-publishing only"
+        },
+        "advanced_analytics": {
+            "name": "Advanced Analytics",
+            "description": "Access detailed play analytics and revenue reports",
+            "impact": "Basic analytics only"
+        },
+        "priority_support": {
+            "name": "Priority Support",
+            "description": "Get priority customer support and faster response times",
+            "impact": "Standard support queue"
+        },
+        "dispute_resolution": {
+            "name": "Dispute Resolution",
+            "description": "File and manage copyright disputes",
+            "impact": "Cannot file disputes"
+        }
+    }
+    
+    # Verification process steps
+    process_steps = [
+        {
+            "step": 1,
+            "title": "Document Preparation",
+            "description": "Gather required identity documents",
+            "estimated_time": "5 minutes",
+            "tips": [
+                "Ensure documents are clear and readable",
+                "Use good lighting when taking photos",
+                "Avoid shadows or glare"
+            ]
+        },
+        {
+            "step": 2,
+            "title": "Document Upload",
+            "description": "Upload documents through the verification portal",
+            "estimated_time": "10 minutes",
+            "tips": [
+                "Upload one document at a time",
+                "Check file size limits",
+                "Verify document type is correct"
+            ]
+        },
+        {
+            "step": 3,
+            "title": "Review Process",
+            "description": "Our team reviews your submitted documents",
+            "estimated_time": "1-2 business days",
+            "tips": [
+                "You'll receive email updates on progress",
+                "Additional documents may be requested",
+                "Check your email regularly"
+            ]
+        },
+        {
+            "step": 4,
+            "title": "Verification Complete",
+            "description": "Account verified and all features unlocked",
+            "estimated_time": "Immediate",
+            "tips": [
+                "All platform features now available",
+                "You can now withdraw royalties",
+                "Publisher partnerships enabled"
+            ]
+        }
+    ]
+    
+    # Skip verification information
+    skip_information = {
+        "can_skip": user.verification_status in ['pending', 'incomplete'],
+        "skip_consequences": [
+            "Limited access to platform features",
+            "Cannot withdraw earned royalties",
+            "Restricted to self-publishing only",
+            "Basic analytics and support only"
+        ],
+        "resume_anytime": True,
+        "resume_instructions": [
+            "Go to Profile Settings > Verification",
+            "Click 'Resume Verification Process'",
+            "Upload required documents",
+            "Wait for review completion"
+        ]
+    }
+    
+    data = {
+        "requirements": requirements,
+        "current_status": current_status,
+        "restricted_features": restricted_features,
+        "process_steps": process_steps,
+        "skip_information": skip_information,
+        "estimated_total_time": "1-3 business days",
+        "support_contact": {
+            "email": "support@zamio.com",
+            "help_center": "/help/verification",
+            "faq": "/help/verification-faq"
+        },
+        "profile_completion_percentage": calculate_profile_completion_percentage(artist) if artist else 0
+    }
+    
     payload['message'] = "Successful"
     payload['data'] = data
     return Response(payload, status=status.HTTP_200_OK)
@@ -1062,12 +1914,17 @@ def artist_onboarding_status_view(request, artist_id):
         "track_uploaded": artist.track_uploaded,
         "kyc_status": user.kyc_status,
         "kyc_documents": user.kyc_documents,
+        "verification_status": user.verification_status,
+        "verification_skipped_at": user.verification_skipped_at.isoformat() if user.verification_skipped_at else None,
+        "verification_reminder_sent": user.verification_reminder_sent,
         "self_published": artist.self_published,
         "publisher_relationship_status": artist.publisher_relationship_status,
         "royalty_collection_method": artist.royalty_collection_method,
         "profile_complete_percentage": calculate_profile_completion_percentage(artist),
         "next_recommended_step": get_next_recommended_step(artist),
         "required_fields": get_required_fields_status(artist),
+        "can_skip_verification": user.verification_status == 'pending',
+        "verification_required_for_features": get_verification_required_features(user),
     }
 
     payload['message'] = "Successful"
@@ -1496,31 +2353,6 @@ def secure_download_view(request, document_id):
             'errors': {'general': [str(e)]}
         }
         return Response(payload, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-def calculate_profile_completion_percentage(artist):
-    """Calculate profile completion percentage"""
-    total_fields = 6  # profile, social, payment, publisher, kyc, track
-    completed_fields = 0
-
-    if artist.profile_completed:
-        completed_fields += 1
-    if artist.social_media_added:
-        completed_fields += 1
-    if artist.payment_info_added:
-        completed_fields += 1
-    if artist.publisher_added or artist.self_published:
-        completed_fields += 1
-    if artist.user.kyc_status in ['verified', 'uploaded']:
-        completed_fields += 1
-    if artist.track_uploaded:
-        completed_fields += 1
-
-    return round((completed_fields / total_fields) * 100)
-
-
-def get_next_recommended_step(artist):
-    """Get the next recommended step for the artist"""
     if not artist.profile_completed:
         return 'profile'
     elif artist.user.kyc_status == 'pending':

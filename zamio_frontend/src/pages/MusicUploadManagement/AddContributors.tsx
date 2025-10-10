@@ -4,6 +4,7 @@ import { baseUrl, userToken } from '../../constants';
 import { getArtistId } from '../../lib/auth';
 import ButtonLoader from '../../common/button_loader';
 import { useLocation, useNavigate } from 'react-router-dom';
+import ContributorSplitManager from '../../components/ContributorSplitManager';
 
 export default function AddContributor() {
   const [contributorData, setContributorData] = useState({
@@ -419,6 +420,19 @@ export default function AddContributor() {
             )}
           </div>
         </form>
+
+        {/* Real-time Split Management */}
+        {track_id && (
+          <div className="mt-8">
+            <h3 className="text-xl font-semibold text-emerald-300 mb-4">Current Contributors</h3>
+            <ContributorSplitManager 
+              trackId={track_id} 
+              onSplitsUpdated={(summary) => {
+                console.log('Splits updated:', summary);
+              }}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

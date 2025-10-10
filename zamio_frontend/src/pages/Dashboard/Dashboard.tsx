@@ -29,6 +29,8 @@ import {
 } from 'lucide-react';
 import { baseUrl, userToken } from '../../constants';
 import { getArtistId } from '../../lib/auth';
+import { PublisherDashboardSection } from '../../components/dashboard/PublisherDashboardSection';
+import { PublisherCardData } from '@zamio/ui-theme';
 
 const Dashboard = () => {
   const [selectedPeriod, setSelectedPeriod] = useState('monthly');
@@ -586,6 +588,18 @@ const Dashboard = () => {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Publisher Dashboard Section */}
+        <div className="mt-8">
+          <PublisherDashboardSection
+            onPublisherClick={(publisher: PublisherCardData) => {
+              console.log('Publisher clicked:', publisher);
+              // TODO: Navigate to publisher detail view
+            }}
+            maxPublishers={6}
+            showAnalytics={true}
+          />
         </div>
       </div>
     </div>

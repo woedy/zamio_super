@@ -547,6 +547,9 @@ def complete_publisher_profile_view(request):
     bio = request.data.get('bio', "")
     country = request.data.get('country', "")
     region = request.data.get('region', "")
+    location_name = request.data.get('location_name', "")
+    lat = request.data.get('lat', None)
+    lng = request.data.get('lng', None)
     # Accept file uploads via multipart
     photo = request.FILES.get('photo') or request.data.get('photo', "")
 
@@ -574,10 +577,16 @@ def complete_publisher_profile_view(request):
         publisher.country = country
     if region:
         publisher.region = region
+    if location_name:
+        publisher.location_name = location_name
+    if lat is not None:
+        publisher.lat = lat
+    if lng is not None:
+        publisher.lng = lng
     if photo:
         # Align with artist flow: store photo on the user model
         publisher.user.photo = photo
-        publisher.user.save()
+        publisher.user.save() 
 
     # Mark this step as complete (profile)
     publisher.profile_completed = True

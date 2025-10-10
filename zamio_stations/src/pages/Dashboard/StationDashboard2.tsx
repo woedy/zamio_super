@@ -19,6 +19,7 @@ import {
 import api from '../../lib/api';
 import { getStationId, persistStationId, getToken } from '../../lib/auth';
 import { useStationOnboardingContext } from '../../contexts/StationOnboardingContext';
+import { PublisherDashboardSection } from '../../components/dashboard/PublisherDashboardSection';
 
 const PERIOD_OPTIONS = ['daily', 'weekly', 'monthly', 'all-time'] as const;
 type DashboardPeriod = (typeof PERIOD_OPTIONS)[number];
@@ -770,6 +771,14 @@ const Dashboard2 = () => {
             {renderRoyaltySummary()}
             {renderDisputeSummary()}
           </div>
+        </div>
+
+        {/* Publisher Dashboard Section */}
+        <div className="mt-8">
+          <PublisherDashboardSection
+            maxPublishers={6}
+            showAnalytics={true}
+          />
         </div>
       </main>
     </div>

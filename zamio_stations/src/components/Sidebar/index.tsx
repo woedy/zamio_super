@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Bell, Settings, User, HelpCircle, Clock, CreditCard, Radio, AudioWaveformIcon, BarChart2, LayoutDashboard } from "lucide-react";
+import { Bell, Settings, User, HelpCircle, Clock, CreditCard, Radio, AudioWaveformIcon, BarChart2, LayoutDashboard, AlertCircle } from "lucide-react";
 
 
 interface SidebarProps {
@@ -29,6 +29,7 @@ const Sidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
     // Monitoring
     { name: "Match Log Viewer", icon: <Clock className="w-5 h-5" />, route: "/match-logs" },
     { name: "Match Dispute Management", icon: <CreditCard className="w-5 h-5" />, route: "/match-disputes" },
+    { name: "Complaint Management", icon: <AlertCircle className="w-5 h-5" />, route: "/complaints" },
     { name: "Notifications", icon: <Bell className="w-5 h-5" />, route: "/notifications" },
     
 

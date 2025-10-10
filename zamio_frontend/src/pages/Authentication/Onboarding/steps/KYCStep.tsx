@@ -55,6 +55,8 @@ const KYCStep: React.FC<OnboardingStepProps> = ({ onNext, onSkip, onBack }) => {
   ]);
   const [loading, setLoading] = useState(false);
   const [kycStatus, setKycStatus] = useState<string>('pending');
+  const [verificationStatus, setVerificationStatus] = useState<string>('pending');
+  const [canSkipVerification, setCanSkipVerification] = useState<boolean>(true);
   const isMountedRef = useRef(true);
 
   useEffect(() => {
@@ -75,6 +77,8 @@ const KYCStep: React.FC<OnboardingStepProps> = ({ onNext, onSkip, onBack }) => {
 
       if (data) {
         setKycStatus(data.kyc_status || 'pending');
+        setVerificationStatus(data.verification_status || 'pending');
+        setCanSkipVerification(data.can_skip_verification !== false);
 
         // Update document statuses based on existing KYC documents
         if (data.kyc_documents) {
@@ -91,6 +95,8 @@ const KYCStep: React.FC<OnboardingStepProps> = ({ onNext, onSkip, onBack }) => {
         }
       } else {
         setKycStatus('pending');
+        setVerificationStatus('pending');
+        setCanSkipVerification(true);
       }
     } catch (error) {
       console.error('Failed to load KYC status:', error);
@@ -161,12 +167,47 @@ const KYCStep: React.FC<OnboardingStepProps> = ({ onNext, onSkip, onBack }) => {
   };
 
   const handleSkip = async () => {
-    if (onSkip) {
-      await onSkip();
+    try {
+      setLoading(true);
+      
+      // Call the skip verification API
+      await api.post('api/accounts/skip-verification/', {
+        artist_id: getArtistId(),
+        reason: 'Skipped during onboarding'
+      });
+      
+      if (onSkip) {
+        await onSkip();
+      }
+    } catch (error: any) {
+      console.error('Failed to skip verification:', error);
+      // Still proceed with onboarding even if API call fails
+      if (onSkip) {
+        await onSkip();
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
   const getKYCStatusMessage = () => {
+    // Check verification status first, then KYC status
+    if (verificationStatus === 'skipped') {
+      return {
+        message: 'Identity verification skipped - you can complete this later from your profile',
+        color: theme.colors.warning,
+        icon: Info
+      };
+    }
+    
+    if (verificationStatus === 'verified') {
+      return {
+        message: 'Identity verification completed',
+        color: theme.colors.success,
+        icon: ShieldCheck
+      };
+    }
+
     switch (kycStatus) {
       case 'pending':
         return {
@@ -312,6 +353,25 @@ const KYCStep: React.FC<OnboardingStepProps> = ({ onNext, onSkip, onBack }) => {
         </div>
       )}
 
+      {/* Verification Skipped Message */}
+      {verificationStatus === 'skipped' && (
+        <div className="mb-6 p-4 rounded-lg"
+             style={{ backgroundColor: theme.colors.warning + '10' }}>
+          <div className="flex items-center space-x-3">
+            <Info className="w-5 h-5" style={{ color: theme.colors.warning }} />
+            <div>
+              <p className="font-medium" style={{ color: theme.colors.text }}>
+                Verification Skipped
+              </p>
+              <p className="text-sm" style={{ color: theme.colors.textSecondary }}>
+                You've skipped identity verification. You can complete this later from your profile settings.
+                Note: Some features like royalty withdrawals require verification.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Action Buttons */}
       <div className="flex justify-between">
         {onBack && (
@@ -328,25 +388,29 @@ const KYCStep: React.FC<OnboardingStepProps> = ({ onNext, onSkip, onBack }) => {
         )}
         
         <div className="flex space-x-4">
-          {onSkip && (
+          {onSkip && canSkipVerification && verificationStatus === 'pending' && (
             <button
               onClick={handleSkip}
-              className="px-6 py-3 rounded-lg border font-medium transition-colors"
+              disabled={loading}
+              className="px-6 py-3 rounded-lg border font-medium transition-colors disabled:opacity-50"
               style={{ 
                 borderColor: theme.colors.border,
                 color: theme.colors.textSecondary
               }}
             >
-              Skip for Now
+              {loading ? 'Skipping...' : 'Skip for Now'}
             </button>
           )}
           
           <button
             onClick={handleContinue}
-            className="px-8 py-3 rounded-lg font-semibold text-white transition-colors"
+            disabled={loading}
+            className="px-8 py-3 rounded-lg font-semibold text-white transition-colors disabled:opacity-50"
             style={{ backgroundColor: theme.colors.primary }}
           >
-            {requiredDocsUploaded ? 'Continue' : 'Continue Without KYC'}
+            {loading ? 'Processing...' : 
+             verificationStatus === 'skipped' ? 'Continue' :
+             requiredDocsUploaded ? 'Continue' : 'Continue Without KYC'}
           </button>
         </div>
       </div>

@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { getPublisherId } from '../../constants';
 import api from '../../lib/api';
+import { PublisherNetworkSection } from '../../components/dashboard/PublisherNetworkSection';
   import type {
     ApiEnvelope,
     PublisherDashboardData,
@@ -546,6 +547,14 @@ const Dashboard = () => {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Publisher Network Section */}
+        <div className="mt-8">
+          <PublisherNetworkSection
+            maxPublishers={6}
+            showAnalytics={true}
+          />
         </div>
       </div>
     </div>

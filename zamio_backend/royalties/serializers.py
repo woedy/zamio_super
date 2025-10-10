@@ -9,6 +9,7 @@ from .models import (
     RoyaltyRateStructure,
     CurrencyExchangeRate,
     RoyaltyCalculationAudit,
+    RoyaltyWithdrawal,
 )
 
 
@@ -198,3 +199,107 @@ class RoyaltyCalculationAuditSerializer(serializers.ModelSerializer):
             'rate_structure_used', 'errors', 'calculated_by_email',
             'calculated_at'
         ]
+
+
+class RoyaltyWithdrawalSerializer(serializers.ModelSerializer):
+    """Serializer for royalty withdrawal requests with publishing status validation"""
+    requester_email = serializers.CharField(source='requester.email', read_only=True)
+    artist_name = serializers.CharField(source='artist.stage_name', read_only=True)
+    publisher_name = serializers.CharField(source='publisher.company_name', read_only=True)
+    processed_by_email = serializers.CharField(source='processed_by.email', read_only=True)
+    
+    class Meta:
+        model = RoyaltyWithdrawal
+        fields = [
+            'id', 'withdrawal_id', 'requester', 'requester_email', 'requester_type',
+            'amount', 'currency', 'artist', 'artist_name', 'publisher', 'publisher_name',
+            'status', 'publishing_status_validated', 'validation_notes',
+            'payment_method', 'payment_details', 'processed_by', 'processed_by_email',
+            'processed_at', 'rejection_reason', 'admin_notes', 'requested_at', 'updated_at'
+        ]
+        read_only_fields = [
+            'withdrawal_id', 'publishing_status_validated', 'validation_notes',
+            'processed_by', 'processed_at', 'requester_email', 'artist_name',
+            'publisher_name', 'processed_by_email'
+        ]
+    
+    def validate(self, data):
+        """Validate withdrawal request data"""
+        requester_type = data.get('requester_type')
+        artist = data.get('artist')
+        publisher = data.get('publisher')
+        
+        if requester_type == 'artist' and not artist:
+            raise serializers.ValidationError("Artist must be specified for artist withdrawals")
+        
+        if requester_type == 'publisher' and not publisher:
+            raise serializers.ValidationError("Publisher must be specified for publisher withdrawals")
+        
+        if data.get('amount', 0) <= 0:
+            raise serializers.ValidationError("Withdrawal amount must be greater than zero")
+        
+        return data
+
+
+class RoyaltyWithdrawalCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating new royalty withdrawal requests"""
+    
+    class Meta:
+        model = RoyaltyWithdrawal
+        fields = [
+            'requester_type', 'amount', 'currency', 'artist', 'publisher',
+            'payment_method', 'payment_details', 'admin_notes'
+        ]
+    
+    def validate(self, data):
+        """Validate withdrawal creation data"""
+        requester_type = data.get('requester_type')
+        artist = data.get('artist')
+        publisher = data.get('publisher')
+        
+        if requester_type == 'artist':
+            if not artist:
+                raise serializers.ValidationError("Artist must be specified for artist withdrawals")
+        elif requester_type == 'publisher':
+            if not publisher:
+                raise serializers.ValidationError("Publisher must be specified for publisher withdrawals")
+        elif requester_type != 'admin':
+            raise serializers.ValidationError("Invalid requester type")
+        
+        if data.get('amount', 0) <= 0:
+            raise serializers.ValidationError("Withdrawal amount must be greater than zero")
+        
+        return data
+    
+    def create(self, validated_data):
+        """Create withdrawal request with requester set from context"""
+        validated_data['requester'] = self.context['request'].user
+        return super().create(validated_data)
+
+
+class RoyaltyWithdrawalActionSerializer(serializers.Serializer):
+    """Serializer for withdrawal actions (approve, reject, process, cancel)"""
+    action = serializers.ChoiceField(
+        choices=['approve', 'reject', 'process', 'cancel'],
+        help_text="Action to perform on the withdrawal"
+    )
+    reason = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text="Reason for rejection or cancellation"
+    )
+    admin_notes = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text="Additional admin notes"
+    )
+    
+    def validate(self, data):
+        """Validate action data"""
+        action = data.get('action')
+        reason = data.get('reason', '')
+        
+        if action in ['reject', 'cancel'] and not reason.strip():
+            raise serializers.ValidationError(f"Reason is required for {action} action")
+        
+        return data

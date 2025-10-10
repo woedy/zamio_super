@@ -16,7 +16,8 @@ from accounts.api.artist_views import (
     artist_onboarding_status_view, update_onboarding_status_view, complete_artist_onboarding_view,
     set_self_published_status_view, upload_kyc_documents_view, get_kyc_documents_view,
     delete_kyc_document_view, download_kyc_document_view, get_secure_download_url_view,
-    secure_download_view
+    secure_download_view, skip_verification_view, resume_verification_view, verification_status_view,
+    send_verification_reminder_view, verification_requirements_view
 )
 from accounts.api.fan_views import FanLogin, register_fan_view
 from accounts.api.publisher_view import (
@@ -64,7 +65,10 @@ from accounts.api.views import (
     logout_view,
     invalidate_all_sessions_view,
     session_status_view,
-    authentication_audit_logs_view
+    authentication_audit_logs_view,
+    location_search_view,
+    user_profile_view,
+    user_preferences_view
 )
 from accounts.api.email_views import (
     resend_verification_email,
@@ -77,6 +81,16 @@ from accounts.api.email_views import (
     send_welcome_email_to_user,
     mark_email_verified,
     email_system_status
+)
+from accounts.api.staff_views import (
+    get_staff_overview,
+    get_all_staff,
+    get_staff_details,
+    create_staff_member,
+    update_staff_member,
+    deactivate_staff_member,
+    get_staff_activity_log,
+    get_available_permissions
 )
 
 app_name = 'accounts'
@@ -115,6 +129,13 @@ urlpatterns = [
     path('download-kyc-document/<int:document_id>/', download_kyc_document_view, name="download_kyc_document_view"),
     path('secure-download-url/<int:document_id>/', get_secure_download_url_view, name="get_secure_download_url_view"),
     path('secure-download/<int:document_id>/', secure_download_view, name="secure_download_view"),
+    
+    # Verification Skip and Resume Endpoints
+    path('skip-verification/', skip_verification_view, name="skip_verification_view"),
+    path('resume-verification/', resume_verification_view, name="resume_verification_view"),
+    path('verification-status/', verification_status_view, name="verification_status_view"),
+    path('send-verification-reminder/', send_verification_reminder_view, name="send_verification_reminder_view"),
+    path('verification-requirements/', verification_requirements_view, name="verification_requirements_view"),
 
    # 
 
@@ -215,6 +236,26 @@ urlpatterns = [
     path('email/send-welcome/', send_welcome_email_to_user, name="send_welcome_email"),
     path('email/verify/', mark_email_verified, name="mark_email_verified"),
     path('email/system-status/', email_system_status, name="email_system_status"),
+
+    # Staff Management Endpoints
+    path('admin/staff-overview/', get_staff_overview, name="get_staff_overview"),
+    path('admin/all-staff/', get_all_staff, name="get_all_staff"),
+    path('admin/staff-details/<str:staff_id>/', get_staff_details, name="get_staff_details"),
+    path('admin/create-staff/', create_staff_member, name="create_staff_member"),
+    path('admin/update-staff/<str:staff_id>/', update_staff_member, name="update_staff_member"),
+    path('admin/deactivate-staff/<str:staff_id>/', deactivate_staff_member, name="deactivate_staff_member"),
+    path('admin/staff-activity-log/<str:staff_id>/', get_staff_activity_log, name="get_staff_activity_log"),
+    path('admin/available-permissions/', get_available_permissions, name="get_available_permissions"),
+
+    # Location Search API
+    path('location-search/', location_search_view, name="location_search"),
+    
+    # User Profile Management
+    path('profile/', user_profile_view, name="user_profile"),
+    path('edit-profile/', user_profile_view, name="edit_profile"),  # Alias for profile editing
+    
+    # User Preferences Management
+    path('user-preferences/', user_preferences_view, name="user_preferences"),
 
     #path('remove_user/', remove_user_view, name="remove_user_view"),
    # path('send-sms/', send_sms_view, name="send_sms_view"),

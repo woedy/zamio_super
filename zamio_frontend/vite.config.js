@@ -18,6 +18,48 @@ export default defineConfig(({ mode }) => {
         '@': path.resolve(__dirname, './src'),
       },
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            // Vendor chunks
+            'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+            'ui-vendor': ['@chakra-ui/react', '@zamio/ui-theme'],
+            'chart-vendor': ['apexcharts', 'react-apexcharts', 'chart.js', 'react-chartjs-2', 'recharts'],
+            'utility-vendor': ['axios', 'lodash', 'clsx', 'tailwind-merge'],
+            
+            // Feature-based chunks
+            'auth-pages': [
+              './src/pages/Authentication/SignIn',
+              './src/pages/Authentication/SignUp',
+              './src/pages/Authentication/VerifyEmail',
+              './src/pages/Authentication/Password/ForgotPassword',
+              './src/pages/Authentication/Password/ConfirmPasswordOTP',
+              './src/pages/Authentication/Password/NewPassword',
+              './src/pages/Authentication/Onboarding/EnhancedArtistOnboarding'
+            ],
+            'music-management': [
+              './src/pages/MusicUploadManagement/SongManager',
+              './src/pages/MusicUploadManagement/UploadTrack',
+              './src/pages/MusicUploadManagement/TrackDetails',
+              './src/pages/MusicUploadManagement/EditSong',
+              './src/pages/MusicUploadManagement/UploadCoverArt',
+              './src/pages/MusicUploadManagement/Contributors',
+              './src/pages/MusicUploadManagement/AddContributors',
+              './src/pages/MusicUploadManagement/AddAlbum',
+              './src/pages/MusicUploadManagement/EditAlbum'
+            ],
+            'analytics-reporting': [
+              './src/pages/PlaylogsMatchLog/FullDetectionTable',
+              './src/pages/PlatformAnalytics/ArtistAnalyticsPage',
+              './src/pages/PaymentsOversight/ViewPaymentHistory'
+            ]
+          }
+        }
+      },
+      // Optimize chunk size warnings
+      chunkSizeWarningLimit: 1000
+    },
     server: {
       host: '0.0.0.0',
       port: 5173,

@@ -1,49 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Route, Routes, useLocation } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { ErrorBoundary } from '@zamio/ui-theme';
+import { Toaster } from 'react-hot-toast';
 
 import Loader from './common/Loader';
 import PageTitle from './components/PageTitle';
 
 import DefaultLayout from './layout/DefaultLayout';
 import ProtectedRoute from './components/ProtectedRoute';
-import SignUp from './pages/Authentication/SignUp';
-import AudioMatch from './pages/Project/AudioMatch';
-import ArtistDetails from './pages/Admin/Artists/ArtistDetails';
-import AddArtist from './pages/Admin/Artists/AddArtist';
-import UploadTrack from './pages/Admin/Artists/UploadTrack';
-import ZamIOLandingPage from './pages/Landing/LandingPage';
-import SignIn from './pages/Authentication/SignIn';
-import VerifyEmail from './pages/Authentication/VerifyEmail';
-import ForgotPassword from './pages/Authentication/Password/ForgotPassword';
-import ConfirmPasswordOTP from './pages/Authentication/Password/ConfirmPasswordOTP';
-import NewPassword from './pages/Authentication/Password/NewPassword';
-import Dashboard from './pages/Dashboard/Dashboard';
-import AllArtistsPage from './pages/ArtistManagement/AllArtistsPge';
-import AllStationsPage from './pages/StationManagement/AllStationsPage';
-import StationDetails from './pages/Admin/Stations/StationDetails';
-import AllPublishersPage from './pages/PublisherManagement/AllPublishersPage';
-import PublisherDetails from './pages/Admin/Publishers/PublisherDetails';
-import ArtistTracksView from './pages/Song&DetectionManagement/SongManager';
-import AdminTrackDetails from './pages/Song&DetectionManagement/TrackDetails';
-import AllFansPage from './pages/FanManagement/AllFansPage';
-import AdminCompleteProfile from './pages/Authentication/Onboarding/AdminCompleteProfile';
-import DisputesList from './pages/Disputes/DisputesList';
-import DisputeDetails from './pages/Disputes/DisputeDetails';
-import RoyaltiesList from './pages/Royalties/RoyaltiesList';
-import ArtistRoyaltyDetails from './pages/Royalties/ArtistRoyaltyDetails';
-import PlatformAnalytics from './pages/PlatformAnalytics/PlatformAnalytics';
-import PartnersList from './pages/Partners/PartnersList';
-import PartnerDetail from './pages/Partners/PartnerDetail';
-import PartnerOps from './pages/Royalties/PartnerOps';
-import PartnerOpsWizard from './pages/Royalties/PartnerOpsWizard';
-import UserManagementDashboard from './pages/Admin/UserManagement/UserManagementDashboard';
-import KycReviewDashboard from './pages/Admin/UserManagement/KycReviewDashboard';
-import AuditLogViewer from './pages/Admin/UserManagement/AuditLogViewer';
-import SystemHealthDashboard from './pages/Admin/SystemHealth/SystemHealthDashboard';
-import RoyaltyManagementDashboard from './pages/Admin/RoyaltyManagement/RoyaltyManagementDashboard';
-import FinancialOversightDashboard from './pages/Admin/RoyaltyManagement/FinancialOversightDashboard';
-import SharedPackageTest from './pages/SharedPackageTest';
+
+// Lazy-loaded components
+import * as LazyRoutes from './routes/LazyRoutes';
 
 const hiddenOnRoutes = [
   '/',
@@ -73,10 +41,21 @@ function App() {
   const shouldUseDefaultLayout = !hiddenOnRoutes.includes(location.pathname);
 
   return (
-    <ThemeProvider>
-      {loading ? (
-        <Loader />
-      ) : shouldUseDefaultLayout ? (
+    <ErrorBoundary>
+      <ThemeProvider>
+        <Toaster
+          position="top-right"
+          toastOptions={{
+            duration: 4000,
+            style: {
+              background: 'var(--toast-bg)',
+              color: 'var(--toast-color)',
+            },
+          }}
+        />
+        {loading ? (
+          <Loader />
+        ) : shouldUseDefaultLayout ? (
     <DefaultLayout hiddenOnRoutes={hiddenOnRoutes}>
       <Routes>
         {/* Protected routes */}
@@ -86,7 +65,7 @@ function App() {
           element={
             <>
               <PageTitle title="Admin Dasboard | ZamIO-Admin" />
-              <Dashboard />
+              <LazyRoutes.Dashboard />
             </>
           }
         />
@@ -96,7 +75,7 @@ function App() {
           element={
             <>
               <PageTitle title="All Artist | Admin | ZamIO-Admin" />
-              <AllArtistsPage />
+              <LazyRoutes.AllArtistsPage />
             </>
           }
         />
@@ -105,7 +84,7 @@ function App() {
           element={
             <>
               <PageTitle title="Artist Details | Admin | ZamIO-Admin" />
-              <ArtistDetails />
+              <LazyRoutes.ArtistDetails />
             </>
           }
         />
@@ -114,7 +93,7 @@ function App() {
           element={
             <>
               <PageTitle title="Add Artist | Admin | ZamIO-Admin" />
-              <AddArtist />
+              <LazyRoutes.AddArtist />
             </>
           }
         />
@@ -275,6 +254,15 @@ function App() {
           }
         />
         <Route
+          path="/staff-management"
+          element={
+            <>
+              <PageTitle title="Staff Management | ZamIO-Admin" />
+              <StaffManagementDashboard />
+            </>
+          }
+        />
+        <Route
           path="/kyc-review"
           element={
             <>
@@ -328,6 +316,24 @@ function App() {
             </>
           }
         />
+        <Route
+          path="/settings"
+          element={
+            <>
+              <PageTitle title="Settings | ZamIO-Admin" />
+              <Settings />
+            </>
+          }
+        />
+        <Route
+          path="/edit-profile"
+          element={
+            <>
+              <PageTitle title="Edit Profile | ZamIO-Admin" />
+              <EditProfile />
+            </>
+          }
+        />
         </Route>
       </Routes>
     </DefaultLayout>
@@ -339,7 +345,7 @@ function App() {
           element={
             <>
               <PageTitle title="Home | ZamIO-Admin" />
-              <ZamIOLandingPage />
+              <LazyRoutes.ZamIOLandingPage />
             </>
           }
         />
@@ -349,7 +355,7 @@ function App() {
           element={
             <>
               <PageTitle title="Sign Up | ZamIO-Admin" />
-              <AudioMatch />
+              <LazyRoutes.AudioMatch />
             </>
           }
         />
@@ -359,7 +365,7 @@ function App() {
           element={
             <>
               <PageTitle title="Sign In | ZamIO-Admin" />
-              <SignIn />
+              <LazyRoutes.SignIn />
             </>
           }
         />
@@ -368,7 +374,7 @@ function App() {
           element={
             <>
               <PageTitle title="Sign Up | ZamIO-Admin" />
-              <SignUp />
+              <LazyRoutes.SignUp />
             </>
           }
         />
@@ -377,7 +383,7 @@ function App() {
           element={
             <>
               <PageTitle title="Verify Email | ZamIO-Admin" />
-              <VerifyEmail />
+              <LazyRoutes.VerifyEmail />
             </>
           }
         />
@@ -386,7 +392,7 @@ function App() {
           element={
             <>
               <PageTitle title="Complete Profile | ZamIO-Admin" />
-              <AdminCompleteProfile />
+              <LazyRoutes.AdminCompleteProfile />
             </>
           }
         />
@@ -420,7 +426,8 @@ function App() {
       </Routes>
     </>
   )}
-    </ThemeProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
 

@@ -552,40 +552,66 @@ def edit_track(request):
         payload['errors'] = errors
         return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
+    # Store original values for audit logging
+    original_values = {
+        'title': track.title,
+        'release_date': str(track.release_date) if track.release_date else None,
+        'lyrics': track.lyrics,
+        'explicit': track.explicit,
+        'artist_id': track.artist.artist_id if track.artist else None,
+        'album_id': track.album.id if track.album else None,
+        'genre_id': track.genre.id if track.genre else None,
+    }
+
     # Update optional fields
-    for field in ['title', 'release_date', 'lyrics', 'explicit', 'file_path']:
+    updated_fields = {}
+    for field in ['title', 'release_date', 'lyrics', 'explicit']:
         val = request.data.get(field, None)
-        if val is not None:
+        if val is not None and val != '':
+            if field == 'explicit':
+                val = val in ['true', 'True', True, 1, '1']
             setattr(track, field, val)
+            updated_fields[field] = val
 
-
+    # Handle artist change
     artist_id = request.data.get('artist_id', None)
-    if artist_id:
+    if artist_id and artist_id != original_values['artist_id']:
         try:
             artist = Artist.objects.get(artist_id=artist_id)
             track.artist = artist
+            updated_fields['artist_id'] = artist_id
         except Artist.DoesNotExist:
             errors['artist'] = ['Artist not found.']
 
+    # Handle album change
     album_id = request.data.get('album_id', None)
-    print("#############")
-    print(album_id)
-    if album_id:
+    if album_id and album_id != '':
         try:
             album = Album.objects.get(id=album_id)
             track.album = album
+            updated_fields['album_id'] = album_id
         except Album.DoesNotExist:
             errors['album'] = ['Album not found.']
+    elif album_id == '':
+        # Allow clearing album
+        track.album = None
+        updated_fields['album_id'] = None
 
+    # Handle genre change
     genre_id = request.data.get('genre_id', None)
-    print("#############")
-    print(genre_id)
-    if genre_id:
+    if genre_id and genre_id != '':
         try:
             genre = Genre.objects.get(id=genre_id)
             track.genre = genre
+            updated_fields['genre_id'] = genre_id
         except Genre.DoesNotExist:
             errors['genre'] = ['Genre not found.']
+
+    # Handle cover art upload
+    cover_art = request.FILES.get('cover_art', None)
+    if cover_art:
+        track.cover_art = cover_art
+        updated_fields['cover_art'] = 'Updated'
 
     if errors:
         payload['message'] = "Errors"
@@ -594,10 +620,57 @@ def edit_track(request):
 
     track.save()
 
-    data['track_id'] = track.id
-    data['title'] = track.title
+    # Get client IP for audit logging
+    def get_client_ip(request):
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+        return ip
 
-    payload['message'] = "Successful"
+    # Log track edit for audit trail
+    AuditLog.objects.create(
+        user=request.user,
+        action='track_edited',
+        resource_type='track',
+        resource_id=str(track.track_id),
+        ip_address=get_client_ip(request),
+        user_agent=request.META.get('HTTP_USER_AGENT', ''),
+        request_data={
+            'track_id': track_id,
+            'updated_fields': list(updated_fields.keys()),
+            'original_values': original_values,
+            'new_values': updated_fields
+        },
+        response_data={
+            'success': True,
+            'track_id': str(track.track_id),
+            'title': track.title,
+            'updated_fields_count': len(updated_fields)
+        },
+        status_code=200
+    )
+
+    # Create edit history record for version tracking
+    if updated_fields:
+        from artists.models import TrackEditHistory
+        TrackEditHistory.objects.create(
+            track=track,
+            user=request.user,
+            changed_fields=list(updated_fields.keys()),
+            old_values=original_values,
+            new_values=updated_fields,
+            edit_reason=request.data.get('edit_reason', ''),
+            ip_address=get_client_ip(request),
+            user_agent=request.META.get('HTTP_USER_AGENT', '')
+        )
+
+    data['track_id'] = track.track_id
+    data['title'] = track.title
+    data['updated_fields'] = updated_fields
+
+    payload['message'] = "Track updated successfully"
     payload['data'] = data
     return Response(payload)
 
@@ -841,6 +914,56 @@ def upload_track_cover_view(request):
 
     data['track_id'] = track.id
     data['title'] = track.title
+
+    payload['message'] = "Successful"
+    payload['data'] = data
+    return Response(payload)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def get_track_edit_history_view(request):
+    payload = {}
+    data = {}
+    errors = {}
+
+    track_id = request.query_params.get('track_id')
+
+    if not track_id:
+        errors['track_id'] = ['Track ID is required.']
+
+    try:
+        track = Track.objects.get(track_id=track_id)
+    except Track.DoesNotExist:
+        errors['track'] = ['Track not found.']
+
+    if errors:
+        payload['message'] = "Errors"
+        payload['errors'] = errors
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
+    from artists.models import TrackEditHistory
+    edit_history = TrackEditHistory.objects.filter(track=track).select_related('user')[:20]  # Last 20 edits
+
+    history_data = []
+    for edit in edit_history:
+        user_name = f"{edit.user.first_name} {edit.user.last_name}".strip() if edit.user else "Unknown User"
+        if not user_name or user_name == "Unknown User":
+            user_name = edit.user.email if edit.user else "System"
+        
+        history_data.append({
+            'id': edit.id,
+            'user_name': user_name,
+            'changed_fields': edit.changed_fields,
+            'old_values': edit.old_values,
+            'new_values': edit.new_values,
+            'edit_reason': edit.edit_reason,
+            'created_at': edit.created_at.isoformat(),
+        })
+
+    data['edit_history'] = history_data
+    data['track_title'] = track.title
 
     payload['message'] = "Successful"
     payload['data'] = data

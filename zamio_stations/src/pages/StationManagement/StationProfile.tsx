@@ -13,6 +13,11 @@ type StationDetails = {
   bio?: string;
   about?: string;
   photo?: string;
+  stream_url?: string;
+  stream_status?: string;
+  stream_status_display?: string;
+  last_monitored?: string;
+  stream_validation_errors?: string;
 };
 
 const StationProfilePage = () => {
@@ -34,7 +39,12 @@ const StationProfilePage = () => {
 
   // Local edit buffer
   const [form, setForm] = useState<Partial<StationDetails>>({});
-  // Stream links state
+  // Stream URL state
+  const [streamUrlEditing, setStreamUrlEditing] = useState(false);
+  const [streamUrlForm, setStreamUrlForm] = useState('');
+  const [streamUrlError, setStreamUrlError] = useState('');
+  const [streamTesting, setStreamTesting] = useState(false);
+  // Legacy stream links state (keeping for backward compatibility)
   type StreamLink = { id?: number; link: string; active?: boolean };
   const [links, setLinks] = useState<StreamLink[]>([]);
   const [linksOriginal, setLinksOriginal] = useState<StreamLink[]>([]);
@@ -61,7 +71,9 @@ const StationProfilePage = () => {
         region: data?.region,
         country: data?.country,
         bio: data?.bio || data?.about,
+        stream_url: data?.stream_url,
       });
+      setStreamUrlForm(data?.stream_url || '');
     } catch (e: any) {
       setError(e?.response?.data?.errors ? JSON.stringify(e.response.data.errors) : 'Failed to load station');
     } finally {
@@ -74,27 +86,75 @@ const StationProfilePage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadLinks = async () => {
-    if (!stationId) return;
-    try {
-      const res = await api.get('/api/stations/get-station-stream-links/', {
-        params: { station_id: stationId },
-      });
-      const arr = (res?.data?.data?.links || []) as StreamLink[];
-      setLinks(arr);
-      setLinksOriginal(arr);
-    } catch (e) {
-      // no-op for now
-    }
-  };
 
-  useEffect(() => {
-    loadLinks();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const updateField = (key: keyof StationDetails, val: string) => {
     setForm((f) => ({ ...f, [key]: val }));
+  };
+
+  const validateStreamUrl = (url: string): boolean => {
+    if (!url) return true; // Optional field
+    
+    try {
+      const parsedUrl = new URL(url);
+      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+        setStreamUrlError('Stream URL must use HTTP or HTTPS protocol');
+        return false;
+      }
+      setStreamUrlError('');
+      return true;
+    } catch {
+      setStreamUrlError('Please enter a valid URL (e.g., https://stream.example.com/live)');
+      return false;
+    }
+  };
+
+  const handleStreamUrlSave = async () => {
+    if (!station) return;
+    
+    if (!validateStreamUrl(streamUrlForm)) {
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    try {
+      await api.post('/api/stations/edit-station/', {
+        station_id: station.station_id,
+        stream_url: streamUrlForm || null,
+      });
+
+      await loadStation();
+      setStreamUrlEditing(false);
+    } catch (e: any) {
+      setError(e?.response?.data?.errors ? JSON.stringify(e.response.data.errors) : 'Failed to save stream URL');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const testStreamUrl = async () => {
+    if (!station || !streamUrlForm) return;
+    
+    setStreamTesting(true);
+    setError(null);
+    try {
+      const response = await api.post('/api/stations/test-stream-url/', {
+        station_id: station.station_id,
+      });
+      
+      const testResult = response.data?.data;
+      if (testResult?.stream_accessible) {
+        setStreamUrlError('');
+        alert(`Stream test successful: ${testResult.test_message}`);
+      } else {
+        setStreamUrlError(`Stream test failed: ${testResult?.test_message || 'Unknown error'}`);
+      }
+    } catch (e: any) {
+      setStreamUrlError(e?.response?.data?.errors ? JSON.stringify(e.response.data.errors) : 'Failed to test stream URL');
+    } finally {
+      setStreamTesting(false);
+    }
   };
 
   const handleStationSave = async () => {
@@ -242,111 +302,104 @@ const StationProfilePage = () => {
           </div>
         )}
 
-        {/* 🔗 Stream Links */}
+        {/* 🔗 Stream URL */}
         <div className="bg-white/5 p-6 rounded-xl border border-white/20">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-lg font-semibold text-white flex items-center">
-              <LinkIcon className="w-5 h-5 mr-2 text-blue-400" /> Audio Stream Links
+              <LinkIcon className="w-5 h-5 mr-2 text-blue-400" /> Live Stream URL
             </h2>
-            <button onClick={() => setLinksEditing(true)} className="text-blue-300 hover:text-white">
-              Manage
+            <button onClick={() => setStreamUrlEditing(true)} className="text-blue-300 hover:text-white">
+              {station?.stream_url ? 'Edit' : 'Add'}
             </button>
           </div>
-          {links.length === 0 ? (
-            <p className="text-gray-300">No links yet.</p>
+          
+          {station?.stream_url ? (
+            <div className="space-y-3">
+              <div className="px-3 py-2 bg-white/10 rounded-lg break-all text-gray-300">
+                {station.stream_url}
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center space-x-2">
+                  <span className="text-gray-400">Status:</span>
+                  <span className={`px-2 py-1 rounded text-xs font-medium ${
+                    station.stream_status === 'active' ? 'bg-green-500/20 text-green-300' :
+                    station.stream_status === 'testing' ? 'bg-yellow-500/20 text-yellow-300' :
+                    station.stream_status === 'error' ? 'bg-red-500/20 text-red-300' :
+                    'bg-gray-500/20 text-gray-300'
+                  }`}>
+                    {station.stream_status_display || station.stream_status || 'Unknown'}
+                  </span>
+                </div>
+                {station.last_monitored && (
+                  <span className="text-gray-400">
+                    Last monitored: {new Date(station.last_monitored).toLocaleString()}
+                  </span>
+                )}
+              </div>
+              {station.stream_validation_errors && (
+                <div className="bg-red-500/10 border border-red-400/30 text-red-200 p-2 rounded text-sm">
+                  {station.stream_validation_errors}
+                </div>
+              )}
+            </div>
           ) : (
-            <ul className="space-y-2 text-gray-300">
-              {links.map((l, i) => (
-                <li key={(l.id ?? i).toString()} className="px-3 py-2 bg-white/10 rounded-lg break-all">
-                  {l.link}
-                </li>
-              ))}
-            </ul>
+            <p className="text-gray-300">No stream URL configured. Add one to enable audio monitoring for royalty tracking.</p>
           )}
         </div>
 
-        {/* ✏️ Edit Streams Modal */}
-        {linksEditing && (
+        {/* ✏️ Edit Stream URL Modal */}
+        {streamUrlEditing && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-slate-900 p-6 rounded-2xl max-w-md w-full border border-white/20">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-semibold text-white">Manage Stream Links</h2>
-                <button onClick={() => setLinksEditing(false)}>
+                <h2 className="text-xl font-semibold text-white">Edit Stream URL</h2>
+                <button onClick={() => setStreamUrlEditing(false)}>
                   <X className="w-6 h-6 text-gray-400" />
                 </button>
               </div>
-              <div className="space-y-3 text-gray-300 max-h-[60vh] overflow-auto pr-1">
-                {links.map((l, i) => (
-                  <div key={(l.id ?? i).toString()} className="flex items-center space-x-2">
-                    <input
-                      type="text"
-                      className="flex-1 bg-white/10 px-3 py-2 rounded-lg border border-white/20 focus:outline-none"
-                      value={l.link}
-                      onChange={(e) => {
-                        const arr = [...links];
-                        arr[i] = { ...arr[i], link: e.target.value };
-                        setLinks(arr);
-                      }}
-                    />
-                    <button
-                      onClick={() => setLinks(links.filter((_, idx) => idx !== i))}
-                      title="Remove"
-                    >
-                      <X className="w-5 h-5 text-red-400" />
-                    </button>
-                  </div>
-                ))}
-                <button
-                  onClick={() => setLinks([...links, { link: '', active: true }])}
-                  className="text-blue-400 flex items-center"
-                >
-                  <Plus className="w-4 h-4 mr-1" /> Add another
-                </button>
+              <div className="space-y-4 text-gray-300">
+                <div>
+                  <label className="block text-sm mb-1">Live Stream URL</label>
+                  <input
+                    type="url"
+                    className="w-full px-3 py-2 bg-white/10 rounded-lg focus:outline-none border border-white/20"
+                    value={streamUrlForm}
+                    onChange={(e) => {
+                      setStreamUrlForm(e.target.value);
+                      if (streamUrlError) {
+                        validateStreamUrl(e.target.value);
+                      }
+                    }}
+                    onBlur={() => validateStreamUrl(streamUrlForm)}
+                    placeholder="https://stream.example.com/live"
+                  />
+                  {streamUrlError && (
+                    <p className="text-red-300 text-sm mt-1">{streamUrlError}</p>
+                  )}
+                  <p className="text-gray-400 text-sm mt-1">
+                    Provide your live stream URL so we can monitor your broadcasts for royalty tracking
+                  </p>
+                </div>
+                {error && (
+                  <div className="bg-red-500/10 border border-red-400/30 text-red-200 p-2 rounded text-sm">{error}</div>
+                )}
               </div>
-              {error && (
-                <div className="bg-red-500/10 border border-red-400/30 text-red-200 p-2 rounded text-sm mt-3">{error}</div>
-              )}
               <div className="mt-6 flex justify-end space-x-3">
-                <button onClick={() => { setLinksEditing(false); setLinks(linksOriginal); }} className="px-4 py-2 bg-gray-700 text-gray-300 rounded-lg">
+                {streamUrlForm && (
+                  <button
+                    onClick={testStreamUrl}
+                    disabled={streamTesting}
+                    className="px-4 py-2 bg-yellow-600 text-white rounded-lg disabled:opacity-50 flex items-center"
+                  >
+                    {streamTesting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />} Test URL
+                  </button>
+                )}
+                <button onClick={() => setStreamUrlEditing(false)} className="px-4 py-2 bg-gray-700 text-gray-300 rounded-lg">
                   Cancel
                 </button>
                 <button
-                  onClick={async () => {
-                    if (!station) return;
-                    setSaving(true);
-                    setError(null);
-                    try {
-                      // Compute diffs
-                      const origById = new Map(linksOriginal.filter(l=>l.id!=null).map(l => [l.id!, l]));
-                      const currById = new Map(links.filter(l=>l.id!=null).map(l => [l.id!, l]));
-
-                      // Deletes: in orig but not in curr
-                      const toDelete = linksOriginal.filter(l => l.id && !currById.has(l.id));
-                      for (const l of toDelete) {
-                        await api.post('/api/stations/delete-station-stream-link/', { link_id: l.id });
-                      }
-
-                      // Updates: id exists in both but link changed
-                      const toUpdate = links.filter(l => l.id && origById.get(l.id)?.link !== l.link);
-                      for (const l of toUpdate) {
-                        await api.post('/api/stations/edit-station-stream-link/', { link_id: l.id, link: l.link, active: l.active ?? true });
-                      }
-
-                      // Creates: no id and non-empty link
-                      const toCreate = links.filter(l => !l.id && (l.link || '').trim().length > 0);
-                      for (const l of toCreate) {
-                        await api.post('/api/stations/add-station-stream-link/', { station_id: station.station_id, link: l.link, active: l.active ?? true });
-                      }
-
-                      await loadLinks();
-                      setLinksEditing(false);
-                    } catch (e: any) {
-                      setError(e?.response?.data?.errors ? JSON.stringify(e.response.data.errors) : 'Failed to save links');
-                    } finally {
-                      setSaving(false);
-                    }
-                  }}
-                  disabled={saving}
+                  onClick={handleStreamUrlSave}
+                  disabled={saving || !!streamUrlError}
                   className="px-4 py-2 bg-blue-500 text-white rounded-lg disabled:opacity-50 flex items-center"
                 >
                   {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />} Save

@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from music_monitor.models import MatchCache, PlayLog, Dispute
-from .models import Station, StationProgram, ProgramStaff, StationStaff
+from .models import Station, StationProgram, ProgramStaff, StationStaff, Complaint, ComplaintUpdate
 
 # Station Serializer
 class AllStationSerializer(serializers.ModelSerializer):
@@ -13,6 +13,7 @@ class AllStationSerializer(serializers.ModelSerializer):
 class StationDetailsSerializer(serializers.ModelSerializer):
     staff_count = serializers.SerializerMethodField()
     stream_links_count = serializers.SerializerMethodField()
+    stream_status_display = serializers.CharField(source='get_stream_status_display', read_only=True)
     
     class Meta:
         model = Station
@@ -141,3 +142,72 @@ class StationComplianceSerializer(serializers.ModelSerializer):
             'verification_status', 'verified_at', 'verification_notes',
             'station_class', 'station_type', 'coverage_area', 'estimated_listeners'
         ]
+
+
+class ComplaintSerializer(serializers.ModelSerializer):
+    station_name = serializers.CharField(source='station.name', read_only=True)
+    complainant_name = serializers.CharField(source='complainant.username', read_only=True)
+    assigned_to_name = serializers.CharField(source='assigned_to.username', read_only=True)
+    resolved_by_name = serializers.CharField(source='resolved_by.username', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    priority_display = serializers.CharField(source='get_priority_display', read_only=True)
+    complaint_type_display = serializers.CharField(source='get_complaint_type_display', read_only=True)
+    
+    class Meta:
+        model = Complaint
+        fields = [
+            'id', 'complaint_id', 'station', 'station_name', 'complainant', 'complainant_name',
+            'subject', 'description', 'complaint_type', 'complaint_type_display',
+            'priority', 'priority_display', 'status', 'status_display',
+            'assigned_to', 'assigned_to_name', 'resolution_notes',
+            'resolved_by', 'resolved_by_name', 'resolved_at',
+            'contact_email', 'contact_phone', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['complaint_id', 'resolved_at']
+
+
+class ComplaintDetailsSerializer(serializers.ModelSerializer):
+    station_name = serializers.CharField(source='station.name', read_only=True)
+    complainant_name = serializers.CharField(source='complainant.username', read_only=True)
+    complainant_email = serializers.CharField(source='complainant.email', read_only=True)
+    assigned_to_name = serializers.CharField(source='assigned_to.username', read_only=True)
+    resolved_by_name = serializers.CharField(source='resolved_by.username', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    priority_display = serializers.CharField(source='get_priority_display', read_only=True)
+    complaint_type_display = serializers.CharField(source='get_complaint_type_display', read_only=True)
+    updates_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Complaint
+        fields = '__all__'
+        read_only_fields = ['complaint_id', 'resolved_at']
+    
+    def get_updates_count(self, obj):
+        return obj.updates.count()
+
+
+class ComplaintUpdateSerializer(serializers.ModelSerializer):
+    user_name = serializers.CharField(source='user.username', read_only=True)
+    update_type_display = serializers.CharField(source='get_update_type_display', read_only=True)
+    
+    class Meta:
+        model = ComplaintUpdate
+        fields = [
+            'id', 'complaint', 'user', 'user_name', 'update_type', 'update_type_display',
+            'message', 'old_status', 'new_status', 'created_at'
+        ]
+        read_only_fields = ['user']
+
+
+class ComplaintCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Complaint
+        fields = [
+            'station', 'subject', 'description', 'complaint_type', 
+            'priority', 'contact_email', 'contact_phone'
+        ]
+    
+    def create(self, validated_data):
+        # Set complainant to current user
+        validated_data['complainant'] = self.context['request'].user
+        return super().create(validated_data)

@@ -3,13 +3,20 @@ import { useNavigate } from 'react-router-dom';
 import { getStationId } from '../../../lib/auth';
 import api from '../../../lib/api';
 import ButtonLoader from '../../../common/button_loader';
+import LocationSearch from '../../../components/LocationSearch';
 import useStationOnboarding from '../../../hooks/useStationOnboarding';
 import { getOnboardingRoute } from '../../../utils/onboarding';
+import toast from 'react-hot-toast';
 
 const CompleteProfile = () => {
   const [bio, setBio] = useState('');
   const [country, setCountry] = useState('');
   const [region, setRegion] = useState('');
+  const [locationName, setLocationName] = useState('');
+  const [lat, setLat] = useState<number | null>(null);
+  const [lng, setLng] = useState<number | null>(null);
+  const [streamUrl, setStreamUrl] = useState('');
+  const [streamUrlError, setStreamUrlError] = useState('');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
@@ -24,6 +31,10 @@ const CompleteProfile = () => {
       setBio(details.bio ?? '');
       setCountry(details.country ?? '');
       setRegion(details.region ?? '');
+      setLocationName(details.location_name ?? '');
+      setLat(details.lat ?? null);
+      setLng(details.lng ?? null);
+      setStreamUrl(details.stream_url ?? '');
       if (typeof details.photo === 'string' && details.photo) {
         setImagePreview(details.photo);
       } else {
@@ -47,11 +58,29 @@ const CompleteProfile = () => {
     }
   };
 
+  const validateStreamUrl = (url: string): boolean => {
+    if (!url) return true; // Optional field
+    
+    try {
+      const parsedUrl = new URL(url);
+      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+        setStreamUrlError('Stream URL must use HTTP or HTTPS protocol');
+        return false;
+      }
+      setStreamUrlError('');
+      return true;
+    } catch {
+      setStreamUrlError('Please enter a valid URL (e.g., https://stream.example.com/live)');
+      return false;
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
   
     // Clear any previous error
     setInputError('');
+    setStreamUrlError('');
   
     // Frontend validations
     if (bio === '') {
@@ -74,12 +103,29 @@ const CompleteProfile = () => {
       return;
     }
 
+    // Validate stream URL if provided
+    if (!validateStreamUrl(streamUrl)) {
+      return;
+    }
+
     // Prepare FormData for file upload
     const formData = new FormData();
     formData.append('station_id', getStationId());
     formData.append('bio', bio);
     formData.append('country', country);
     formData.append('region', region);
+    if (locationName) {
+      formData.append('location_name', locationName);
+    }
+    if (lat !== null) {
+      formData.append('lat', lat.toString());
+    }
+    if (lng !== null) {
+      formData.append('lng', lng.toString());
+    }
+    if (streamUrl) {
+      formData.append('stream_url', streamUrl);
+    }
     if (selectedFile) {
       formData.append('photo', selectedFile);
     }
@@ -91,12 +137,22 @@ const CompleteProfile = () => {
       const resp = await api.post(url, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
       let nextStep = resp.data?.data?.next_step as string | undefined;
       const photoUrl = resp.data?.data?.photo;
+      const streamTestResult = resp.data?.data?.stream_test_result;
       
       // Update local state and storage with the new photo URL if available
       if (photoUrl) {
         setImagePreview(photoUrl);
         // Save to local storage for persistence
         localStorage.setItem('photo', photoUrl);
+      }
+      
+      // Handle stream URL test results
+      if (streamTestResult && streamUrl) {
+        if (streamTestResult.accessible) {
+          toast.success(`Stream URL validated successfully: ${streamTestResult.message}`);
+        } else {
+          toast.warning(`Stream URL validation warning: ${streamTestResult.message}`);
+        }
       }
       
       if (!nextStep || nextStep === 'profile') {
@@ -181,6 +237,44 @@ const CompleteProfile = () => {
                 onChange={(e) => setRegion(e.target.value)}
                 className="w-full px-6 py-4 bg-white/20 backdrop-blur-md border border-white/30 rounded-lg text-white placeholder-white  focus:outline-none focus:ring-2 focus:ring-blue-400"
               />
+            </div>
+            <div className="">
+              <LocationSearch
+                value={locationName}
+                onChange={(value, latitude, longitude) => {
+                  setLocationName(value);
+                  if (latitude !== undefined) setLat(latitude);
+                  if (longitude !== undefined) setLng(longitude);
+                }}
+                placeholder="Search for your specific location (optional)"
+                className="w-full"
+              />
+              <p className="text-white/70 text-sm mt-2">
+                This helps us provide location-relevant features and analytics
+              </p>
+            </div>
+
+            <div className="">
+              <input
+                type="url"
+                name="stream_url"
+                placeholder="Live Stream URL (optional) - e.g., https://stream.example.com/live"
+                value={streamUrl}
+                onChange={(e) => {
+                  setStreamUrl(e.target.value);
+                  if (streamUrlError) {
+                    validateStreamUrl(e.target.value);
+                  }
+                }}
+                onBlur={() => validateStreamUrl(streamUrl)}
+                className="w-full px-6 py-4 bg-white/20 backdrop-blur-md border border-white/30 rounded-lg text-white placeholder-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+              />
+              {streamUrlError && (
+                <p className="text-red-300 text-sm mt-2">{streamUrlError}</p>
+              )}
+              <p className="text-white/70 text-sm mt-2">
+                Provide your live stream URL so we can monitor your broadcasts for royalty tracking
+              </p>
             </div>
 
             <div>

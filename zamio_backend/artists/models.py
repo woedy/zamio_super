@@ -1,240 +1,226 @@
-import uuid
+"""
+Enhanced models for artists with comprehensive media file processing and contributor management
+"""
 import os
 import hashlib
-import mimetypes
+from decimal import Decimal
 from django.db import models
-from django.contrib.auth import get_user_model
-from django.db.models.signals import post_save, pre_save
+from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
-from django.db.models import Sum
 from django.utils import timezone
-
-from core.utils import unique_artist_id_generator, unique_contributor_id_generator, unique_track_id_generator
+from django.db.models import Sum
+from django.db.models.signals import pre_save
+from django.dispatch import receiver
+from accounts.models import AuditLog
 from fan.models import Fan
+from publishers.models import PublisherProfile
 
-User = get_user_model()
 
-
+# File validation functions
 def validate_audio_file_size(file):
     """Validate audio file size - max 100MB"""
     max_size = 100 * 1024 * 1024  # 100MB
     if file.size > max_size:
-        raise ValidationError(f'Audio file size cannot exceed {max_size // (1024*1024)}MB')
+        raise ValidationError(f'File size ({file.size} bytes) exceeds maximum allowed size ({max_size} bytes)')
 
 
 def validate_audio_file_type(file):
     """Validate audio file type for security"""
     allowed_types = {
         'audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/flac',
-        'audio/mp4', 'audio/aac', 'audio/ogg'
+        'audio/mp4', 'audio/aac', 'audio/ogg', 'audio/x-m4a'
     }
     
-    content_type = file.content_type or mimetypes.guess_type(file.name)[0]
-    if content_type not in allowed_types:
-        raise ValidationError(f'Audio file type {content_type} is not allowed')
-    
-    # Check file extension
-    _, ext = os.path.splitext(file.name.lower())
-    dangerous_extensions = {'.exe', '.bat', '.cmd', '.php', '.js', '.py'}
-    if ext in dangerous_extensions:
-        raise ValidationError(f'File extension {ext} is not allowed for security reasons')
+    if file.content_type not in allowed_types:
+        raise ValidationError(f'File type {file.content_type} is not allowed')
 
 
 def validate_image_file_size(file):
     """Validate image file size - max 10MB"""
     max_size = 10 * 1024 * 1024  # 10MB
     if file.size > max_size:
-        raise ValidationError(f'Image file size cannot exceed {max_size // (1024*1024)}MB')
+        raise ValidationError(f'Image size ({file.size} bytes) exceeds maximum allowed size ({max_size} bytes)')
 
 
 def validate_image_file_type(file):
     """Validate image file type for security"""
-    allowed_types = {'image/jpeg', 'image/png', 'image/webp', 'image/gif'}
+    allowed_types = {
+        'image/jpeg', 'image/png', 'image/webp', 'image/gif'
+    }
     
-    content_type = file.content_type or mimetypes.guess_type(file.name)[0]
-    if content_type not in allowed_types:
-        raise ValidationError(f'Image file type {content_type} is not allowed')
-    
-    # Basic image validation
-    if hasattr(file, 'content_type') and file.content_type.startswith('image/'):
-        try:
-            from PIL import Image
-            file.seek(0)
-            img = Image.open(file)
-            img.verify()
-            file.seek(0)
-        except Exception:
-            raise ValidationError('Invalid or corrupted image file')
+    if file.content_type not in allowed_types:
+        raise ValidationError(f'Image type {file.content_type} is not allowed')
 
 
+# Upload path functions
 def secure_audio_upload_path(instance, filename):
     """Generate secure upload path for audio files"""
-    name, ext = os.path.splitext(filename)
-    safe_name = "".join(c for c in name if c.isalnum() or c in (' ', '-', '_')).rstrip()
-    
-    timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
-    unique_id = hashlib.md5(f"{safe_name}{timestamp}".encode()).hexdigest()[:8]
-    final_filename = f"{safe_name}_{timestamp}_{unique_id}{ext}"
-    
-    artist_id = instance.artist.id if hasattr(instance, 'artist') else 'unknown'
-    return f"media/{artist_id}/audio/{final_filename}"
-
-
-def secure_image_upload_path(instance, filename):
-    """Generate secure upload path for image files"""
-    name, ext = os.path.splitext(filename)
-    safe_name = "".join(c for c in name if c.isalnum() or c in (' ', '-', '_')).rstrip()
-    
-    timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
-    unique_id = hashlib.md5(f"{safe_name}{timestamp}".encode()).hexdigest()[:8]
-    final_filename = f"{safe_name}_{timestamp}_{unique_id}{ext}"
-    
+    # Get artist ID for path isolation
     if hasattr(instance, 'artist'):
         artist_id = instance.artist.id
         entity_type = 'tracks' if instance.__class__.__name__ == 'Track' else 'albums'
     else:
         artist_id = 'unknown'
-        entity_type = 'images'
+        entity_type = 'media'
     
-    return f"media/{artist_id}/{entity_type}/covers/{final_filename}"
+    # Clean filename and add timestamp for uniqueness
+    clean_filename = filename.replace(' ', '_').replace('..', '_')
+    timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+    name, ext = os.path.splitext(clean_filename)
+    secure_filename = f"{name}_{timestamp}{ext}"
+    
+    return f'artists/{artist_id}/{entity_type}/audio/{secure_filename}'
 
 
-class Artist(models.Model):
-    ONBOARDING_STEPS = [
-        ('profile', 'Complete Profile'),
-        ('social-media', 'Social Media'),
-        ('payment', 'Add Payment Info'),
-        ('publisher', 'Add Publisher'),
-        ('track', 'Upload Track'),
-        ('done', 'Onboarding Complete'),
+def secure_image_upload_path(instance, filename):
+    """Generate secure upload path for image files"""
+    # Get artist ID for path isolation
+    if hasattr(instance, 'artist'):
+        artist_id = instance.artist.id
+        entity_type = 'tracks' if instance.__class__.__name__ == 'Track' else 'albums'
+    else:
+        artist_id = 'unknown'
+        entity_type = 'media'
+    
+    # Clean filename and add timestamp for uniqueness
+    clean_filename = filename.replace(' ', '_').replace('..', '_')
+    timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+    name, ext = os.path.splitext(clean_filename)
+    secure_filename = f"{name}_{timestamp}{ext}"
+    
+    return f'artists/{artist_id}/{entity_type}/images/{secure_filename}'
+
+
+def get_default_track_cover_image():
+    """Get default cover image for tracks"""
+    return 'defaults/track_cover.png'
+
+
+def get_default_album_cover_image():
+    """Get default cover image for albums"""
+    return 'defaults/album_cover.png'
+
+
+# ID generators
+def unique_track_id_generator(instance):
+    """Generate unique track ID"""
+    import uuid
+    return f"TRK_{uuid.uuid4().hex[:8].upper()}"
+
+
+def unique_album_id_generator(instance):
+    """Generate unique album ID"""
+    import uuid
+    return f"ALB_{uuid.uuid4().hex[:8].upper()}"
+
+
+def unique_contributor_id_generator(instance):
+    """Generate unique contributor ID"""
+    import uuid
+    return f"CTR_{uuid.uuid4().hex[:8].upper()}"
+
+
+# Upload Processing Status Model
+class UploadProcessingStatus(models.Model):
+    """Track upload processing status with real-time updates"""
+    PROCESSING_STATES = [
+        ('pending', 'Pending'),
+        ('queued', 'Queued'),
+        ('processing', 'Processing'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+        ('cancelled', 'Cancelled'),
     ]
-
-    artist_id = models.CharField(max_length=255, blank=True, null=True,  default=uuid.uuid4, unique=True)
-
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='artists')
-    stage_name = models.CharField(max_length=255, blank=True, null=True)
-    bio = models.TextField(blank=True, null=True)
-    total_earnings = models.CharField(max_length=255, blank=True, null=True)
-
-    spotify_url = models.URLField(blank=True, null=True)
-    shazam_url = models.URLField(blank=True, null=True)
-    facebook = models.URLField(blank=True, null=True)
-    twitter = models.URLField(blank=True, null=True)
-    instagram = models.URLField(blank=True, null=True)
-    youtube = models.URLField(blank=True, null=True)
-    website = models.URLField(blank=True, null=True)
-    contact_email = models.EmailField(blank=True, null=True)
-
-    bank_account = models.CharField(max_length=100,  null=True, blank=True)
-    momo_account = models.CharField(max_length=100,  null=True, blank=True)
-
-
-    followers = models.ManyToManyField(Fan, blank=True, related_name='followers')
-    verified = models.BooleanField(default=False)
-
-    region = models.CharField(max_length=255, null=True, blank=True)
-    city = models.CharField(max_length=255, null=True, blank=True)
-    country = models.CharField(max_length=255, null=True, blank=True)
-
-    publisher = models.ForeignKey('publishers.PublisherProfile', on_delete=models.SET_NULL, null=True, blank=True, related_name='artist_publishers')
-    self_published = models.BooleanField(default=True)  # Auto-set for direct registrations
-    royalty_collection_method = models.CharField(
-        max_length=20, 
-        choices=[
-            ('direct', 'Direct Collection'),
-            ('publisher', 'Through Publisher'),
-            ('pro', 'Through PRO'),
-        ], 
-        default='direct'
-    )
-    publisher_relationship_status = models.CharField(
-        max_length=20, 
-        choices=[
-            ('independent', 'Independent'),
-            ('pending', 'Pending Publisher Approval'),
-            ('signed', 'Signed with Publisher'),
-            ('terminated', 'Terminated Relationship'),
-        ], 
-        default='independent'
-    )
-
-    location_name = models.CharField(max_length=900, null=True, blank=True)
-    lat = models.DecimalField(default=0.0, max_digits=50, decimal_places=20, null=True, blank=True)
-    lng = models.DecimalField(default=0.0, max_digits=50, decimal_places=20, null=True, blank=True)
-
-    onboarding_step = models.CharField(max_length=20, choices=ONBOARDING_STEPS, default='profile')
-
-    profile_completed = models.BooleanField(default=False)
-    social_media_added = models.BooleanField(default=False)
-    payment_info_added = models.BooleanField(default=False)
-    publisher_added = models.BooleanField(default=False)
-    track_uploaded = models.BooleanField(default=False)
-
-
-    is_archived = models.BooleanField(default=False)
-    active = models.BooleanField(default=False)
+    
+    UPLOAD_TYPES = [
+        ('track_audio', 'Track Audio'),
+        ('track_cover', 'Track Cover Art'),
+        ('album_cover', 'Album Cover Art'),
+    ]
+    
+    upload_id = models.CharField(max_length=64, unique=True, db_index=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    upload_type = models.CharField(max_length=20, choices=UPLOAD_TYPES)
+    
+    # File information
+    original_filename = models.CharField(max_length=255)
+    file_size = models.BigIntegerField()
+    file_hash = models.CharField(max_length=64, null=True, blank=True)
+    
+    # Processing status
+    status = models.CharField(max_length=20, choices=PROCESSING_STATES, default='pending')
+    progress_percentage = models.IntegerField(default=0)
+    current_step = models.CharField(max_length=100, blank=True)
+    
+    # Results
+    entity_id = models.IntegerField(null=True, blank=True)  # Track or Album ID
+    entity_type = models.CharField(max_length=20, blank=True)  # 'track' or 'album'
+    
+    # Error handling
+    error_message = models.TextField(blank=True)
+    retry_count = models.IntegerField(default=0)
+    
+    # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
-
-    def get_next_onboarding_step(self):
-        if not self.profile_completed:
-            return 'profile'
-        elif not self.social_media_added:
-            return 'social-media'
-        elif not self.payment_info_added:
-            return 'payment'
-        elif not self.publisher_added:
-            return 'publisher'
-        #elif not self.track_uploaded:
-        #    return 'track'
-        return 'done'
     
-    def update_publisher_relationship(self, publisher=None, relationship_type='signed'):
-        """Update artist's publisher relationship and collection method"""
-        if publisher:
-            self.publisher = publisher
-            self.self_published = False
-            self.royalty_collection_method = 'publisher'
-            self.publisher_relationship_status = relationship_type
-        else:
-            self.publisher = None
-            self.self_published = True
-            self.royalty_collection_method = 'direct'
-            self.publisher_relationship_status = 'independent'
-        self.save()
+    # Metadata
+    metadata = models.JSONField(default=dict, blank=True)
     
-    def save(self, *args, **kwargs):
-        # Auto-set self_published based on publisher relationship
-        if not self.publisher:
-            self.self_published = True
-            self.royalty_collection_method = 'direct'
-            self.publisher_relationship_status = 'independent'
-        else:
-            self.self_published = False
-            if self.royalty_collection_method == 'direct':
-                self.royalty_collection_method = 'publisher'
-        
-        super().save(*args, **kwargs)
-
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['upload_id']),
+            models.Index(fields=['user', 'status']),
+            models.Index(fields=['status', 'created_at']),
+        ]
     
+    def __str__(self):
+        return f"{self.upload_type} upload {self.upload_id} - {self.status}"
+    
+    def update_progress(self, percentage, step=None, save=True):
+        """Update processing progress"""
+        self.progress_percentage = min(100, max(0, percentage))
+        if step:
+            self.current_step = step
+        self.updated_at = timezone.now()
+        if save:
+            self.save(update_fields=['progress_percentage', 'current_step', 'updated_at'])
+    
+    def mark_started(self):
+        """Mark upload processing as started"""
+        self.status = 'processing'
+        self.started_at = timezone.now()
+        self.save(update_fields=['status', 'started_at'])
+    
+    def mark_completed(self, entity_id=None, entity_type=None):
+        """Mark upload processing as completed"""
+        self.status = 'completed'
+        self.progress_percentage = 100
+        self.completed_at = timezone.now()
+        if entity_id:
+            self.entity_id = entity_id
+        if entity_type:
+            self.entity_type = entity_type
+        self.save(update_fields=['status', 'progress_percentage', 'completed_at', 'entity_id', 'entity_type'])
+    
+    def mark_failed(self, error_message):
+        """Mark upload processing as failed"""
+        self.status = 'failed'
+        self.error_message = error_message
+        self.completed_at = timezone.now()
+        self.save(update_fields=['status', 'error_message', 'completed_at'])
 
-# def pre_save_artist_id_receiver(sender, instance, *args, **kwargs):
-#     if not instance.artist_id:
-#         instance.artist_id = unique_artist_id_generator(instance)
-# 
-# pre_save.connect(pre_save_artist_id_receiver, sender=Artist)
 
-
-
-
-
+# Core Models
 class Genre(models.Model):
-    name = models.CharField(max_length=100)
-    color = models.CharField(max_length=100)
-    
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True, null=True)
     
     is_archived = models.BooleanField(default=False)
-    active = models.BooleanField(default=False)
+    active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -242,51 +228,94 @@ class Genre(models.Model):
         return self.name
 
 
+class Artist(models.Model):
+    VERIFICATION_STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('verified', 'Verified'),
+        ('rejected', 'Rejected'),
+        ('skipped', 'Skipped'),
+    ]
+    
+    artist_id = models.CharField(max_length=255, blank=True, null=True, unique=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='artists')
+    stage_name = models.CharField(max_length=255)
+    bio = models.TextField(blank=True, null=True)
+    location = models.CharField(max_length=255, blank=True, null=True)
+    
+    # Social media links
+    website = models.URLField(blank=True, null=True)
+    instagram = models.URLField(blank=True, null=True)
+    twitter = models.URLField(blank=True, null=True)
+    facebook = models.URLField(blank=True, null=True)
+    youtube = models.URLField(blank=True, null=True)
+    spotify = models.URLField(blank=True, null=True)
+    
+    # Verification status
+    verification_status = models.CharField(
+        max_length=20, 
+        choices=VERIFICATION_STATUS_CHOICES, 
+        default='pending'
+    )
+    verification_documents = models.JSONField(default=list, blank=True)
+    
+    # Publishing relationship
+    is_self_published = models.BooleanField(default=True)
+    publisher = models.ForeignKey(
+        'publishers.PublisherProfile', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='managed_artists'
+    )
+    
+    is_archived = models.BooleanField(default=False)
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
-def get_default_album_cover_image():
-    return "defaults/default_album_cover_image.png"
-
+    def __str__(self):
+        return self.stage_name
+    
+    def can_withdraw_royalties(self):
+        """Check if artist can withdraw royalties based on publishing status"""
+        if self.is_self_published:
+            return True
+        return False  # Publisher handles withdrawals for managed artists
 
 
 class Album(models.Model):
-
+    STATUS_CHOICES = [
+        ("Pending", "Pending"),
+        ("Approved", "Approved"),
+        ("Rejected", "Rejected"),
+    ]
+    
+    album_id = models.CharField(max_length=255, blank=True, null=True, unique=True)
     title = models.CharField(max_length=255)
-    artist = models.ForeignKey(Artist, on_delete=models.CASCADE)
-    release_date = models.DateField(null=True, blank=True)
+    artist = models.ForeignKey(Artist, on_delete=models.CASCADE, related_name='albums')
+    
     cover_art = models.ImageField(
         upload_to=secure_image_upload_path, 
         default=get_default_album_cover_image,
         validators=[validate_image_file_size, validate_image_file_type]
     )
-    upc_code = models.CharField(null=True, max_length=30, unique=True, help_text="Universal Product Code")
     
-    publisher = models.ForeignKey('publishers.PublisherProfile', on_delete=models.SET_NULL, null=True, related_name='album_publishers')
-
-    # Enhanced security fields
-    cover_art_hash = models.CharField(max_length=64, null=True, blank=True)  # SHA-256 hash
+    release_date = models.DateField(blank=True, null=True)
+    genre = models.ForeignKey(Genre, on_delete=models.SET_NULL, null=True)
+    
+    # Enhanced security and processing fields
+    cover_art_hash = models.CharField(max_length=64, null=True, blank=True)
     last_malware_scan = models.DateTimeField(null=True, blank=True)
-
+    
+    status = models.CharField(max_length=50, choices=STATUS_CHOICES, default="Pending")
+    
     is_archived = models.BooleanField(default=False)
-    active = models.BooleanField(default=False)
+    active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.title} - {self.artist.stage_name}"
-    
-    def verify_cover_art_integrity(self):
-        """Verify cover art integrity using stored hash"""
-        if not self.cover_art or not self.cover_art_hash:
-            return True  # No cover art or hash is valid
-        
-        try:
-            self.cover_art.seek(0)
-            file_content = self.cover_art.read()
-            current_hash = hashlib.sha256(file_content).hexdigest()
-            self.cover_art.seek(0)
-            return current_hash == self.cover_art_hash
-        except Exception:
-            return False
+        return f"{self.title} by {self.artist.stage_name}"
     
     def save(self, *args, **kwargs):
         # Generate cover art hash if not present
@@ -300,31 +329,15 @@ class Album(models.Model):
                 pass
         
         super().save(*args, **kwargs)
-    
 
-
-
-class ArtistGenre(models.Model):
-    artist = models.ForeignKey(Artist, on_delete=models.CASCADE, related_name="artist_genre")
-    genre = models.ForeignKey(Genre, on_delete=models.CASCADE)
-    
-    is_archived = models.BooleanField(default=False)
-
-    def __str__(self):
-        return f"{self.artist.stage_name} - {self.genre.name}"
-
-
-def get_default_track_cover_image():
-    return "defaults/default_track_cover_image.png"
-
-
-STATUS_CHOICES = [
-        ('Pending', 'Pending'),
-        ('Approved', 'Approved'),
-        ('Rejected', 'Rejected'),
-    ]
 
 class Track(models.Model):
+    STATUS_CHOICES = [
+        ("Pending", "Pending"),
+        ("Approved", "Approved"),
+        ("Rejected", "Rejected"),
+    ]
+    
     track_id = models.CharField(max_length=255, blank=True, null=True, unique=True)
 
     title = models.CharField(max_length=255)
@@ -398,36 +411,17 @@ class Track(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def calculate_royalty(self, duration):
-        rate_per_second = 0.01  # Example: 1 cent per second
-        duration_seconds = duration.total_seconds()
-        royalty_amount = duration_seconds * rate_per_second
-        return round(royalty_amount, 2)
+        """Calculate royalty for this track based on play duration"""
+        # Placeholder for royalty calculation logic
+        base_rate = Decimal('0.01')  # $0.01 per play
+        return base_rate * Decimal(str(duration))
+
+    def __str__(self):
+        return f"{self.title} by {self.artist.stage_name}"
     
     def validate_contributor_splits(self):
         """Validate that contributor splits total 100%"""
-        is_valid, total = Contributor.validate_track_splits(self)
-        return is_valid, total
-    
-    def get_contributor_splits_summary(self):
-        """Get summary of contributor splits for this track"""
-        contributors = self.contributors.filter(active=True)
-        splits = []
-        total = 0
-        
-        for contributor in contributors:
-            splits.append({
-                'user': contributor.user,
-                'role': contributor.role,
-                'percentage': contributor.percent_split,
-                'publisher': contributor.publisher
-            })
-            total += contributor.percent_split
-        
-        return {
-            'contributors': splits,
-            'total_percentage': total,
-            'is_valid': total == 100
-        }
+        return Contributor.validate_track_splits(self)
     
     def can_be_published(self):
         """Check if track can be published (has valid splits and required metadata)"""
@@ -452,20 +446,14 @@ class Track(models.Model):
         except Exception:
             return False
     
-    def verify_cover_art_integrity(self):
-        """Verify cover art integrity using stored hash"""
-        if not self.cover_art or not self.cover_art_hash:
-            return True  # No cover art is valid
-        
-        try:
-            self.cover_art.seek(0)
-            file_content = self.cover_art.read()
-            current_hash = hashlib.sha256(file_content).hexdigest()
-            self.cover_art.seek(0)
-            return current_hash == self.cover_art_hash
-        except Exception:
-            return False
+    def get_contributor_splits_summary(self):
+        """Get summary of contributor splits for this track"""
+        return Contributor.get_track_split_summary(self)
     
+    def auto_balance_contributor_splits(self):
+        """Auto-balance contributor splits to total 100%"""
+        return Contributor.auto_balance_splits(self)
+
     def save(self, *args, **kwargs):
         # Generate file hashes if not present
         if self.audio_file and not self.audio_file_hash:
@@ -488,17 +476,6 @@ class Track(models.Model):
         
         super().save(*args, **kwargs)
 
-
-
-def pre_save_track_id_receiver(sender, instance, *args, **kwargs):
-    if not instance.track_id:
-        instance.track_id = unique_track_id_generator(instance)
-
-pre_save.connect(pre_save_track_id_receiver, sender=Track)
-
-
-
-    
 
 class Contributor(models.Model):
     ROLE_CHOICES = [
@@ -551,6 +528,14 @@ class Contributor(models.Model):
                 raise ValidationError(
                     f'Total contributor splits cannot exceed 100%. Current total: {total_splits}%'
                 )
+            
+            # Validate percentage is positive
+            if self.percent_split <= 0:
+                raise ValidationError('Contributor split percentage must be greater than 0%')
+            
+            # Validate percentage is not more than 100
+            if self.percent_split > 100:
+                raise ValidationError('Contributor split percentage cannot exceed 100%')
     
     def save(self, *args, **kwargs):
         self.clean()
@@ -565,18 +550,60 @@ class Contributor(models.Model):
         ).aggregate(total=Sum('percent_split'))['total'] or 0
         
         return total_splits == 100, total_splits
-
-
-
-
-def pre_save_track_contributor_id_receiver(sender, instance, *args, **kwargs):
-    if not instance.contributor_id:
-        instance.contributor_id = unique_contributor_id_generator(instance)
-
-pre_save.connect(pre_save_track_contributor_id_receiver, sender=Contributor)
-
-
-
+    
+    @classmethod
+    def auto_balance_splits(cls, track, exclude_contributor=None):
+        """Automatically balance contributor splits to total 100%"""
+        contributors = cls.objects.filter(track=track, active=True)
+        if exclude_contributor:
+            contributors = contributors.exclude(id=exclude_contributor.id)
+        
+        count = contributors.count()
+        if count == 0:
+            return []
+        
+        # Calculate equal split
+        equal_split = Decimal('100') / count
+        equal_split = equal_split.quantize(Decimal('0.01'), rounding='ROUND_DOWN')
+        
+        # Handle remainder
+        remainder = Decimal('100') - (equal_split * count)
+        
+        updated_contributors = []
+        for i, contributor in enumerate(contributors):
+            # Add remainder to first contributor
+            split = equal_split + (remainder if i == 0 else Decimal('0'))
+            contributor.percent_split = split
+            contributor.save()
+            updated_contributors.append(contributor)
+        
+        return updated_contributors
+    
+    @classmethod
+    def get_track_split_summary(cls, track):
+        """Get comprehensive split summary for a track"""
+        contributors = cls.objects.filter(track=track, active=True).select_related('user', 'publisher')
+        total_split = contributors.aggregate(total=Sum('percent_split'))['total'] or 0
+        
+        splits = []
+        for contributor in contributors:
+            user_name = f"{contributor.user.first_name} {contributor.user.last_name}".strip() or contributor.user.email
+            splits.append({
+                'id': contributor.id,
+                'user_id': contributor.user.id,
+                'user_name': user_name,
+                'role': contributor.role,
+                'percentage': float(contributor.percent_split),
+                'publisher': contributor.publisher.company_name if contributor.publisher else None,
+                'is_artist': contributor.user == track.artist.user
+            })
+        
+        return {
+            'contributors': splits,
+            'total_percentage': float(total_split),
+            'is_valid': total_split == 100,
+            'remaining_percentage': float(100 - total_split)
+        }
 
 
 class PlatformAvailability(models.Model):
@@ -597,11 +624,8 @@ class PlatformAvailability(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-
     def __str__(self):
         return f"{self.track.title} on {self.platform}"
-
-
 
 
 class TrackFeedback(models.Model):
@@ -616,11 +640,33 @@ class TrackFeedback(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
 
+class TrackEditHistory(models.Model):
+    """Track edit history for version tracking"""
+    track = models.ForeignKey(Track, on_delete=models.CASCADE, related_name='edit_history')
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    
+    # Track what changed
+    changed_fields = models.JSONField(default=dict)
+    old_values = models.JSONField(default=dict)
+    new_values = models.JSONField(default=dict)
+    
+    # Edit metadata
+    edit_reason = models.TextField(blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"Edit to {self.track.title} by {self.user.username} on {self.created_at}"
+
 
 #####################
-####FINGERPRINTING #####
+#### FINGERPRINTING #####
 ##################################
-
 
 class Fingerprint(models.Model):
     """Enhanced fingerprint model with versioning and processing status"""
@@ -636,68 +682,43 @@ class Fingerprint(models.Model):
     offset = models.IntegerField()
     
     # Versioning and processing
-    version = models.CharField(max_length=10, default='1.0')
-    algorithm = models.CharField(max_length=50, default='chromaprint')
+    version = models.IntegerField(default=1)
     processing_status = models.CharField(max_length=20, choices=PROCESSING_STATUS, default='pending')
-    confidence_score = models.DecimalField(max_digits=5, decimal_places=4, default=1.0)
+    processing_error = models.TextField(null=True, blank=True)
     
-    # Enhanced metadata for fingerprint quality and processing details
-    metadata = models.JSONField(default=dict, blank=True, help_text="Enhanced fingerprint metadata including quality metrics")
+    # Enhanced metadata
+    algorithm_version = models.CharField(max_length=20, default='v1.0')
+    confidence_score = models.FloatField(null=True, blank=True)
+    audio_features = models.JSONField(default=dict, blank=True)
     
-    # Legacy metadata fields (kept for backward compatibility)
-    duration_ms = models.IntegerField(null=True, blank=True)
-    sample_rate = models.IntegerField(null=True, blank=True)
-    processing_time_ms = models.IntegerField(null=True, blank=True)
-    error_message = models.TextField(null=True, blank=True)
-    
-    # Timestamps
-    date_created = models.DateTimeField(auto_now_add=True)
-    date_updated = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        indexes = [
-            models.Index(fields=['hash', 'track_id']),
-            models.Index(fields=['version', 'algorithm']),
-            models.Index(fields=['processing_status']),
-        ]
-        unique_together = ('track', 'offset', 'hash', 'version')
-    
-    def __str__(self):
-        return f"Fingerprint for {self.track.title} (v{self.version})"
-    
-    def mark_completed(self, confidence=1.0, processing_time=None):
-        """Mark fingerprint processing as completed"""
-        self.processing_status = 'completed'
-        self.confidence_score = confidence
-        if processing_time:
-            self.processing_time_ms = processing_time
-        self.save()
-    
-    def mark_failed(self, error_message):
-        """Mark fingerprint processing as failed"""
-        self.processing_status = 'failed'
-        self.error_message = error_message
-        self.save()
-
-
-# Invitation sent by a Publisher to invite an Artist onto the platform
-class ArtistInvitation(models.Model):
-    invited_by = models.ForeignKey('publishers.PublisherProfile', on_delete=models.CASCADE, related_name='artist_invitations')
-    email = models.EmailField()
-    stage_name = models.CharField(max_length=255, null=True, blank=True)
-    token = models.UUIDField(default=uuid.uuid4, unique=True)
-    status = models.CharField(max_length=20, choices=[('pending', 'Pending'), ('accepted', 'Accepted'), ('declined', 'Declined')], default='pending')
-    sent_on = models.DateTimeField(auto_now_add=True)
-
-    is_archived = models.BooleanField(default=False)
-    active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        unique_together = ('track', 'hash', 'offset')
+        indexes = [
+            models.Index(fields=['hash']),
+            models.Index(fields=['track', 'processing_status']),
+        ]
+
     def __str__(self):
-        from publishers.models import PublisherProfile
-        publisher = getattr(self, 'invited_by', None)
-        name = None
-        if publisher:
-            name = getattr(publisher, 'company_name', None) or getattr(getattr(publisher, 'user', None), 'email', None)
-        return f"Invite to {self.email} by {name or 'Publisher'}"
+        return f"Fingerprint for {self.track.title} at {self.offset}s"
+
+
+# Signal handlers
+@receiver(pre_save, sender=Track)
+def pre_save_track_id_receiver(sender, instance, *args, **kwargs):
+    if not instance.track_id:
+        instance.track_id = unique_track_id_generator(instance)
+
+
+@receiver(pre_save, sender=Album)
+def pre_save_album_id_receiver(sender, instance, *args, **kwargs):
+    if not instance.album_id:
+        instance.album_id = unique_album_id_generator(instance)
+
+
+@receiver(pre_save, sender=Contributor)
+def pre_save_contributor_id_receiver(sender, instance, *args, **kwargs):
+    if not instance.contributor_id:
+        instance.contributor_id = unique_contributor_id_generator(instance)
