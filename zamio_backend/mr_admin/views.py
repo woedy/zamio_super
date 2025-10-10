@@ -14,7 +14,7 @@ from music_monitor.models import PlayLog
 from stations.models import Station
 from activities.models import AllActivity
 from publishers.models import PublisherProfile, PublishingAgreement
-from royalties.models import RoyaltyPayment
+from royalties.models import RoyaltyWithdrawal
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -103,9 +103,10 @@ def get_admin_dashboard_data(request):
     
     top_publishers = []
     for publisher in publisher_qs[:5]:
-        # Calculate total earnings from royalty payments
-        total_earnings = RoyaltyPayment.objects.filter(
-            user=publisher.user
+        # Calculate total earnings from royalty withdrawals
+        total_earnings = RoyaltyWithdrawal.objects.filter(
+            user=publisher.user,
+            status='completed'
         ).aggregate(total=Sum('amount'))['total'] or 0
         
         if total_earnings > 0 or publisher.agreement_count > 0:  # Only include active publishers

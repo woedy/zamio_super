@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, ComponentType } from 'react';
-import { LoadingSpinner } from '@zamio/ui-theme';
+import { LoadingSpinner, ErrorBoundary } from '@zamio/ui-theme';
 
 interface LazyLoadOptions {
   fallback?: React.ComponentType;
@@ -30,7 +30,6 @@ export function lazyLoad<T extends ComponentType<any>>(
     );
 
     if (errorBoundary) {
-      const { ErrorBoundary } = require('@zamio/ui-theme');
       return <ErrorBoundary>{content}</ErrorBoundary>;
     }
 
