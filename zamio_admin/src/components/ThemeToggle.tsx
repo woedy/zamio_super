@@ -1,5 +1,5 @@
 import React from 'react';
-import { SunIcon, MoonIcon } from '@heroicons/react/24/outline';
+import { Sun, Moon } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 
 interface ThemeToggleProps {
@@ -46,9 +46,9 @@ const ThemeToggle: React.FC<ThemeToggleProps> = ({
       aria-label={`Switch to ${mode === 'light' ? 'dark' : 'light'} mode`}
     >
       {mode === 'light' ? (
-        <MoonIcon className={iconSizeClasses[size]} />
+        <Moon className={iconSizeClasses[size]} />
       ) : (
-        <SunIcon className={iconSizeClasses[size]} />
+        <Sun className={iconSizeClasses[size]} />
       )}
       {showLabel && (
         <span className="ml-2 text-sm font-medium">

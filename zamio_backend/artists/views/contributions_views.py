@@ -280,10 +280,21 @@ def edit_contributor(request):
     if percent_split is not None:
         try:
             ps_val = Decimal(percent_split)
-            if ps_val < 0 or ps_val > 100:
+            if ps_val <= 0 or ps_val > 100:
                 errors['percent_split'] = ['Percent split must be between 0 and 100.']
             else:
-                contributor.percent_split = ps_val
+                # Validate total splits won't exceed 100%
+                other_splits = Contributor.objects.filter(
+                    track=contributor.track, 
+                    active=True
+                ).exclude(id=contributor.id).aggregate(
+                    total=Sum('percent_split')
+                )['total'] or 0
+                
+                if other_splits + ps_val > 100:
+                    errors['percent_split'] = [f'Total splits cannot exceed 100%. Current other splits: {other_splits}%']
+                else:
+                    contributor.percent_split = ps_val
         except Exception:
             errors['percent_split'] = ['Percent split must be a number.']
 
@@ -294,8 +305,12 @@ def edit_contributor(request):
 
     contributor.save()
 
+    # Return updated split summary
+    split_summary = Contributor.get_track_split_summary(contributor.track)
+    
     data['contributor_id'] = contributor.id
     data['name'] = (f"{contributor.user.first_name or ''} {contributor.user.last_name or ''}".strip() or contributor.user.username or contributor.user.email)
+    data['split_summary'] = split_summary
 
     payload['message'] = "Successful"
     payload['data'] = data
@@ -478,4 +493,132 @@ def get_all_archived_contributors_view(request):
 
     payload['message'] = "Successful"
     payload['data'] = data
+    return Response(payload)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def get_track_split_summary(request):
+    """Get comprehensive split summary for a track"""
+    payload = {}
+    errors = {}
+
+    track_id = request.query_params.get('track_id')
+
+    if not track_id:
+        errors['track_id'] = ['Track ID is required.']
+
+    try:
+        track = Track.objects.get(track_id=track_id)
+    except Track.DoesNotExist:
+        errors['track'] = ['Track not found.']
+
+    if errors:
+        payload['message'] = "Errors"
+        payload['errors'] = errors
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
+    split_summary = Contributor.get_track_split_summary(track)
+    
+    payload['message'] = "Successful"
+    payload['data'] = split_summary
+    return Response(payload)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def auto_balance_track_splits(request):
+    """Automatically balance contributor splits to total 100%"""
+    payload = {}
+    errors = {}
+
+    track_id = request.data.get('track_id')
+
+    if not track_id:
+        errors['track_id'] = ['Track ID is required.']
+
+    try:
+        track = Track.objects.get(track_id=track_id)
+    except Track.DoesNotExist:
+        errors['track'] = ['Track not found.']
+
+    if errors:
+        payload['message'] = "Errors"
+        payload['errors'] = errors
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
+    # Auto-balance splits
+    updated_contributors = Contributor.auto_balance_splits(track)
+    
+    # Get updated summary
+    split_summary = Contributor.get_track_split_summary(track)
+    
+    payload['message'] = "Splits balanced successfully"
+    payload['data'] = {
+        'updated_contributors': len(updated_contributors),
+        'split_summary': split_summary
+    }
+    return Response(payload)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def bulk_update_contributor_splits(request):
+    """Bulk update contributor splits with validation"""
+    payload = {}
+    errors = {}
+
+    track_id = request.data.get('track_id')
+    splits = request.data.get('splits', [])
+
+    if not track_id:
+        errors['track_id'] = ['Track ID is required.']
+
+    if not splits:
+        errors['splits'] = ['Splits data is required.']
+
+    try:
+        track = Track.objects.get(track_id=track_id)
+    except Track.DoesNotExist:
+        errors['track'] = ['Track not found.']
+
+    if errors:
+        payload['message'] = "Errors"
+        payload['errors'] = errors
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
+    # Validate total splits
+    total_percentage = sum(float(split.get('percentage', 0)) for split in splits)
+    if total_percentage > 100:
+        errors['splits'] = [f'Total splits cannot exceed 100%. Current total: {total_percentage}%']
+        payload['message'] = "Errors"
+        payload['errors'] = errors
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
+    # Update contributors
+    updated_count = 0
+    for split_data in splits:
+        contributor_id = split_data.get('contributor_id')
+        percentage = split_data.get('percentage')
+        
+        if contributor_id and percentage is not None:
+            try:
+                contributor = Contributor.objects.get(id=contributor_id, track=track)
+                contributor.percent_split = Decimal(str(percentage))
+                contributor.save()
+                updated_count += 1
+            except (Contributor.DoesNotExist, ValueError):
+                continue
+
+    # Get updated summary
+    split_summary = Contributor.get_track_split_summary(track)
+    
+    payload['message'] = f"Updated {updated_count} contributor splits"
+    payload['data'] = {
+        'updated_count': updated_count,
+        'split_summary': split_summary
+    }
     return Response(payload)

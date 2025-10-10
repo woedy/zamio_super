@@ -68,6 +68,15 @@ def ensure_task_registration(sender, **kwargs):
             monitor_file_security,
             generate_daily_security_report
         )
+        # Import station complaint tasks
+        from stations.tasks import (
+            send_complaint_notification,
+            auto_escalate_old_complaints,
+            send_complaint_reminders,
+            cleanup_old_complaint_updates,
+            generate_complaint_analytics,
+            auto_assign_complaints
+        )
     except ImportError as e:
         # Log import errors but don't fail startup
         import logging
@@ -116,6 +125,13 @@ app.conf.update(
         'core.tasks.file_security_tasks.send_suspicious_user_alert': {'queue': 'high'},
         'core.tasks.file_security_tasks.cleanup_quarantined_files': {'queue': 'low'},
         'core.tasks.file_security_tasks.batch_scan_existing_files': {'queue': 'normal'},
+        # Station complaint tasks routing
+        'stations.tasks.send_complaint_notification': {'queue': 'high'},
+        'stations.tasks.auto_escalate_old_complaints': {'queue': 'normal'},
+        'stations.tasks.send_complaint_reminders': {'queue': 'normal'},
+        'stations.tasks.cleanup_old_complaint_updates': {'queue': 'low'},
+        'stations.tasks.generate_complaint_analytics': {'queue': 'analytics'},
+        'stations.tasks.auto_assign_complaints': {'queue': 'normal'},
     },
     
     # Queue definitions with priorities
@@ -272,6 +288,33 @@ CELERY_BEAT_SCHEDULE = {
     'batch-scan-existing-files': {
         'task': 'core.tasks.file_security_tasks.batch_scan_existing_files',
         'schedule': crontab(hour=3, minute=30),  # daily at 3:30 AM
+        'options': {'queue': 'normal'}
+    },
+    
+    # Station complaint management tasks
+    'auto-escalate-old-complaints': {
+        'task': 'stations.tasks.auto_escalate_old_complaints',
+        'schedule': crontab(hour=8, minute=30),  # daily at 8:30 AM
+        'options': {'queue': 'normal'}
+    },
+    'send-complaint-reminders': {
+        'task': 'stations.tasks.send_complaint_reminders',
+        'schedule': crontab(hour=14, minute=0),  # daily at 2 PM
+        'options': {'queue': 'normal'}
+    },
+    'cleanup-old-complaint-updates': {
+        'task': 'stations.tasks.cleanup_old_complaint_updates',
+        'schedule': crontab(hour=1, minute=45, day_of_week=0),  # weekly on Sunday at 1:45 AM
+        'options': {'queue': 'low'}
+    },
+    'generate-complaint-analytics': {
+        'task': 'stations.tasks.generate_complaint_analytics',
+        'schedule': crontab(hour=13, minute=0),  # daily at 1 PM
+        'options': {'queue': 'analytics'}
+    },
+    'auto-assign-complaints': {
+        'task': 'stations.tasks.auto_assign_complaints',
+        'schedule': crontab(hour='*/4', minute=0),  # every 4 hours
         'options': {'queue': 'normal'}
     },
 }

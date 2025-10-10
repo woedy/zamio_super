@@ -2,6 +2,7 @@ import React, { ChangeEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getPublisherId } from '../../../constants';
 import ButtonLoader from '../../../common/button_loader';
+import LocationSearch from '../../../components/LocationSearch';
 import api from '../../../lib/api';
 import {
   extractApiErrorMessage,
@@ -16,6 +17,9 @@ const CompleteProfile = () => {
   const [bio, setBio] = useState('');
   const [country, setCountry] = useState('');
   const [region, setRegion] = useState('');
+  const [locationName, setLocationName] = useState('');
+  const [lat, setLat] = useState<number | null>(null);
+  const [lng, setLng] = useState<number | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
@@ -80,6 +84,15 @@ const CompleteProfile = () => {
     formData.append('bio', bio);
     formData.append('country', country);
     formData.append('region', region);
+    if (locationName) {
+      formData.append('location_name', locationName);
+    }
+    if (lat !== null) {
+      formData.append('lat', lat.toString());
+    }
+    if (lng !== null) {
+      formData.append('lng', lng.toString());
+    }
     formData.append('photo', selectedFile as File);
 
     try {
@@ -149,6 +162,21 @@ const CompleteProfile = () => {
                 onChange={(e) => setRegion(e.target.value)}
                 className="w-full px-6 py-4 bg-white/20 backdrop-blur-md border border-white/30 rounded-lg text-white placeholder-white  focus:outline-none focus:ring-2 focus:ring-blue-400"
               />
+            </div>
+            <div className="">
+              <LocationSearch
+                value={locationName}
+                onChange={(value, latitude, longitude) => {
+                  setLocationName(value);
+                  if (latitude !== undefined) setLat(latitude);
+                  if (longitude !== undefined) setLng(longitude);
+                }}
+                placeholder="Search for your specific location (optional)"
+                className="w-full"
+              />
+              <p className="text-white/70 text-sm mt-2">
+                This helps us provide location-relevant features and analytics
+              </p>
             </div>
 
             <div>

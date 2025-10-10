@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { CheckIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+import { Check, ChevronRight } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 
 export interface OnboardingStep {
@@ -186,7 +186,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
                     }}
                   >
                     {step.isCompleted ? (
-                      <CheckIcon className="w-5 h-5" />
+                      <Check className="w-5 h-5" />
                     ) : (
                       index + 1
                     )}
@@ -203,7 +203,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
                   </div>
                 </div>
                 {index < steps.length - 1 && (
-                  <ChevronRightIcon className="w-4 h-4 mx-2 text-gray-400 flex-shrink-0" />
+                  <ChevronRight className="w-4 h-4 mx-2 text-gray-400 flex-shrink-0" />
                 )}
               </div>
             ))}

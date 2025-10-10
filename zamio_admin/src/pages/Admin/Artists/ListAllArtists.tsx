@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Search, UserPlus, Music } from 'lucide-react'; // Added relevant icons
+import { Search, Plus, Music } from 'lucide-react'; // Added relevant icons
 import { Link } from 'react-router-dom';
 import { baseUrl, userToken } from '../../../constants';
 import Pagination from '../../../components/Pagination';

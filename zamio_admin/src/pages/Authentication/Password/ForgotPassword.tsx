@@ -1,12 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { baseUrl } from '../../../constants';
 import ButtonLoader from '../../../common/button_loader';
-import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState('');
-
   const navigate = useNavigate();
   const [emailError, setEmailError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -57,9 +55,7 @@ const ForgotPassword = () => {
       const responseData = await response.json();
 
       if (response.status === 200) {
-        
         navigate('/confirm-password-otp', { state: { email } });
-
       } else if (response.status === 400) {
         setEmailError(responseData.errors?.email?.[0] || '');
       } else {
@@ -109,8 +105,7 @@ const ForgotPassword = () => {
           </h2>
 
           <p className="text-white mb-3">
-            Enter your email to reset your password. An OTP Code will be sent to
-            your email.
+            Enter your email to reset your password. You can choose to receive a verification code or link.
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -121,23 +116,21 @@ const ForgotPassword = () => {
               placeholder="Email address"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-6 py-4 bg-white/20 backdrop-blur-md border border-white/30 rounded-lg text-white placeholder-white  focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="w-full px-6 py-4 bg-white/20 backdrop-blur-md border border-white/30 rounded-lg text-white placeholder-white/70 focus:outline-none focus:ring-2 focus:ring-blue-400"
             />
 
-   
             {/* Submit Button */}
             {loading ? (
               <ButtonLoader />
             ) : (
               <button
                 type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-700 transition text-white font-semibold py-4 rounded-lg mt-6 "
+                className="w-full bg-blue-600 hover:bg-blue-700 transition text-white font-semibold py-4 rounded-lg mt-6"
               >
-                Reset
+                Send Reset Instructions
               </button>
             )}
           </form>
-
         </div>
       </div>
     </div>

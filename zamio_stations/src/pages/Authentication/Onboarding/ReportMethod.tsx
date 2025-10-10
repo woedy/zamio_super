@@ -4,7 +4,7 @@ import { artistID, baseUrl, stationID } from '../../../constants';
 import { getStationId } from '../../../lib/auth';
 import api from '../../../lib/api';
 import ButtonLoader from '../../../common/button_loader';
-import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
+import { Eye, EyeOff } from 'lucide-react';
 
 const ReportMethod = () => {
 

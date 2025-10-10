@@ -12,6 +12,11 @@ from publishers.api.contract_views import (
     contract_retention_report,
     delete_contract_file
 )
+from publishers.views.publisher_dashboard_views import (
+    get_publisher_metrics_view,
+    get_publisher_analytics_view,
+    get_publisher_detail_view
+)
 
 app_name = 'publishers'
 
@@ -28,6 +33,11 @@ api_urlpatterns = [
     path('admin/contracts/<int:contract_id>/unquarantine/', unquarantine_contract, name='unquarantine-contract'),
     path('admin/contracts/retention-report/', contract_retention_report, name='contract-retention-report'),
     path('admin/contracts/<int:contract_id>/delete/', delete_contract_file, name='delete-contract-file'),
+    
+    # Publisher dashboard integration
+    path('metrics/', get_publisher_metrics_view, name='publisher-metrics'),
+    path('analytics/', get_publisher_analytics_view, name='publisher-analytics'),
+    path('detail/', get_publisher_detail_view, name='publisher-detail'),
 ]
 
 urlpatterns = [

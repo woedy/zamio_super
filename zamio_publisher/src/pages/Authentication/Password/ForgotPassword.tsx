@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { baseUrl } from '../../../constants';
 import ButtonLoader from '../../../common/button_loader';
-import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
+import { Eye, EyeOff } from 'lucide-react';
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState('');
@@ -109,8 +109,7 @@ const ForgotPassword = () => {
           </h2>
 
           <p className="text-white mb-3">
-            Enter your email to reset your password. An OTP Code will be sent to
-            your email.
+            Enter your email to reset your password. You can choose to receive a verification code or link.
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -131,9 +130,9 @@ const ForgotPassword = () => {
             ) : (
               <button
                 type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-700 transition text-white font-semibold py-4 rounded-lg mt-6 "
+                className="w-full bg-blue-600 hover:bg-blue-700 transition text-white font-semibold py-4 rounded-lg mt-6"
               >
-                Reset
+                Send Reset Instructions
               </button>
             )}
           </form>

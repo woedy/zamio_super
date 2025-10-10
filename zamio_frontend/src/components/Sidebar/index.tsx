@@ -124,10 +124,14 @@ const Sidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
 
   return (
     <aside
+      id="sidebar"
       ref={sidebar}
       className={`absolute left-0 top-0 z-9999 flex h-screen flex-col overflow-y-hidden bg-white duration-300 ease-linear dark:bg-boxdark lg:static lg:translate-x-0 ${
         sidebarOpen ? 'translate-x-0' : '-translate-x-full'
       }`}
+      role="navigation"
+      aria-label="Main navigation"
+      aria-hidden={!sidebarOpen ? 'true' : 'false'}
     >
       {/* <!-- SIDEBAR HEADER --> */}
       <div className="flex items-center justify-between gap-2 px-6 py-5.5 lg:py-6.5">
@@ -146,7 +150,8 @@ const Sidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
           onClick={() => setSidebarOpen(!sidebarOpen)}
           aria-controls="sidebar"
           aria-expanded={sidebarOpen}
-          className="block lg:hidden"
+          aria-label="Close sidebar"
+          className="block lg:hidden focus-visible-ring rounded-sm p-1"
         >
           <svg
             className="fill-current"
@@ -167,28 +172,29 @@ const Sidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
 
       <div className="no-scrollbar flex flex-col overflow-y-auto duration-300 ease-linear">
         {/* <!-- Sidebar Menu --> */}
-        <nav className="mt-5 py-4 px-2 lg:mt-9 lg:px-2">
+        <nav className="mt-5 py-4 px-2 lg:mt-9 lg:px-2" role="navigation" aria-label="Main menu">
           {/* <!-- Menu Group --> */}
           <div>
             <h3 className="mb-4 ml-4 text-sm font-semibold text-bodydark1">
               MENU
             </h3>
 
-            <ul>
-              {navigationItems.map((item) => (
-                <li key={item.name}>
-                  <NavLink to={item.route}>
-                    <button
-                      className={`flex items-center w-full px-6 py-2 text-sm hover:bg-indigo-900 transition-colors ${
-                        activeTab === item.name
-                          ? 'bg-indigo-900 font-semibold'
-                          : ''
-                      }`}
-                      onClick={() => setActiveTab(item.name)}
-                    >
-                      <span className="mr-3">{item.icon}</span>
-                      <span>{item.name}</span>
-                    </button>
+            <ul role="menubar">
+              {navigationItems.map((item, index) => (
+                <li key={item.name} role="none">
+                  <NavLink 
+                    to={item.route}
+                    className={({ isActive }) => `
+                      flex items-center w-full px-6 py-2 text-sm hover:bg-indigo-900 transition-colors focus-visible-ring rounded-md
+                      ${isActive ? 'bg-indigo-900 font-semibold' : ''}
+                    `}
+                    role="menuitem"
+                    aria-current={pathname === item.route ? 'page' : undefined}
+                    tabIndex={sidebarOpen ? 0 : -1}
+                    onClick={() => setActiveTab(item.name)}
+                  >
+                    <span className="mr-3" aria-hidden="true">{item.icon}</span>
+                    <span>{item.name}</span>
                   </NavLink>
                 </li>
               ))}

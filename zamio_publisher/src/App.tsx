@@ -1,35 +1,15 @@
 import { useEffect, useState } from 'react';
 import { Route, Routes, useLocation } from 'react-router-dom';
+import { ThemeProvider } from './contexts/ThemeContext';
+import { ErrorBoundary } from '@zamio/ui-theme';
 
 import Loader from './common/Loader';
 import PageTitle from './components/PageTitle';
 
 import DefaultLayout from './layout/DefaultLayout';
 
-import ZamIOLandingPage from './pages/Landing/LandingPage';
-import SignIn from './pages/Authentication/SignIn';
-import SignUp from './pages/Authentication/SignUp';
-import VerifyEmail from './pages/Authentication/VerifyEmail';
-
-import Dashboard from './pages/Dashboard/Dashboard';
-
-import CompleteProfile from './pages/Authentication/Onboarding/CompleteProfile';
-import RevenueSplit from './pages/Authentication/Onboarding/RevenueSplit';
-import LinkArtist from './pages/Authentication/Onboarding/LinkArtist';
-import PaymentInfo from './pages/Authentication/Onboarding/PaymentInfo';
-import AllArtists from './pages/ManageArtists/AllArtists';
-import ArtistDetails from './pages/ManageArtists/ArtistDetails';
-import MatchLogViewer from './pages/PlaylogsMatchLog/FullDetectionTable';
-import AllArtistsContracts from './pages/ContractManagement/AllArtistsContracts';
-import AllArtistsRoyalties from './pages/Royalties/AllArtistsRoyalties';
-import ArtistRoyaltiesDetail from './pages/Royalties/ArtistRoyaltiesDetail';
-import NotificationCenter from './pages/NotificationCenter/NotificationCenter';
-import EducationSupport from './pages/Education&Support/HelpSupport';
-import PublisherProfile from './pages/Profile/PublisherProfile';
-import ContractDetails from './pages/ContractManagement/ContractDetails';
-import DisputesList from './pages/Disputes/DisputesList';
-import DisputeDetails from './pages/Disputes/DisputeDetails';
-import AddContract from './pages/ContractManagement/AddContract';
+// Lazy-loaded components
+import * as LazyRoutes from './routes/LazyRoutes';
 
 const hiddenOnRoutes = [
   '/',
@@ -57,9 +37,12 @@ function App() {
 
   const shouldUseDefaultLayout = !hiddenOnRoutes.includes(location.pathname);
 
-  return loading ? (
-    <Loader />
-  ) : shouldUseDefaultLayout ? (
+  return (
+    <ErrorBoundary>
+      <ThemeProvider>
+        {loading ? (
+          <Loader />
+        ) : shouldUseDefaultLayout ? (
     <DefaultLayout hiddenOnRoutes={hiddenOnRoutes}>
       <Routes>
         {/* Protected routes */}
@@ -68,7 +51,7 @@ function App() {
           element={
             <>
               <PageTitle title="Publisher Dasboard | ZamIO Publishers" />
-              <Dashboard />
+              <LazyRoutes.Dashboard />
             </>
           }
         />
@@ -202,6 +185,33 @@ function App() {
             </>
           }
         />
+        <Route
+          path="/settings"
+          element={
+            <>
+              <PageTitle title="Settings | ZamIO Publishers" />
+              <Settings />
+            </>
+          }
+        />
+        <Route
+          path="/edit-profile"
+          element={
+            <>
+              <PageTitle title="Edit Profile | ZamIO Publishers" />
+              <EditProfile />
+            </>
+          }
+        />
+        <Route
+          path="/shared-package-test"
+          element={
+            <>
+              <PageTitle title="Shared Package Test | ZamIO Publishers" />
+              <SharedPackageTest />
+            </>
+          }
+        />
       </Routes>
     </DefaultLayout>
   ) : (
@@ -212,7 +222,7 @@ function App() {
           element={
             <>
               <PageTitle title="Home | ZamIO Publishers" />
-              <ZamIOLandingPage />
+              <LazyRoutes.ZamIOLandingPage />
             </>
           }
         />
@@ -222,7 +232,7 @@ function App() {
           element={
             <>
               <PageTitle title="Sign In | ZamIO Publishers" />
-              <SignIn />
+              <LazyRoutes.SignIn />
             </>
           }
         />
@@ -231,7 +241,7 @@ function App() {
           element={
             <>
               <PageTitle title="Sign Up | ZamIO Publishers" />
-              <SignUp />
+              <LazyRoutes.SignUp />
             </>
           }
         />
@@ -240,7 +250,7 @@ function App() {
           element={
             <>
               <PageTitle title="Verify Email | ZamIO-Publishers" />
-              <VerifyEmail />
+              <LazyRoutes.VerifyEmail />
             </>
           }
         />
@@ -282,6 +292,9 @@ function App() {
         />
       </Routes>
     </>
+  )}
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
 

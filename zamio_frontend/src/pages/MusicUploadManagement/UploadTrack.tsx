@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Music2Icon, UploadCloud, FileMusic, Plus } from 'lucide-react';
+import { Music2, Upload, FileAudio, Plus } from 'lucide-react';
 import { baseUrl, userToken } from '../../constants';
 import { getArtistId } from '../../lib/auth';
 import ButtonLoader from '../../common/button_loader';
@@ -159,7 +159,7 @@ export default function UploadTrack() {
     <div className="flex-1 flex flex-col p-6">
       <div className="mb-8">
         <h2 className="text-3xl font-semibold flex items-center mb-4">
-          <Music2Icon className="w-7 h-7 mr-3" /> Upload New Track
+          <Music2 className="w-7 h-7 mr-3" /> Upload New Track
         </h2>
         <p className="text-gray-500">Share your latest music with your fans!</p>
       </div>
@@ -278,7 +278,7 @@ export default function UploadTrack() {
             </label>
             <div className="relative border rounded-md border-dashed border-indigo-700 bg-graydark py-6 px-4 flex flex-col items-center justify-center">
               <div className="text-center">
-                <UploadCloud className="w-10 h-10 text-emerald-300 mx-auto" />
+                <Upload className="w-10 h-10 text-emerald-300 mx-auto" />
                 <h3 className="mt-2 text-sm text-gray-400">
                   Drag and drop your MP3 or WAV file here
                 </h3>
@@ -364,7 +364,7 @@ export default function UploadTrack() {
                 type="submit"
                 className="inline-flex items-center px-6 py-3 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500"
               >
-                <UploadCloud className="w-5 h-5 mr-2" /> Upload Track
+                <Upload className="w-5 h-5 mr-2" /> Upload Track
               </button>
             )}
           </div>

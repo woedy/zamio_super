@@ -13,6 +13,8 @@ user experience and system performance.
 
 import logging
 import uuid
+import secrets
+import hashlib
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 
@@ -30,24 +32,69 @@ User = get_user_model()
 logger = logging.getLogger(__name__)
 
 
+def generate_verification_code() -> str:
+    """
+    Generate a secure 4-digit verification code.
+    
+    Returns:
+        4-digit numeric string
+    """
+    return f"{secrets.randbelow(10000):04d}"
+
+
+def generate_verification_token() -> str:
+    """
+    Generate a secure verification token.
+    
+    Returns:
+        64-character hexadecimal token
+    """
+    return secrets.token_hex(32)
+
+
+def hash_verification_code(code: str) -> str:
+    """
+    Hash verification code for secure storage.
+    
+    Args:
+        code: Plain text verification code
+        
+    Returns:
+        SHA-256 hash of the code
+    """
+    return hashlib.sha256(code.encode()).hexdigest()
+
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
-def send_email_verification_task(self, user_id: int, verification_token: str, 
+def send_email_verification_task(self, user_id: int, verification_token: str = None, 
                                 base_url: Optional[str] = None) -> Dict[str, Any]:
     """
-    Send email verification email to user.
+    Send email verification email to user with both code and token methods.
     
     Args:
         user_id: ID of the user to send verification email to
-        verification_token: Token for email verification
+        verification_token: Token for email verification (optional, will generate if not provided)
         base_url: Base URL for verification link (optional)
         
     Returns:
         Dict containing task result information
         
-    Requirements: 1.1 - Email verification queued using Celery
+    Requirements: 2.1, 2.2, 2.3, 2.4 - Generate both 4-digit code and token with expiration
     """
     try:
         user = User.objects.get(id=user_id)
+        
+        # Generate verification code and token if not provided
+        verification_code = generate_verification_code()
+        if not verification_token:
+            verification_token = generate_verification_token()
+        
+        # Hash the verification code for secure storage
+        verification_code_hash = hash_verification_code(verification_code)
+        
+        # Set expiration times (15 min for code, 60 min for token)
+        code_expires_at = timezone.now() + timedelta(minutes=15)
+        token_expires_at = timezone.now() + timedelta(minutes=60)
         
         # Use provided base_url or fall back to settings
         if not base_url:
@@ -56,11 +103,14 @@ def send_email_verification_task(self, user_id: int, verification_token: str,
         # Generate verification URL
         verification_url = f"http://{base_url}/verify-email?token={verification_token}&email={user.email}"
         
-        # Prepare email context
+        # Prepare email context with both methods
         context = {
             'user': user,
             'verification_url': verification_url,
             'verification_token': verification_token,
+            'verification_code': verification_code,
+            'code_expires_minutes': 15,
+            'link_expires_minutes': 60,
             'site_name': 'ZamIO',
             'current_year': datetime.now().year,
         }
@@ -80,9 +130,21 @@ def send_email_verification_task(self, user_id: int, verification_token: str,
         email.attach_alternative(html_message, "text/html")
         email.send()
         
-        # Update user's email token
+        # Update user's verification data
         user.email_token = verification_token
-        user.save(update_fields=['email_token'])
+        user.verification_code = verification_code
+        user.verification_code_hash = verification_code_hash
+        user.verification_expires_at = code_expires_at  # Use shorter expiration for primary field
+        user.last_verification_request = timezone.now()
+        user.verification_attempts = 0  # Reset attempts on new verification
+        user.save(update_fields=[
+            'email_token', 
+            'verification_code', 
+            'verification_code_hash',
+            'verification_expires_at',
+            'last_verification_request',
+            'verification_attempts'
+        ])
         
         # Log the activity
         AuditLog.objects.create(
@@ -90,17 +152,25 @@ def send_email_verification_task(self, user_id: int, verification_token: str,
             action='email_verification_sent',
             resource_type='email',
             resource_id=user.email,
-            request_data={'verification_token': verification_token[:8] + '...'},
+            request_data={
+                'verification_token': verification_token[:8] + '...',
+                'has_code': True,
+                'code_expires_at': code_expires_at.isoformat(),
+                'token_expires_at': token_expires_at.isoformat()
+            },
             status_code=200,
             trace_id=uuid.uuid4()
         )
         
-        logger.info(f"Email verification sent successfully to {user.email}")
+        logger.info(f"Email verification sent successfully to {user.email} with both code and token")
         
         return {
             'status': 'success',
             'message': f'Email verification sent to {user.email}',
             'user_id': user_id,
+            'verification_methods': ['code', 'link'],
+            'code_expires_at': code_expires_at.isoformat(),
+            'token_expires_at': token_expires_at.isoformat(),
             'timestamp': timezone.now().isoformat()
         }
         
@@ -130,23 +200,35 @@ def send_email_verification_task(self, user_id: int, verification_token: str,
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
-def send_password_reset_email_task(self, user_id: int, reset_token: str, 
+def send_password_reset_email_task(self, user_id: int, reset_token: str = None, 
                                   base_url: Optional[str] = None) -> Dict[str, Any]:
     """
-    Send password reset email to user.
+    Send password reset email to user with both code and token methods.
     
     Args:
         user_id: ID of the user requesting password reset
-        reset_token: Token for password reset
+        reset_token: Token for password reset (optional, will generate if not provided)
         base_url: Base URL for reset link (optional)
         
     Returns:
         Dict containing task result information
         
-    Requirements: 1.2 - Password reset tokens processed as background tasks
+    Requirements: 13.1, 13.2 - Generate both 4-digit code and token with expiration
     """
     try:
         user = User.objects.get(id=user_id)
+        
+        # Generate reset code and token if not provided
+        reset_code = generate_verification_code()  # Reuse the 4-digit code generator
+        if not reset_token:
+            reset_token = generate_verification_token()
+        
+        # Hash the reset code for secure storage
+        reset_code_hash = hash_verification_code(reset_code)
+        
+        # Set expiration times (15 min for code, 60 min for token)
+        code_expires_at = timezone.now() + timedelta(minutes=15)
+        token_expires_at = timezone.now() + timedelta(minutes=60)
         
         # Use provided base_url or fall back to settings
         if not base_url:
@@ -155,14 +237,16 @@ def send_password_reset_email_task(self, user_id: int, reset_token: str,
         # Generate reset URL
         reset_url = f"http://{base_url}/reset-password?token={reset_token}&email={user.email}"
         
-        # Prepare email context
+        # Prepare email context with both methods
         context = {
             'user': user,
             'reset_url': reset_url,
             'reset_token': reset_token,
+            'reset_code': reset_code,
+            'code_expires_minutes': 15,
+            'link_expires_minutes': 60,
             'site_name': 'ZamIO',
             'current_year': datetime.now().year,
-            'expiry_hours': 24,  # Password reset tokens expire in 24 hours
         }
         
         # Render email templates
@@ -180,23 +264,47 @@ def send_password_reset_email_task(self, user_id: int, reset_token: str,
         email.attach_alternative(html_message, "text/html")
         email.send()
         
+        # Store reset data in user record (we'll need to add these fields to User model)
+        user.reset_token = reset_token
+        user.reset_code = reset_code
+        user.reset_code_hash = reset_code_hash
+        user.reset_expires_at = code_expires_at  # Use shorter expiration for primary field
+        user.last_reset_request = timezone.now()
+        user.reset_attempts = 0  # Reset attempts on new reset request
+        user.save(update_fields=[
+            'reset_token', 
+            'reset_code', 
+            'reset_code_hash',
+            'reset_expires_at',
+            'last_reset_request',
+            'reset_attempts'
+        ])
+        
         # Log the activity
         AuditLog.objects.create(
             user=user,
             action='password_reset_email_sent',
             resource_type='email',
             resource_id=user.email,
-            request_data={'reset_token': reset_token[:8] + '...'},
+            request_data={
+                'reset_token': reset_token[:8] + '...',
+                'has_code': True,
+                'code_expires_at': code_expires_at.isoformat(),
+                'token_expires_at': token_expires_at.isoformat()
+            },
             status_code=200,
             trace_id=uuid.uuid4()
         )
         
-        logger.info(f"Password reset email sent successfully to {user.email}")
+        logger.info(f"Password reset email sent successfully to {user.email} with both code and token")
         
         return {
             'status': 'success',
             'message': f'Password reset email sent to {user.email}',
             'user_id': user_id,
+            'reset_methods': ['code', 'link'],
+            'code_expires_at': code_expires_at.isoformat(),
+            'token_expires_at': token_expires_at.isoformat(),
             'timestamp': timezone.now().isoformat()
         }
         

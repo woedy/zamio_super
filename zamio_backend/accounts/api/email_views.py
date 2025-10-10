@@ -28,24 +28,57 @@ User = get_user_model()
 @permission_classes([IsAuthenticated])
 def resend_verification_email(request):
     """
-    Resend email verification to the current user.
+    Resend email verification to the current user with rate limiting.
     
-    Requirements: 1.1 - Email verification queued using Celery
+    Requirements: 12.1, 12.2, 12.3 - Resend with rate limiting (max 3 per hour, 2-min cooldown)
     """
+    from accounts.services import EmailVerificationService
+    
     user = request.user
+    verification_service = EmailVerificationService()
     
     if user.email_verified:
         return Response({
             'error': 'Email is already verified'
         }, status=status.HTTP_400_BAD_REQUEST)
     
-    try:
-        task_id = send_verification_email(user)
-        
+    # Check if user can resend (rate limiting and cooldown)
+    can_resend_result = verification_service.can_resend(user)
+    
+    if not can_resend_result['can_resend']:
         return Response({
-            'message': 'Verification email sent successfully',
-            'task_id': task_id
-        }, status=status.HTTP_200_OK)
+            'error': can_resend_result['message'],
+            'retry_after': can_resend_result.get('retry_after_seconds', 0),
+            'resend_count': can_resend_result.get('resend_count', 0),
+            'max_resends': can_resend_result.get('max_resends', 3),
+            'cooldown_seconds': can_resend_result.get('cooldown_seconds', 0)
+        }, status=status.HTTP_429_TOO_MANY_REQUESTS)
+    
+    # Get method preference from request or use existing method
+    method = request.data.get('method', user.verification_method or 'link')
+    
+    if method not in ['code', 'link']:
+        return Response({
+            'error': 'Invalid verification method. Must be "code" or "link"'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        result = verification_service.resend_verification(user, method)
+        
+        if result['status'] == 'success':
+            return Response({
+                'message': 'Verification email sent successfully',
+                'method': result['method'],
+                'expires_at': result['expires_at'],
+                'resend_count': result['resend_count'],
+                'max_resends': result['max_resends'],
+                'next_resend_available_at': result.get('next_resend_available_at'),
+                'task_id': result.get('task_id')
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({
+                'error': result['message']
+            }, status=status.HTTP_400_BAD_REQUEST)
         
     except Exception as e:
         return Response({
@@ -57,10 +90,12 @@ def resend_verification_email(request):
 @permission_classes([])
 def resend_verification_email_by_email(request):
     """
-    Resend email verification by email address (for users not logged in).
+    Resend email verification by email address (for users not logged in) with rate limiting.
     
-    Requirements: 1.1 - Email verification queued using Celery
+    Requirements: 12.1, 12.2, 12.3 - Resend with rate limiting (max 3 per hour, 2-min cooldown)
     """
+    from accounts.services import EmailVerificationService
+    
     email = request.data.get('email', '').lower()
     
     if not email:
@@ -70,17 +105,34 @@ def resend_verification_email_by_email(request):
     
     try:
         user = User.objects.get(email=email, is_active=True)
+        verification_service = EmailVerificationService()
         
         if user.email_verified:
             return Response({
                 'message': 'Email is already verified'
             }, status=status.HTTP_200_OK)
         
-        task_id = send_verification_email(user)
+        # Check if user can resend (rate limiting and cooldown)
+        can_resend_result = verification_service.can_resend(user)
         
+        if not can_resend_result['can_resend']:
+            # Return generic message to prevent email enumeration, but still respect rate limits
+            return Response({
+                'message': 'If an account with this email exists, please wait before requesting another verification email',
+                'retry_after': can_resend_result.get('retry_after_seconds', 120)
+            }, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        
+        # Get method preference from request or use existing method
+        method = request.data.get('method', user.verification_method or 'link')
+        
+        if method not in ['code', 'link']:
+            method = 'link'  # Default to link for invalid methods
+        
+        result = verification_service.resend_verification(user, method)
+        
+        # Always return success message to prevent email enumeration
         return Response({
-            'message': 'Verification email sent successfully',
-            'task_id': task_id
+            'message': 'If an account with this email exists, a verification email has been sent'
         }, status=status.HTTP_200_OK)
         
     except User.DoesNotExist:
@@ -97,35 +149,99 @@ def resend_verification_email_by_email(request):
 @api_view(['POST'])
 def request_password_reset(request):
     """
-    Request password reset email.
+    Request password reset email with method selection.
     
-    Requirements: 1.2 - Password reset tokens processed as background tasks
+    Requirements: 13.1, 13.2 - Password reset with dual method support
     """
+    from accounts.services import PasswordResetService
+    
     email = request.data.get('email')
+    method = request.data.get('method', 'link')  # Default to link method
     
     if not email:
         return Response({
             'error': 'Email is required'
         }, status=status.HTTP_400_BAD_REQUEST)
     
+    if method not in ['code', 'link']:
+        return Response({
+            'error': 'Invalid method. Must be "code" or "link"'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
     try:
         user = User.objects.get(email=email, is_active=True)
-        task_id = send_password_reset_email(user)
+        reset_service = PasswordResetService()
+        
+        result = reset_service.create_reset_request(user, method)
         
         # Always return success to prevent email enumeration
         return Response({
-            'message': 'If an account with this email exists, a password reset link has been sent',
-            'task_id': task_id
+            'message': 'If an account with this email exists, a password reset email has been sent',
+            'method': method
         }, status=status.HTTP_200_OK)
         
     except User.DoesNotExist:
         # Return the same message to prevent email enumeration
         return Response({
-            'message': 'If an account with this email exists, a password reset link has been sent'
+            'message': 'If an account with this email exists, a password reset email has been sent'
         }, status=status.HTTP_200_OK)
     except Exception as e:
         return Response({
             'error': 'Failed to process password reset request'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+def resend_password_reset(request):
+    """
+    Resend password reset email with rate limiting.
+    
+    Requirements: 12.1, 12.2, 13.1 - Resend password reset with same rate limiting as verification
+    """
+    from accounts.services import PasswordResetService
+    
+    email = request.data.get('email')
+    method = request.data.get('method')  # Optional, will maintain current method if not specified
+    
+    if not email:
+        return Response({
+            'error': 'Email is required'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    if method and method not in ['code', 'link']:
+        return Response({
+            'error': 'Invalid method. Must be "code" or "link"'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        user = User.objects.get(email=email, is_active=True)
+        reset_service = PasswordResetService()
+        
+        # Check if user can resend (rate limiting and cooldown)
+        can_resend_result = reset_service.can_resend_reset(user)
+        
+        if not can_resend_result['can_resend']:
+            # Return generic message to prevent email enumeration, but still respect rate limits
+            return Response({
+                'message': 'If an account with this email exists, please wait before requesting another password reset email',
+                'retry_after': can_resend_result.get('retry_after_seconds', 120)
+            }, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        
+        result = reset_service.resend_reset(user, method)
+        
+        # Always return success message to prevent email enumeration
+        return Response({
+            'message': 'If an account with this email exists, a password reset email has been sent'
+        }, status=status.HTTP_200_OK)
+        
+    except User.DoesNotExist:
+        # Return success to prevent email enumeration
+        return Response({
+            'message': 'If an account with this email exists, a password reset email has been sent'
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({
+            'error': 'Failed to send password reset email'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 

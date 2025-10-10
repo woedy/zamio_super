@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Search, UserPlus, Music } from 'lucide-react'; // Added relevant icons
+import { Search, Plus, Music } from 'lucide-react'; // Added relevant icons
 import { Link, useLocation } from 'react-router-dom';
 import { baseUrl, userToken } from '../../constants';
 import { getArtistId } from '../../lib/auth';
@@ -106,7 +106,7 @@ export default function TrackContributors() {
 
         <Link to="/add-track-contributor" state={{ track_id: track_id }}>
           <button className="flex items-center px-4 py-2 bg-indigo-900 rounded-full hover:bg-indigo-800 transition">
-            <UserPlus className="w-4 h-4 mr-2" /> Add New Contributor
+            <Plus className="w-4 h-4 mr-2" /> Add New Contributor
           </button>
         </Link>
       </div>

@@ -1,3 +1,4 @@
+import logging
 from celery import chain
 from django.core.mail import send_mail
 from django.utils import timezone
@@ -15,6 +16,7 @@ from rest_framework.permissions import IsAuthenticated
 
 from accounts.api.serializers import UserRegistrationSerializer
 from accounts.models import AuditLog
+from accounts.services import EmailVerificationService
 from activities.models import AllActivity
 from django.core.mail import send_mail
 from django.contrib.auth import get_user_model, authenticate
@@ -28,6 +30,8 @@ from accounts.api.serializers import UserRegistrationSerializer
 from activities.models import AllActivity
 from core.tasks import send_generic_email
 from core.utils import generate_email_token, is_valid_email, is_valid_password
+
+logger = logging.getLogger(__name__)
 from mr_admin.models import MrAdmin
 
 
@@ -402,76 +406,190 @@ from rest_framework.authentication import TokenAuthentication
 @permission_classes([AllowAny])
 @authentication_classes([])
 def verify_admin_email(request):
+    """
+    Verify admin email using verification token (backward compatible).
+    
+    Requirements: 5.3, 10.1, 10.2 - Token verification with backward compatibility
+    """
     payload = {}
     data = {}
-    errors = {}
-
-    email_errors = []
-    token_errors = []
-
-    email = request.data.get('email', '').lower()
-    email_token = request.data.get('email_token', '')
-
+    
+    email = request.data.get('email', '').lower().strip()
+    email_token = request.data.get('email_token', '').strip()
+    
+    # Get client IP for audit logging
+    ip_address = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR'))
+    
+    # Validate input
     if not email:
-        email_errors.append('Email is required.')
-
-    qs = User.objects.filter(email=email)
-    if not qs.exists():
-        email_errors.append('Email does not exist.')
-
-    if email_errors:
-        errors['email'] = email_errors
-
+        payload['message'] = "Errors"
+        payload['errors'] = {'email': ['Email is required.']}
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+    
     if not email_token:
-        token_errors.append('Token is required.')
-
-    user = None
-    if qs.exists():
-        user = qs.first()
-        if email_token != user.email_token:
-            token_errors.append('Invalid Token.')
-
-    if token_errors:
-        errors['email_token'] = token_errors
-
-    if email_errors or token_errors:
+        payload['message'] = "Errors"
+        payload['errors'] = {'email_token': ['Token is required.']}
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Use verification service for consistent handling
+    verification_service = EmailVerificationService()
+    result = verification_service.verify_token(email, email_token, ip_address)
+    
+    if not result['success']:
+        # Maintain backward compatibility with old error format
+        errors = {}
+        if result['error_code'] == 'USER_NOT_FOUND':
+            errors['email'] = ['Email does not exist.']
+        elif result['error_code'] == 'INVALID_TOKEN':
+            errors['email_token'] = ['Invalid Token.']
+        elif result['error_code'] == 'ALREADY_VERIFIED':
+            errors['email'] = ['Email is already verified.']
+        else:
+            errors['general'] = [result['message']]
+        
         payload['message'] = "Errors"
         payload['errors'] = errors
         return Response(payload, status=status.HTTP_400_BAD_REQUEST)
-
+    
+    # Verification successful - get user and prepare response
     try:
-        token = Token.objects.get(user=user)
-    except Token.DoesNotExist:
-        token = Token.objects.create(user=user)
+        user = User.objects.get(email=email)
+        
+        # Get or create auth token
+        try:
+            token = Token.objects.get(user=user)
+        except Token.DoesNotExist:
+            token = Token.objects.create(user=user)
+        
+        # Get admin profile
+        admin = MrAdmin.objects.filter(user=user).first()
+        
+        # Prepare response data (maintain backward compatibility)
+        data["user_id"] = user.user_id
+        if admin:
+            data["admin_id"] = admin.admin_id
+        data["email"] = user.email
+        data["first_name"] = user.first_name
+        data["last_name"] = user.last_name
+        data["photo"] = user.photo.url if getattr(user.photo, 'url', None) else None
+        data["token"] = token.key
+        data["country"] = user.country
+        data["phone"] = user.phone
+        
+        payload['message'] = "Successful"
+        payload['data'] = data
+        
+        # Create activity log (maintain backward compatibility)
+        new_activity = AllActivity.objects.create(
+            user=user,
+            subject="Verify Email",
+            body=user.email + " just verified their email",
+        )
+        new_activity.save()
+        
+        return Response(payload, status=status.HTTP_200_OK)
+        
+    except User.DoesNotExist:
+        payload['message'] = "Errors"
+        payload['errors'] = {'email': ['Email does not exist.']}
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        logger.error(f"Error in verify_admin_email: {str(e)}")
+        payload['message'] = "Errors"
+        payload['errors'] = {'general': ['An error occurred during verification']}
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
-    user.is_active = True
-    user.email_verified = True
-    user.save()
 
-    admin = MrAdmin.objects.filter(user=user).first()
-
-    data["user_id"] = user.user_id
-    if admin:
-        data["admin_id"] = admin.admin_id
-    data["email"] = user.email
-    data["first_name"] = user.first_name
-    data["last_name"] = user.last_name
-    data["photo"] = user.photo.url if getattr(user.photo, 'url', None) else None
-    data["token"] = token.key
-    data["country"] = user.country
-    data["phone"] = user.phone
-
-    payload['message'] = "Successful"
-    payload['data'] = data
-
-    new_activity = AllActivity.objects.create(
-        user=user,
-        subject="Verify Email",
-        body=user.email + " just verified their email",
-    )
-    new_activity.save()
-
-    return Response(payload, status=status.HTTP_200_OK)
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@authentication_classes([])
+def verify_admin_email_code(request):
+    """
+    Verify admin email using 4-digit verification code.
+    
+    Requirements: 3.4, 5.2, 5.3 - Code verification with proper error handling
+    """
+    payload = {}
+    data = {}
+    
+    email = request.data.get('email', '').lower().strip()
+    code = request.data.get('code', '').strip()
+    
+    # Get client IP for audit logging
+    ip_address = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR'))
+    
+    # Validate input
+    if not email:
+        payload['message'] = "Email is required"
+        payload['errors'] = {'email': ['Email is required']}
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+    
+    if not code:
+        payload['message'] = "Verification code is required"
+        payload['errors'] = {'code': ['Verification code is required']}
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Validate code format (4 digits)
+    if not code.isdigit() or len(code) != 4:
+        payload['message'] = "Invalid code format"
+        payload['errors'] = {'code': ['Verification code must be 4 digits']}
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Use verification service
+    verification_service = EmailVerificationService()
+    result = verification_service.verify_code(email, code, ip_address)
+    
+    if not result['success']:
+        payload['message'] = result['message']
+        payload['error_code'] = result['error_code']
+        
+        # Add specific error details for client handling
+        if 'attempts_remaining' in result:
+            payload['attempts_remaining'] = result['attempts_remaining']
+        if 'retry_after' in result:
+            payload['retry_after'] = result['retry_after']
+        
+        return Response(payload, status=result['status_code'])
+    
+    # Verification successful - get user and prepare response
+    try:
+        user = User.objects.get(email=email)
+        
+        # Get or create auth token
+        try:
+            token = Token.objects.get(user=user)
+        except Token.DoesNotExist:
+            token = Token.objects.create(user=user)
+        
+        # Prepare response data
+        data["user_id"] = user.user_id
+        data["email"] = user.email
+        data["first_name"] = user.first_name
+        data["last_name"] = user.last_name
+        data["photo"] = user.photo.url if getattr(user.photo, 'url', None) else None
+        data["token"] = token.key
+        data["country"] = user.country
+        data["phone"] = user.phone
+        
+        payload['message'] = "Email verified successfully"
+        payload['data'] = data
+        
+        # Create activity log
+        AllActivity.objects.create(
+            user=user,
+            subject="Verify Email",
+            body=f"{user.email} verified their email using verification code",
+        )
+        
+        return Response(payload, status=status.HTTP_200_OK)
+        
+    except User.DoesNotExist:
+        payload['message'] = "User not found"
+        return Response(payload, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        logger.error(f"Error in verify_admin_email_code: {str(e)}")
+        payload['message'] = "An error occurred during verification"
+        return Response(payload, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # ---------- Admin Onboarding ----------

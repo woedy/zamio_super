@@ -1,31 +1,16 @@
 import { useEffect, useState } from 'react';
 import { Route, Routes, useLocation } from 'react-router-dom';
+import { ThemeProvider } from './contexts/ThemeContext';
+import { ErrorBoundary } from '@zamio/ui-theme';
 
 import Loader from './common/Loader';
 import PageTitle from './components/PageTitle';
 
 import DefaultLayout from './layout/DefaultLayout';
-
-import ZamIOLandingPage from './pages/Landing/LandingPage';
-import SignIn from './pages/Authentication/SignIn';
-import SignUp from './pages/Authentication/SignUp';
-import VerifyEmail from './pages/Authentication/VerifyEmail';
-import RadioStreamMonitor from './pages/PlayGround/RadioStreamMonitor';
-import AudioFileMatcher from './pages/PlayGround/AudioFileMatcher';
-import MatchLogViewer from './pages/MatchLogViewer/FullDetectionTable';
-import AllDisputeMatches from './pages/MatchDisputeManagement/AllDisputeMatch';
-import StationProfilePage from './pages/StationManagement/StationProfile';
-import StationStaffManagement from './pages/StationManagement/StationStaffManagement';
-import StationCompliance from './pages/StationManagement/StationCompliance';
-import PlaylogManagement from './pages/StationManagement/PlaylogManagement';
-import NotificationCenter from './pages/NotificationCenter/NotificationCenter';
-import EducationSupport from './pages/Education&Support/HelpSupport';
-import DisputeDetails from './pages/MatchDisputeManagement/DisputeDetails';
-import CompleteProfile from './pages/Authentication/Onboarding/CompleteProfile';
-import PaymentInfo from './pages/Authentication/Onboarding/PaymentInfo';
-import AddStaff from './pages/Authentication/Onboarding/AddStaff';
 import RequireStationOnboarding from './components/auth/RequireStationOnboarding';
-import StationDashboard2 from './pages/Dashboard/StationDashboard2';
+
+// Lazy-loaded components
+import * as LazyRoutes from './routes/LazyRoutes';
 
 const hiddenOnRoutes = [
   '/',
@@ -58,15 +43,18 @@ function App() {
   console.log('Should use default layout:', shouldUseDefaultLayout);
   console.log('Loading state:', loading);
 
-  return loading ? (
-    <Loader />
-  ) : shouldUseDefaultLayout ? (
+  return (
+    <ErrorBoundary>
+      <ThemeProvider>
+        {loading ? (
+          <Loader />
+        ) : shouldUseDefaultLayout ? (
     <DefaultLayout hiddenOnRoutes={hiddenOnRoutes}>
       <Routes>
         <Route path="/dashboard" element={
           <>
             <PageTitle title="Station Dashboard | ZamIO Stations" />
-            <StationDashboard2 />
+            <LazyRoutes.StationDashboard2 />
           </>
         } />
         
@@ -170,6 +158,60 @@ function App() {
               </>
             }
           />
+          <Route
+            path="/shared-package-test"
+            element={
+              <>
+                <PageTitle title="Shared Package Test | ZamIO Stations" />
+                <SharedPackageTest />
+              </>
+            }
+          />
+          <Route
+            path="/complaints"
+            element={
+              <>
+                <PageTitle title="Complaint Management | ZamIO Stations" />
+                <ComplaintsList />
+              </>
+            }
+          />
+          <Route
+            path="/complaints/create"
+            element={
+              <>
+                <PageTitle title="Create Complaint | ZamIO Stations" />
+                <CreateComplaint />
+              </>
+            }
+          />
+          <Route
+            path="/complaints/:id"
+            element={
+              <>
+                <PageTitle title="Complaint Details | ZamIO Stations" />
+                <ComplaintDetails />
+              </>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <>
+                <PageTitle title="Settings | ZamIO Stations" />
+                <Settings />
+              </>
+            }
+          />
+          <Route
+            path="/edit-profile"
+            element={
+              <>
+                <PageTitle title="Edit Profile | ZamIO Stations" />
+                <EditProfile />
+              </>
+            }
+          />
       
          
         </Route>
@@ -183,7 +225,7 @@ function App() {
           element={
             <>
               <PageTitle title="Home | ZamIO Stations" />
-              <ZamIOLandingPage />
+              <LazyRoutes.ZamIOLandingPage />
             </>
           }
         />
@@ -193,7 +235,7 @@ function App() {
           element={
             <>
               <PageTitle title="Sign In | ZamIO Stations" />
-              <SignIn />
+              <LazyRoutes.SignIn />
             </>
           }
         />
@@ -202,7 +244,7 @@ function App() {
           element={
             <>
               <PageTitle title="Sign Up | ZamIO Stations" />
-              <SignUp />
+              <LazyRoutes.SignUp />
             </>
           }
         />
@@ -211,7 +253,7 @@ function App() {
           element={
             <>
               <PageTitle title="Verify Email | ZamIO-station" />
-              <VerifyEmail />
+              <LazyRoutes.VerifyEmail />
             </>
           }
         />
@@ -246,6 +288,9 @@ function App() {
         </Route>
       </Routes>
     </>
+  )}
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
 

@@ -320,6 +320,172 @@ class CurrencyExchangeRate(models.Model):
         return Decimal('1.0')  # Fallback
 
 
+class RoyaltyWithdrawal(models.Model):
+    """Royalty withdrawal requests with publishing status validation"""
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+        ('processed', 'Processed'),
+        ('cancelled', 'Cancelled'),
+    ]
+    
+    REQUESTER_TYPES = [
+        ('artist', 'Artist'),
+        ('publisher', 'Publisher'),
+        ('admin', 'Administrator'),
+    ]
+    
+    # Core fields
+    withdrawal_id = models.UUIDField(default=uuid.uuid4, unique=True, db_index=True)
+    requester = models.ForeignKey('accounts.User', on_delete=models.CASCADE, related_name='royalty_withdrawals')
+    requester_type = models.CharField(max_length=20, choices=REQUESTER_TYPES)
+    
+    # Amount and currency
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    currency = models.CharField(max_length=3, default='GHS')
+    
+    # Publishing relationship context
+    artist = models.ForeignKey('artists.Artist', on_delete=models.CASCADE, null=True, blank=True)
+    publisher = models.ForeignKey('publishers.PublisherProfile', on_delete=models.CASCADE, null=True, blank=True)
+    
+    # Status and validation
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    publishing_status_validated = models.BooleanField(default=False)
+    validation_notes = models.TextField(blank=True)
+    
+    # Payment details
+    payment_method = models.CharField(max_length=50, blank=True)
+    payment_details = models.JSONField(default=dict, blank=True)
+    
+    # Processing information
+    processed_by = models.ForeignKey(
+        'accounts.User', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='processed_withdrawals'
+    )
+    processed_at = models.DateTimeField(null=True, blank=True)
+    
+    # Audit trail
+    rejection_reason = models.TextField(blank=True)
+    admin_notes = models.TextField(blank=True)
+    
+    # Timestamps
+    requested_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['requester', 'status']),
+            models.Index(fields=['artist', 'status']),
+            models.Index(fields=['publisher', 'status']),
+            models.Index(fields=['status', 'requested_at']),
+        ]
+        ordering = ['-requested_at']
+    
+    def __str__(self):
+        return f"Withdrawal {self.withdrawal_id} - {self.amount} {self.currency} ({self.status})"
+    
+    def validate_publishing_authority(self):
+        """Validate that the requester has authority to withdraw royalties"""
+        from django.core.exceptions import ValidationError
+        
+        if self.requester_type == 'admin':
+            # Admins can always process withdrawals
+            return True, "Admin override"
+        
+        if not self.artist:
+            return False, "No artist specified for withdrawal"
+        
+        if self.requester_type == 'artist':
+            # Artist can only withdraw if self-published
+            if self.artist.user != self.requester:
+                return False, "Requester is not the artist"
+            
+            if not self.artist.self_published:
+                return False, "Artist has a publisher - withdrawals must be requested by publisher"
+            
+            if self.artist.publisher_relationship_status == 'signed':
+                return False, "Artist is signed with publisher - withdrawals restricted"
+            
+            return True, "Artist is self-published and can withdraw directly"
+        
+        elif self.requester_type == 'publisher':
+            # Publisher can withdraw for their signed artists
+            if not self.publisher:
+                return False, "No publisher specified for withdrawal"
+            
+            if self.publisher.user != self.requester:
+                return False, "Requester is not associated with the publisher"
+            
+            if self.artist.publisher != self.publisher:
+                return False, "Artist is not signed with this publisher"
+            
+            if self.artist.publisher_relationship_status != 'signed':
+                return False, "Artist relationship is not active"
+            
+            return True, "Publisher has authority to withdraw for signed artist"
+        
+        return False, "Invalid requester type or insufficient authority"
+    
+    def approve_withdrawal(self, processed_by_user):
+        """Approve the withdrawal request"""
+        is_valid, message = self.validate_publishing_authority()
+        
+        if not is_valid:
+            self.status = 'rejected'
+            self.rejection_reason = f"Publishing authority validation failed: {message}"
+            self.processed_by = processed_by_user
+            self.processed_at = timezone.now()
+            self.save()
+            return False, message
+        
+        self.status = 'approved'
+        self.publishing_status_validated = True
+        self.validation_notes = message
+        self.processed_by = processed_by_user
+        self.processed_at = timezone.now()
+        self.save()
+        return True, "Withdrawal approved"
+    
+    def reject_withdrawal(self, reason, processed_by_user):
+        """Reject the withdrawal request"""
+        self.status = 'rejected'
+        self.rejection_reason = reason
+        self.processed_by = processed_by_user
+        self.processed_at = timezone.now()
+        self.save()
+    
+    def process_withdrawal(self, processed_by_user):
+        """Mark withdrawal as processed (payment completed)"""
+        if self.status != 'approved':
+            return False, "Withdrawal must be approved before processing"
+        
+        self.status = 'processed'
+        self.processed_by = processed_by_user
+        self.processed_at = timezone.now()
+        self.save()
+        return True, "Withdrawal processed successfully"
+    
+    def can_be_cancelled(self):
+        """Check if withdrawal can be cancelled"""
+        return self.status in ['pending', 'approved']
+    
+    def cancel_withdrawal(self, cancelled_by_user, reason=""):
+        """Cancel the withdrawal request"""
+        if not self.can_be_cancelled():
+            return False, "Withdrawal cannot be cancelled in current status"
+        
+        self.status = 'cancelled'
+        self.rejection_reason = f"Cancelled: {reason}" if reason else "Cancelled by user"
+        self.processed_by = cancelled_by_user
+        self.processed_at = timezone.now()
+        self.save()
+        return True, "Withdrawal cancelled"
+
+
 class RoyaltyCalculationAudit(models.Model):
     """Audit trail for royalty calculations"""
     CALCULATION_TYPES = [

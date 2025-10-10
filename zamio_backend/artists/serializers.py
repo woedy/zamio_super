@@ -51,6 +51,16 @@ class AlbumSerializer(serializers.ModelSerializer):
         model = Album
         fields = ['id', 'title', 'artist_name']
 
+
+# Album Details Serializer for editing
+class AlbumDetailsSerializer(serializers.ModelSerializer):
+    artist_name = serializers.CharField(source='artist.stage_name', read_only=True)
+    artist_id = serializers.CharField(source='artist.artist_id', read_only=True)
+
+    class Meta:
+        model = Album
+        fields = '__all__'
+
 # Track Serializer
 class TrackSerializer(serializers.ModelSerializer):
     artist_name = serializers.CharField(source='artist.stage_name', read_only=True)  # To include artist name in the response
@@ -84,11 +94,49 @@ class TrackDetailsSerializer(serializers.ModelSerializer):
 
 # Contributor Serializer
 class ContributorSerializer(serializers.ModelSerializer):
-    track_title = serializers.CharField(source='track.title', read_only=True)  # To include track title in the response
+    track_title = serializers.CharField(source='track.title', read_only=True)
+    user_name = serializers.SerializerMethodField()
+    user_email = serializers.CharField(source='user.email', read_only=True)
+    publisher_name = serializers.CharField(source='publisher.company_name', read_only=True)
+    is_artist = serializers.SerializerMethodField()
 
     class Meta:
         model = Contributor
         fields = '__all__'
+    
+    def get_user_name(self, obj):
+        """Get formatted user name"""
+        if obj.user:
+            full_name = f"{obj.user.first_name} {obj.user.last_name}".strip()
+            return full_name or obj.user.username or obj.user.email
+        return "Unknown User"
+    
+    def get_is_artist(self, obj):
+        """Check if contributor is the track artist"""
+        return obj.user == obj.track.artist.user if obj.track and obj.track.artist else False
+
+
+# Enhanced Contributor Split Serializer
+class ContributorSplitSerializer(serializers.ModelSerializer):
+    user_name = serializers.SerializerMethodField()
+    user_email = serializers.CharField(source='user.email', read_only=True)
+    publisher_name = serializers.CharField(source='publisher.company_name', read_only=True)
+    is_artist = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Contributor
+        fields = ['id', 'user_name', 'user_email', 'role', 'percent_split', 'publisher_name', 'is_artist', 'active']
+    
+    def get_user_name(self, obj):
+        """Get formatted user name"""
+        if obj.user:
+            full_name = f"{obj.user.first_name} {obj.user.last_name}".strip()
+            return full_name or obj.user.username or obj.user.email
+        return "Unknown User"
+    
+    def get_is_artist(self, obj):
+        """Check if contributor is the track artist"""
+        return obj.user == obj.track.artist.user if obj.track and obj.track.artist else False
 
 # PlatformAvailability Serializer
 class PlatformAvailabilitySerializer(serializers.ModelSerializer):

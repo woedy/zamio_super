@@ -3,8 +3,10 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { baseUrl } from '../../constants';
 import api from '../../lib/api';
 import ButtonLoader from '../../common/button_loader';
+import { EnhancedEmailVerification } from '../../components/verification/EnhancedEmailVerification';
 
 const VerifyEmail = () => {
+  const [showLegacyForm, setShowLegacyForm] = useState(false);
   const [otp, setOtp] = useState(['', '', '', '']);
   const [inputError, setInputError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -14,6 +16,20 @@ const VerifyEmail = () => {
 
   const navigate = useNavigate();
 
+  const handleVerificationSuccess = () => {
+    // Check if profile is completed and navigate accordingly
+    const profileCompleted = localStorage.getItem('profile_completed');
+    if (profileCompleted === 'true') {
+      navigate('/dashboard', { replace: true });
+    } else {
+      navigate('/onboarding?step=profile', { 
+        state: { successMessage: 'Email verified successfully!' }, 
+        replace: true 
+      });
+    }
+  };
+
+  // Legacy form handlers (kept for fallback)
   const handleChange = (value, index) => {
     if (value.length > 1) return;
 
@@ -85,11 +101,49 @@ const VerifyEmail = () => {
     }
   };
 
+  // If email is not provided, redirect to sign-in
+  if (!email) {
+    navigate('/sign-in', { replace: true });
+    return null;
+  }
+
+  // Use enhanced verification component by default
+  if (!showLegacyForm) {
+    return (
+      <div className="h-screen bg-gradient-to-br from-[#1a2a6c] via-[#b21f1f] to-[#fdbb2d] flex items-center justify-center">
+        <div className="w-full max-w-md px-6">
+          <h2 className="text-5xl font-bold text-white text-center mb-8">
+            ZamIO
+          </h2>
+          
+          <div className="bg-white/10 p-8 rounded-2xl backdrop-blur-md w-full border border-white/20 shadow-xl">
+            <EnhancedEmailVerification
+              email={email}
+              onVerificationSuccess={handleVerificationSuccess}
+              initialMethod="code"
+              showMethodSelection={true}
+            />
+            
+            <div className="mt-6 text-center">
+              <button
+                onClick={() => setShowLegacyForm(true)}
+                className="text-sm text-white/70 hover:text-white underline"
+              >
+                Use legacy 4-digit verification
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Legacy form (fallback)
   return (
     <div className="h-screen bg-gradient-to-br from-[#1a2a6c] via-[#b21f1f] to-[#fdbb2d] flex items-center justify-center">
       <div className="w-full max-w-md px-6">
         <h2 className="text-5xl font-bold text-white text-center mb-8">
-          Verify Email
+          Verify Email (Legacy)
         </h2>
 
         {inputError && (
@@ -146,10 +200,16 @@ const VerifyEmail = () => {
               Resend
             </button>
                    )}
-
-
-
           </p>
+          
+          <div className="mt-6 text-center">
+            <button
+              onClick={() => setShowLegacyForm(false)}
+              className="text-sm text-white/70 hover:text-white underline"
+            >
+              ← Back to enhanced verification
+            </button>
+          </div>
         </div>
       </div>
     </div>

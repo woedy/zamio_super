@@ -3,10 +3,13 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { baseUrl } from '../../../constants';
 import api from '../../../lib/api';
 import ButtonLoader from '../../../common/button_loader';
-import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
+import { Eye, EyeOff } from 'lucide-react';
+import { EnhancedPasswordReset } from '../../../components/verification/EnhancedPasswordReset';
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState('');
+  const [showEnhancedReset, setShowEnhancedReset] = useState(false);
+  const [showLegacyForm, setShowLegacyForm] = useState(true);
 
   const navigate = useNavigate();
   const [emailError, setEmailError] = useState('');
@@ -22,6 +25,13 @@ const ForgotPassword = () => {
     const timer = setTimeout(() => setSuccessMessage(''), 5000);
     return () => clearTimeout(timer);
   }, []);
+
+  const handleResetSuccess = () => {
+    navigate('/sign-in', { 
+      state: { successMessage: 'Password reset successfully! Please sign in with your new password.' },
+      replace: true 
+    });
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -41,6 +51,12 @@ const ForgotPassword = () => {
 
     if (!isValid) return;
 
+    // Use enhanced reset flow
+    setShowEnhancedReset(true);
+    setShowLegacyForm(false);
+  };
+
+  const handleLegacySubmit = async () => {
     const url = 'api/accounts/forgot-user-password/';
     const data = {
       email,
@@ -65,6 +81,41 @@ const ForgotPassword = () => {
     }
   };
 
+  // Show enhanced password reset flow
+  if (showEnhancedReset && email) {
+    return (
+      <div className="h-screen bg-gradient-to-br from-[#0f0c29] via-[#302b63] to-[#24243e] flex items-center justify-center">
+        <div className="w-full max-w-2xl px-6">
+          <h2 className="text-5xl font-bold text-white text-center mb-8">
+            ZamIO
+          </h2>
+          
+          <div className="bg-white/10 p-10 rounded-2xl backdrop-blur-md w-full border border-white/20 shadow-xl">
+            <EnhancedPasswordReset
+              email={email}
+              onResetSuccess={handleResetSuccess}
+              initialMethod="code"
+              showMethodSelection={true}
+            />
+            
+            <div className="mt-6 text-center">
+              <button
+                onClick={() => {
+                  setShowEnhancedReset(false);
+                  setShowLegacyForm(true);
+                }}
+                className="text-sm text-white/70 hover:text-white underline"
+              >
+                ← Back to email entry
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Email entry form
   return (
     <div className="h-screen bg-gradient-to-br from-[#0f0c29] via-[#302b63] to-[#24243e] flex items-center justify-center">
       <div className="w-full max-w-2xl px-6">
@@ -101,9 +152,8 @@ const ForgotPassword = () => {
             Forgot Password
           </h2>
 
-          <p className="text-white mb-3">
-            Enter your email to reset your password. An OTP Code will be sent to
-            your email.
+          <p className="text-white mb-6">
+            Enter your email to reset your password. You'll be able to choose between receiving a verification code or a reset link.
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -114,23 +164,30 @@ const ForgotPassword = () => {
               placeholder="Email address"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-6 py-4 bg-white/20 backdrop-blur-md border border-white/30 rounded-lg text-white placeholder-white  focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="w-full px-6 py-4 bg-white/20 backdrop-blur-md border border-white/30 rounded-lg text-white placeholder-white focus:outline-none focus:ring-2 focus:ring-blue-400"
             />
 
-   
             {/* Submit Button */}
             {loading ? (
               <ButtonLoader />
             ) : (
               <button
                 type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-700 transition text-white font-semibold py-4 rounded-lg mt-6 "
+                className="w-full bg-blue-600 hover:bg-blue-700 transition text-white font-semibold py-4 rounded-lg mt-6"
               >
-                Reset
+                Continue
               </button>
             )}
           </form>
 
+          <div className="mt-6 text-center">
+            <button
+              onClick={handleLegacySubmit}
+              className="text-sm text-white/70 hover:text-white underline"
+            >
+              Use legacy password reset
+            </button>
+          </div>
         </div>
       </div>
     </div>

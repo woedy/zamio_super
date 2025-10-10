@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Music2Icon, UploadCloud, FileMusic } from 'lucide-react';
+import { Music2, Upload, FileAudio } from 'lucide-react';
 import { baseUrl, userToken } from '../../constants';
 import { getArtistId } from '../../lib/auth';
 import ButtonLoader from '../../common/button_loader';
 import { useLocation, useNavigate } from 'react-router-dom';
+import ContributorSplitManager from '../../components/ContributorSplitManager';
 
 export default function AddContributor() {
   const [contributorData, setContributorData] = useState({
@@ -189,7 +190,7 @@ export default function AddContributor() {
     <div className="flex-1 flex flex-col p-6">
       <div className="mb-8">
         <h2 className="text-3xl font-semibold text-emerald-300 flex items-center mb-4">
-          <Music2Icon className="w-7 h-7 mr-3" /> Add Contributor
+          <Music2 className="w-7 h-7 mr-3" /> Add Contributor
         </h2>
         <p className="text-gray-500">Add track contributor information</p>
       </div>
@@ -414,11 +415,24 @@ export default function AddContributor() {
                     : 'bg-emerald-600 hover:bg-emerald-700'
                 }`}
               >
-                <UploadCloud className="w-5 h-5 mr-2" /> Submit Contributors
+                <Upload className="w-5 h-5 mr-2" /> Submit Contributors
               </button>
             )}
           </div>
         </form>
+
+        {/* Real-time Split Management */}
+        {track_id && (
+          <div className="mt-8">
+            <h3 className="text-xl font-semibold text-emerald-300 mb-4">Current Contributors</h3>
+            <ContributorSplitManager 
+              trackId={track_id} 
+              onSplitsUpdated={(summary) => {
+                console.log('Splits updated:', summary);
+              }}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

@@ -3,8 +3,10 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { baseUrl } from '../../../constants';
 import api from '../../../lib/api';
 import ButtonLoader from '../../../common/button_loader';
+import { EnhancedPasswordReset } from '../../../components/verification/EnhancedPasswordReset';
 
 const ConfirmPasswordOTP = () => {
+  const [showEnhancedReset, setShowEnhancedReset] = useState(true);
   const [otp, setOtp] = useState(['', '', '', '']);
   const [inputError, setInputError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -13,6 +15,13 @@ const ConfirmPasswordOTP = () => {
   const email = location.state?.email;
 
   const navigate = useNavigate();
+
+  const handleResetSuccess = () => {
+    navigate('/sign-in', { 
+      state: { successMessage: 'Password reset successfully! Please sign in with your new password.' },
+      replace: true 
+    });
+  };
 
   const handleChange = (value, index) => {
     if (value.length > 1) return;
@@ -68,11 +77,49 @@ const ConfirmPasswordOTP = () => {
     }
   };
 
+  // If email is not provided, redirect to forgot password
+  if (!email) {
+    navigate('/forgot-password', { replace: true });
+    return null;
+  }
+
+  // Use enhanced password reset component by default
+  if (showEnhancedReset) {
+    return (
+      <div className="h-screen bg-gradient-to-br from-[#1a2a6c] via-[#b21f1f] to-[#fdbb2d] flex items-center justify-center">
+        <div className="w-full max-w-md px-6">
+          <h2 className="text-5xl font-bold text-white text-center mb-8">
+            ZamIO
+          </h2>
+          
+          <div className="bg-white/10 p-8 rounded-2xl backdrop-blur-md w-full border border-white/20 shadow-xl">
+            <EnhancedPasswordReset
+              email={email}
+              onResetSuccess={handleResetSuccess}
+              initialMethod="code"
+              showMethodSelection={false}
+            />
+            
+            <div className="mt-6 text-center">
+              <button
+                onClick={() => setShowEnhancedReset(false)}
+                className="text-sm text-white/70 hover:text-white underline"
+              >
+                Use legacy 4-digit verification
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Legacy form (fallback)
   return (
     <div className="h-screen bg-gradient-to-br from-[#1a2a6c] via-[#b21f1f] to-[#fdbb2d] flex items-center justify-center">
       <div className="w-full max-w-md px-6">
         <h2 className="text-5xl font-bold text-white text-center mb-8">
-          Password OTP
+          Password OTP (Legacy)
         </h2>
 
         {inputError && (
@@ -128,6 +175,15 @@ const ConfirmPasswordOTP = () => {
               </button>
             )}
           </p>
+          
+          <div className="mt-6 text-center">
+            <button
+              onClick={() => setShowEnhancedReset(true)}
+              className="text-sm text-white/70 hover:text-white underline"
+            >
+              ← Back to enhanced verification
+            </button>
+          </div>
         </div>
       </div>
     </div>

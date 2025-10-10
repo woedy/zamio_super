@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Search, Bell, Settings, User, HelpCircle, MessageSquare, Upload, Clock, CreditCard, MapPin } from "lucide-react";
+import { Search, Bell, Settings, User, HelpCircle, MessageSquare, Upload, Clock, CreditCard, MapPin, LayoutDashboard } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from "recharts";
+import { PublisherDashboardSection } from "../../components/dashboard/PublisherDashboardSection";
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState("Dashboard");
@@ -26,7 +27,7 @@ export default function AdminDashboard() {
   ];
 
   const navigationItems = [
-    { name: "Dashboard", icon: <Settings className="w-5 h-5" /> },
+    { name: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" /> },
     { name: "Play History", icon: <Clock className="w-5 h-5" /> },
     { name: "Upload/Management", icon: <Upload className="w-5 h-5" /> },
     { name: "Payments", icon: <CreditCard className="w-5 h-5" /> },
@@ -222,6 +223,14 @@ export default function AdminDashboard() {
               <img src="/api/placeholder/320/600" alt="Map" className="w-full h-full object-cover" />
             </div>
           </div>
+        </div>
+
+        {/* Publisher Dashboard Section */}
+        <div className="mt-8">
+          <PublisherDashboardSection
+            maxPublishers={6}
+            showAnalytics={true}
+          />
         </div>
       </div>
     </div>

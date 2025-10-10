@@ -5,23 +5,25 @@ from accounts.api.admin_view import (
     register_admin_view,
     resend_email_verification,
     verify_admin_email,
+    verify_admin_email_code,
     admin_onboarding_status_view,
     complete_admin_profile_view,
 )
 from accounts.api.artist_views import (
     ArtistLogin, complete_artist_payment_view, complete_artist_profile_view, 
     complete_artist_publisher_view, complete_artist_social_view, logout_artist_view, 
-    register_artist_view, verify_artist_email, onboard_artist_view, skip_artist_onboarding_view,
+    register_artist_view, verify_artist_email, verify_artist_email_code, onboard_artist_view, skip_artist_onboarding_view,
     artist_onboarding_status_view, update_onboarding_status_view, complete_artist_onboarding_view,
     set_self_published_status_view, upload_kyc_documents_view, get_kyc_documents_view,
     delete_kyc_document_view, download_kyc_document_view, get_secure_download_url_view,
-    secure_download_view
+    secure_download_view, skip_verification_view, resume_verification_view, verification_status_view,
+    send_verification_reminder_view, verification_requirements_view
 )
 from accounts.api.fan_views import FanLogin, register_fan_view
 from accounts.api.publisher_view import (
     PublisherLogin, complete_link_artist_view, complete_publisher_payment_view, 
     complete_publisher_profile_view, complete_revenue_split_view, logout_publisher_view, 
-    onboard_publisher_view, register_publisher_view, verify_publisher_email, 
+    onboard_publisher_view, register_publisher_view, verify_publisher_email, verify_publisher_email_code, 
     list_publishers_view, invite_artist_view, skip_publisher_onboarding_view,
     publisher_onboarding_status_view, update_publisher_onboarding_status_view,
     complete_publisher_onboarding_view, create_artist_relationship_view
@@ -29,12 +31,15 @@ from accounts.api.publisher_view import (
 from accounts.api.station_views import (
     StationLogin, complete_add_staff_view, complete_station_payment_view, 
     complete_station_profile_view, logout_station_view, register_station_view, 
-    verify_station_email, onboard_station_view, skip_station_onboarding_view, 
+    verify_station_email, verify_station_email_code, onboard_station_view, skip_station_onboarding_view, 
     station_onboarding_status_view, enhanced_station_onboarding_status_view,
     update_station_onboarding_status_view, complete_station_onboarding_view,
     update_station_stream_links_view, update_station_compliance_setup_view
 )
-from accounts.api.password_views import PasswordResetView, confirm_otp_password_view, new_password_reset_view, resend_password_otp
+from accounts.api.password_views import (
+    PasswordResetView, confirm_otp_password_view, new_password_reset_view, resend_password_otp,
+    verify_password_reset_code, verify_password_reset_token
+)
 from accounts.api.rbac_views import (
     artist_only_view,
     publisher_only_view,
@@ -60,18 +65,32 @@ from accounts.api.views import (
     logout_view,
     invalidate_all_sessions_view,
     session_status_view,
-    authentication_audit_logs_view
+    authentication_audit_logs_view,
+    location_search_view,
+    user_profile_view,
+    user_preferences_view
 )
 from accounts.api.email_views import (
     resend_verification_email,
     resend_verification_email_by_email,
     request_password_reset,
+    resend_password_reset,
     send_user_invitation,
     send_notification_to_specific_users,
     send_notification_to_user_type,
     send_welcome_email_to_user,
     mark_email_verified,
     email_system_status
+)
+from accounts.api.staff_views import (
+    get_staff_overview,
+    get_all_staff,
+    get_staff_details,
+    create_staff_member,
+    update_staff_member,
+    deactivate_staff_member,
+    get_staff_activity_log,
+    get_available_permissions
 )
 
 app_name = 'accounts'
@@ -80,6 +99,7 @@ urlpatterns = [
     path('register-admin/', register_admin_view, name="register_admin_view"),
     path('login-admin/', AdminLogin.as_view(), name="login_admin"),
     path('verify-admin-email/', verify_admin_email, name="verify_admin_email"),
+    path('verify-admin-email-code/', verify_admin_email_code, name="verify_admin_email_code"),
     path('admin-onboarding-status/', admin_onboarding_status_view, name="admin_onboarding_status_view"),
     path('complete-admin-profile/', complete_admin_profile_view, name="complete_admin_profile_view"),
 
@@ -88,6 +108,7 @@ urlpatterns = [
 
     path('register-artist/', register_artist_view, name="register_artist"),
      path('verify-artist-email/', verify_artist_email, name="verify_artist_email"),
+     path('verify-artist-email-code/', verify_artist_email_code, name="verify_artist_email_code"),
     path('login-artist/', ArtistLogin.as_view(), name="login_artist"),
     path('logout-artist/', logout_artist_view, name="logout_artist_view"),
     path('complete-artist-profile/', complete_artist_profile_view, name="complete_artist_profile_view"),
@@ -108,11 +129,19 @@ urlpatterns = [
     path('download-kyc-document/<int:document_id>/', download_kyc_document_view, name="download_kyc_document_view"),
     path('secure-download-url/<int:document_id>/', get_secure_download_url_view, name="get_secure_download_url_view"),
     path('secure-download/<int:document_id>/', secure_download_view, name="secure_download_view"),
+    
+    # Verification Skip and Resume Endpoints
+    path('skip-verification/', skip_verification_view, name="skip_verification_view"),
+    path('resume-verification/', resume_verification_view, name="resume_verification_view"),
+    path('verification-status/', verification_status_view, name="verification_status_view"),
+    path('send-verification-reminder/', send_verification_reminder_view, name="send_verification_reminder_view"),
+    path('verification-requirements/', verification_requirements_view, name="verification_requirements_view"),
 
    # 
 
     path('register-station/', register_station_view, name="register_station"),
     path('verify-station-email/', verify_station_email, name="verify_station_email"),
+    path('verify-station-email-code/', verify_station_email_code, name="verify_station_email_code"),
 
     path('login-station/', StationLogin.as_view(), name="login_station"),
     path('station-onboarding/', onboard_station_view, name="onboard_station_view"),
@@ -132,6 +161,7 @@ urlpatterns = [
 
     path('register-publisher/', register_publisher_view, name="register_publisher"),
        path('verify-publisher-email/', verify_publisher_email, name="verify_publisher_email"),
+       path('verify-publisher-email-code/', verify_publisher_email_code, name="verify_publisher_email_code"),
 
     path('login-publisher/', PublisherLogin.as_view(), name="login_publisher"),
     path('list-publishers/', list_publishers_view, name="list_publishers_view"),
@@ -164,6 +194,10 @@ urlpatterns = [
     path('confirm-password-otp/', confirm_otp_password_view, name="confirm_otp_password"),
     path('resend-password-otp/', resend_password_otp, name="resend_password_otp"),
     path('new-password-reset/', new_password_reset_view, name="new_password_reset_view"),
+    
+    # Enhanced password reset endpoints with dual method support
+    path('verify-password-reset-code/', verify_password_reset_code, name="verify_password_reset_code"),
+    path('verify-password-reset-token/', verify_password_reset_token, name="verify_password_reset_token"),
 
     # RBAC Demo Endpoints
     path('rbac/artist-only/', artist_only_view, name="artist_only_view"),
@@ -195,12 +229,33 @@ urlpatterns = [
     path('email/resend-verification/', resend_verification_email, name="resend_verification_email"),
     path('email/resend-verification-by-email/', resend_verification_email_by_email, name="resend_verification_email_by_email"),
     path('email/request-password-reset/', request_password_reset, name="request_password_reset"),
+    path('email/resend-password-reset/', resend_password_reset, name="resend_password_reset"),
     path('email/send-invitation/', send_user_invitation, name="send_user_invitation"),
     path('email/send-notification-to-users/', send_notification_to_specific_users, name="send_notification_to_users"),
     path('email/send-notification-to-user-type/', send_notification_to_user_type, name="send_notification_to_user_type"),
     path('email/send-welcome/', send_welcome_email_to_user, name="send_welcome_email"),
     path('email/verify/', mark_email_verified, name="mark_email_verified"),
     path('email/system-status/', email_system_status, name="email_system_status"),
+
+    # Staff Management Endpoints
+    path('admin/staff-overview/', get_staff_overview, name="get_staff_overview"),
+    path('admin/all-staff/', get_all_staff, name="get_all_staff"),
+    path('admin/staff-details/<str:staff_id>/', get_staff_details, name="get_staff_details"),
+    path('admin/create-staff/', create_staff_member, name="create_staff_member"),
+    path('admin/update-staff/<str:staff_id>/', update_staff_member, name="update_staff_member"),
+    path('admin/deactivate-staff/<str:staff_id>/', deactivate_staff_member, name="deactivate_staff_member"),
+    path('admin/staff-activity-log/<str:staff_id>/', get_staff_activity_log, name="get_staff_activity_log"),
+    path('admin/available-permissions/', get_available_permissions, name="get_available_permissions"),
+
+    # Location Search API
+    path('location-search/', location_search_view, name="location_search"),
+    
+    # User Profile Management
+    path('profile/', user_profile_view, name="user_profile"),
+    path('edit-profile/', user_profile_view, name="edit_profile"),  # Alias for profile editing
+    
+    # User Preferences Management
+    path('user-preferences/', user_preferences_view, name="user_preferences"),
 
     #path('remove_user/', remove_user_view, name="remove_user_view"),
    # path('send-sms/', send_sms_view, name="send_sms_view"),

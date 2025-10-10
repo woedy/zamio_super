@@ -26,6 +26,8 @@ from .models import (
     RoyaltyLineItem,
     PartnerRemittance,
     PartnerReportExport,
+    RoyaltyWithdrawal,
+    RoyaltyCalculationAudit,
 )
 from .serializers import (
     PartnerPROSerializer,
@@ -37,6 +39,9 @@ from .serializers import (
     UploadRepertoireSerializer,
     SecureFinancialFileUploadSerializer,
     FileIntegrityVerificationSerializer,
+    RoyaltyWithdrawalSerializer,
+    RoyaltyWithdrawalCreateSerializer,
+    RoyaltyWithdrawalActionSerializer,
 )
 
 
@@ -787,6 +792,443 @@ def get_exchange_rates(request):
     ]
     
     return Response({'exchange_rates': data})
+
+
+@api_view(["GET"])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def get_calculation_audit(request):
+    """Get royalty calculation audit trail"""
+    from .models import RoyaltyCalculationAudit
+    from .serializers import RoyaltyCalculationAuditSerializer
+    
+    # Filter parameters
+    calculation_type = request.GET.get('calculation_type')
+    start_date = request.GET.get('start_date')
+    end_date = request.GET.get('end_date')
+    
+    queryset = RoyaltyCalculationAudit.objects.select_related('calculated_by').all()
+    
+    if calculation_type:
+        queryset = queryset.filter(calculation_type=calculation_type)
+    
+    if start_date:
+        try:
+            from datetime import datetime
+            start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+            queryset = queryset.filter(calculated_at__gte=start_dt)
+        except ValueError:
+            pass
+    
+    if end_date:
+        try:
+            from datetime import datetime
+            end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+            queryset = queryset.filter(calculated_at__lte=end_dt)
+        except ValueError:
+            pass
+    
+    # Paginate results
+    queryset = queryset.order_by('-calculated_at')[:100]
+    
+    serializer = RoyaltyCalculationAuditSerializer(queryset, many=True)
+    return Response({
+        'audit_records': serializer.data,
+        'count': len(serializer.data)
+    })
+
+
+# Royalty Withdrawal Management API Endpoints
+
+@api_view(["POST"])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def create_withdrawal_request(request):
+    """Create a new royalty withdrawal request"""
+    from accounts.models import AuditLog
+    
+    serializer = RoyaltyWithdrawalCreateSerializer(data=request.data, context={'request': request})
+    
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        # Create the withdrawal request
+        withdrawal = serializer.save()
+        
+        # Validate publishing authority immediately
+        is_valid, message = withdrawal.validate_publishing_authority()
+        
+        # Log the withdrawal request creation
+        AuditLog.objects.create(
+            user=request.user,
+            action='royalty_withdrawal_requested',
+            resource_type='RoyaltyWithdrawal',
+            resource_id=str(withdrawal.withdrawal_id),
+            request_data={
+                'requester_type': withdrawal.requester_type,
+                'amount': str(withdrawal.amount),
+                'currency': withdrawal.currency,
+                'artist_id': withdrawal.artist.id if withdrawal.artist else None,
+                'publisher_id': withdrawal.publisher.id if withdrawal.publisher else None,
+                'publishing_authority_valid': is_valid,
+                'validation_message': message
+            }
+        )
+        
+        # Return the created withdrawal with validation status
+        response_serializer = RoyaltyWithdrawalSerializer(withdrawal)
+        response_data = response_serializer.data
+        response_data['publishing_authority_check'] = {
+            'is_valid': is_valid,
+            'message': message
+        }
+        
+        return Response(response_data, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        return Response(
+            {"detail": f"Failed to create withdrawal request: {str(e)}"}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(["GET"])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def list_withdrawal_requests(request):
+    """List royalty withdrawal requests with filtering"""
+    
+    queryset = RoyaltyWithdrawal.objects.select_related(
+        'requester', 'artist', 'publisher', 'processed_by'
+    ).all()
+    
+    # Filter by status
+    status_filter = request.GET.get('status')
+    if status_filter:
+        queryset = queryset.filter(status=status_filter)
+    
+    # Filter by requester type
+    requester_type = request.GET.get('requester_type')
+    if requester_type:
+        queryset = queryset.filter(requester_type=requester_type)
+    
+    # Filter by requester (for user's own requests)
+    if not request.user.is_staff:
+        queryset = queryset.filter(requester=request.user)
+    
+    # Filter by artist
+    artist_id = request.GET.get('artist_id')
+    if artist_id:
+        queryset = queryset.filter(artist_id=artist_id)
+    
+    # Filter by publisher
+    publisher_id = request.GET.get('publisher_id')
+    if publisher_id:
+        queryset = queryset.filter(publisher_id=publisher_id)
+    
+    # Order by most recent first
+    queryset = queryset.order_by('-requested_at')
+    
+    # Paginate (simple limit for now)
+    limit = min(int(request.GET.get('limit', 50)), 100)
+    queryset = queryset[:limit]
+    
+    serializer = RoyaltyWithdrawalSerializer(queryset, many=True)
+    
+    return Response({
+        'withdrawals': serializer.data,
+        'count': len(serializer.data)
+    })
+
+
+@api_view(["GET"])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def get_withdrawal_request(request, withdrawal_id):
+    """Get a specific withdrawal request"""
+    
+    try:
+        withdrawal = RoyaltyWithdrawal.objects.select_related(
+            'requester', 'artist', 'publisher', 'processed_by'
+        ).get(withdrawal_id=withdrawal_id)
+        
+        # Check permissions - users can only see their own requests unless they're staff
+        if not request.user.is_staff and withdrawal.requester != request.user:
+            return Response(
+                {"detail": "You don't have permission to view this withdrawal request"}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        serializer = RoyaltyWithdrawalSerializer(withdrawal)
+        response_data = serializer.data
+        
+        # Add current publishing authority validation
+        is_valid, message = withdrawal.validate_publishing_authority()
+        response_data['current_publishing_authority_check'] = {
+            'is_valid': is_valid,
+            'message': message
+        }
+        
+        return Response(response_data)
+        
+    except RoyaltyWithdrawal.DoesNotExist:
+        return Response(
+            {"detail": "Withdrawal request not found"}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+
+@api_view(["POST"])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def process_withdrawal_action(request, withdrawal_id):
+    """Process actions on withdrawal requests (approve, reject, process, cancel)"""
+    from accounts.models import AuditLog
+    
+    try:
+        withdrawal = RoyaltyWithdrawal.objects.select_related(
+            'requester', 'artist', 'publisher'
+        ).get(withdrawal_id=withdrawal_id)
+        
+        # Validate action data
+        action_serializer = RoyaltyWithdrawalActionSerializer(data=request.data)
+        if not action_serializer.is_valid():
+            return Response(action_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        action = action_serializer.validated_data['action']
+        reason = action_serializer.validated_data.get('reason', '')
+        admin_notes = action_serializer.validated_data.get('admin_notes', '')
+        
+        # Check permissions
+        if action in ['approve', 'reject', 'process'] and not request.user.is_staff:
+            return Response(
+                {"detail": "Only staff members can approve, reject, or process withdrawals"}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        if action == 'cancel':
+            # Users can cancel their own requests, staff can cancel any
+            if withdrawal.requester != request.user and not request.user.is_staff:
+                return Response(
+                    {"detail": "You can only cancel your own withdrawal requests"}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
+        # Process the action
+        success = False
+        message = ""
+        
+        if action == 'approve':
+            success, message = withdrawal.approve_withdrawal(request.user)
+        elif action == 'reject':
+            withdrawal.reject_withdrawal(reason, request.user)
+            success = True
+            message = "Withdrawal rejected"
+        elif action == 'process':
+            success, message = withdrawal.process_withdrawal(request.user)
+        elif action == 'cancel':
+            success, message = withdrawal.cancel_withdrawal(request.user, reason)
+        
+        # Add admin notes if provided
+        if admin_notes and success:
+            withdrawal.admin_notes = f"{withdrawal.admin_notes}\n{admin_notes}" if withdrawal.admin_notes else admin_notes
+            withdrawal.save(update_fields=['admin_notes'])
+        
+        # Log the action
+        AuditLog.objects.create(
+            user=request.user,
+            action=f'royalty_withdrawal_{action}',
+            resource_type='RoyaltyWithdrawal',
+            resource_id=str(withdrawal.withdrawal_id),
+            request_data={
+                'action': action,
+                'reason': reason,
+                'admin_notes': admin_notes,
+                'success': success,
+                'message': message,
+                'withdrawal_status': withdrawal.status
+            }
+        )
+        
+        if success:
+            # Return updated withdrawal data
+            serializer = RoyaltyWithdrawalSerializer(withdrawal)
+            return Response({
+                'withdrawal': serializer.data,
+                'action': action,
+                'success': True,
+                'message': message
+            })
+        else:
+            return Response({
+                'action': action,
+                'success': False,
+                'message': message
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+    except RoyaltyWithdrawal.DoesNotExist:
+        return Response(
+            {"detail": "Withdrawal request not found"}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        return Response(
+            {"detail": f"Failed to process withdrawal action: {str(e)}"}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(["GET"])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def get_artist_withdrawal_eligibility(request, artist_id):
+    """Check artist's withdrawal eligibility based on publishing status"""
+    from artists.models import Artist
+    
+    try:
+        artist = Artist.objects.select_related('publisher').get(id=artist_id)
+        
+        # Check if user has permission to view this artist's eligibility
+        if not request.user.is_staff:
+            # User must be the artist or associated with the artist's publisher
+            user_is_artist = hasattr(request.user, 'artists') and request.user.artists.filter(id=artist_id).exists()
+            user_is_publisher = (
+                artist.publisher and 
+                hasattr(request.user, 'publisher') and 
+                request.user.publisher.filter(id=artist.publisher.id).exists()
+            )
+            
+            if not (user_is_artist or user_is_publisher):
+                return Response(
+                    {"detail": "You don't have permission to view this artist's withdrawal eligibility"}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
+        # Create a temporary withdrawal to test eligibility
+        temp_withdrawal = RoyaltyWithdrawal(
+            requester=request.user,
+            requester_type='artist' if hasattr(request.user, 'artists') else 'publisher',
+            artist=artist,
+            publisher=artist.publisher if not artist.self_published else None,
+            amount=1.00  # Dummy amount for validation
+        )
+        
+        is_eligible, message = temp_withdrawal.validate_publishing_authority()
+        
+        # Get recent withdrawal history
+        recent_withdrawals = RoyaltyWithdrawal.objects.filter(
+            artist=artist,
+            requested_at__gte=timezone.now() - timezone.timedelta(days=90)
+        ).order_by('-requested_at')[:5]
+        
+        withdrawal_history = [
+            {
+                'withdrawal_id': str(w.withdrawal_id),
+                'amount': str(w.amount),
+                'currency': w.currency,
+                'status': w.status,
+                'requested_at': w.requested_at,
+                'processed_at': w.processed_at
+            }
+            for w in recent_withdrawals
+        ]
+        
+        return Response({
+            'artist_id': artist.id,
+            'artist_name': artist.stage_name,
+            'eligibility': {
+                'can_withdraw': is_eligible,
+                'message': message,
+                'publishing_status': {
+                    'self_published': artist.self_published,
+                    'publisher': artist.publisher.company_name if artist.publisher else None,
+                    'relationship_status': artist.publisher_relationship_status,
+                    'royalty_collection_method': artist.royalty_collection_method
+                }
+            },
+            'recent_withdrawals': withdrawal_history
+        })
+        
+    except Artist.DoesNotExist:
+        return Response(
+            {"detail": "Artist not found"}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+
+@api_view(["GET"])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def get_publisher_withdrawal_summary(request, publisher_id):
+    """Get withdrawal summary for a publisher's managed artists"""
+    from publishers.models import PublisherProfile
+    
+    try:
+        publisher = PublisherProfile.objects.get(id=publisher_id)
+        
+        # Check permissions
+        if not request.user.is_staff and publisher.user != request.user:
+            return Response(
+                {"detail": "You don't have permission to view this publisher's withdrawal summary"}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Get managed artists
+        managed_artists = publisher.artist_publishers.filter(
+            publisher_relationship_status='signed',
+            self_published=False
+        ).select_related('user')
+        
+        # Get withdrawal requests for managed artists
+        withdrawals = RoyaltyWithdrawal.objects.filter(
+            publisher=publisher
+        ).select_related('artist', 'requester').order_by('-requested_at')
+        
+        # Summarize by status
+        status_summary = {}
+        total_amount = Decimal('0')
+        
+        for withdrawal in withdrawals:
+            status = withdrawal.status
+            if status not in status_summary:
+                status_summary[status] = {
+                    'count': 0,
+                    'total_amount': Decimal('0')
+                }
+            status_summary[status]['count'] += 1
+            status_summary[status]['total_amount'] += withdrawal.amount
+            total_amount += withdrawal.amount
+        
+        # Convert Decimal to string for JSON serialization
+        for status_data in status_summary.values():
+            status_data['total_amount'] = str(status_data['total_amount'])
+        
+        return Response({
+            'publisher_id': publisher.id,
+            'publisher_name': publisher.company_name,
+            'managed_artists_count': managed_artists.count(),
+            'withdrawal_summary': {
+                'total_requests': withdrawals.count(),
+                'total_amount': str(total_amount),
+                'by_status': status_summary
+            },
+            'managed_artists': [
+                {
+                    'id': artist.id,
+                    'stage_name': artist.stage_name,
+                    'relationship_status': artist.publisher_relationship_status,
+                    'can_withdraw': not artist.self_published and artist.publisher == publisher
+                }
+                for artist in managed_artists
+            ]
+        })
+        
+    except PublisherProfile.DoesNotExist:
+        return Response(
+            {"detail": "Publisher not found"}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
 
 
 @api_view(["GET"])

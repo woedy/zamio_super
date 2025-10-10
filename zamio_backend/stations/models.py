@@ -7,6 +7,8 @@ from django.contrib.auth import get_user_model
 from django.db.models.signals import post_save, pre_save
 from django.core.exceptions import ValidationError
 from django.utils import timezone
+import requests
+from urllib.parse import urlparse
 
 from core.utils import unique_station_id_generator
 
@@ -81,6 +83,65 @@ def secure_station_image_path(instance, filename):
     return f"stations/photos/{station_id}/{final_filename}"
 
 
+def validate_stream_url(url):
+    """Validate stream URL format and accessibility"""
+    if not url:
+        return
+    
+    # Parse URL to check format
+    try:
+        parsed = urlparse(url)
+        if not parsed.scheme or not parsed.netloc:
+            raise ValidationError('Invalid URL format. URL must include protocol (http:// or https://)')
+        
+        if parsed.scheme not in ['http', 'https']:
+            raise ValidationError('URL must use HTTP or HTTPS protocol')
+            
+    except Exception as e:
+        raise ValidationError(f'Invalid URL format: {str(e)}')
+
+
+def test_stream_connectivity(url, timeout=10):
+    """Test if stream URL is accessible and returns audio content"""
+    if not url:
+        return False, "No URL provided"
+    
+    try:
+        # Make a HEAD request first to check if URL is accessible
+        response = requests.head(url, timeout=timeout, allow_redirects=True)
+        
+        if response.status_code == 200:
+            content_type = response.headers.get('content-type', '').lower()
+            
+            # Check if it's likely an audio stream
+            audio_types = ['audio/', 'application/ogg', 'video/mp2t']
+            if any(audio_type in content_type for audio_type in audio_types):
+                return True, "Stream URL is accessible and appears to be audio content"
+            else:
+                # Try a small GET request to check content
+                try:
+                    response = requests.get(url, timeout=timeout, stream=True)
+                    # Read first few bytes to check for audio signatures
+                    chunk = next(response.iter_content(chunk_size=1024), b'')
+                    if chunk:
+                        return True, "Stream URL is accessible"
+                    else:
+                        return False, "Stream URL is accessible but no content received"
+                except:
+                    return False, "Stream URL is accessible but content check failed"
+        else:
+            return False, f"Stream URL returned status code {response.status_code}"
+            
+    except requests.exceptions.Timeout:
+        return False, "Stream URL connection timed out"
+    except requests.exceptions.ConnectionError:
+        return False, "Could not connect to stream URL"
+    except requests.exceptions.RequestException as e:
+        return False, f"Stream URL test failed: {str(e)}"
+    except Exception as e:
+        return False, f"Unexpected error testing stream URL: {str(e)}"
+
+
 
 
 class Station(models.Model):
@@ -148,6 +209,21 @@ class Station(models.Model):
     broadcast_frequency = models.CharField(max_length=20, null=True, blank=True, help_text="e.g., 101.5 FM")
     transmission_power = models.CharField(max_length=50, null=True, blank=True, help_text="e.g., 10kW")
     
+    # Stream monitoring
+    stream_url = models.URLField(blank=True, null=True, help_text="Live stream URL for audio monitoring")
+    stream_status = models.CharField(
+        max_length=20,
+        choices=[
+            ('active', 'Active'),
+            ('inactive', 'Inactive'),
+            ('error', 'Error'),
+            ('testing', 'Testing'),
+        ],
+        default='inactive'
+    )
+    last_monitored = models.DateTimeField(null=True, blank=True)
+    stream_validation_errors = models.TextField(blank=True, null=True, help_text="Last validation error messages")
+    
     # Verification and approval
     verification_status = models.CharField(
         max_length=20, 
@@ -203,6 +279,55 @@ class Station(models.Model):
         elif not self.payment_info_added:
             return 'payment'
         return 'done'
+    
+    def test_stream_url(self):
+        """Test the stream URL and update status"""
+        if not self.stream_url:
+            self.stream_status = 'inactive'
+            self.stream_validation_errors = 'No stream URL provided'
+            return False, 'No stream URL provided'
+        
+        try:
+            # Validate URL format first
+            validate_stream_url(self.stream_url)
+            
+            # Test connectivity
+            is_accessible, message = test_stream_connectivity(self.stream_url)
+            
+            if is_accessible:
+                self.stream_status = 'active'
+                self.stream_validation_errors = None
+                self.last_monitored = timezone.now()
+            else:
+                self.stream_status = 'error'
+                self.stream_validation_errors = message
+            
+            return is_accessible, message
+            
+        except ValidationError as e:
+            self.stream_status = 'error'
+            self.stream_validation_errors = str(e)
+            return False, str(e)
+        except Exception as e:
+            self.stream_status = 'error'
+            self.stream_validation_errors = f'Unexpected error: {str(e)}'
+            return False, f'Unexpected error: {str(e)}'
+    
+    def clean(self):
+        """Validate model fields"""
+        super().clean()
+        if self.stream_url:
+            validate_stream_url(self.stream_url)
+    
+    def get_stream_status_display(self):
+        """Get human-readable stream status"""
+        status_map = {
+            'active': 'Active',
+            'inactive': 'Inactive', 
+            'error': 'Error',
+            'testing': 'Testing'
+        }
+        return status_map.get(self.stream_status, 'Unknown')
 
     
 
@@ -313,4 +438,133 @@ class StationStaff(models.Model):
 
     def __str__(self):
         return f"{self.name} - {self.role}"
+
+
+class Complaint(models.Model):
+    COMPLAINT_STATUS_CHOICES = [
+        ('open', 'Open'),
+        ('investigating', 'Investigating'),
+        ('resolved', 'Resolved'),
+        ('closed', 'Closed'),
+    ]
+    
+    COMPLAINT_TYPE_CHOICES = [
+        ('technical', 'Technical Issue'),
+        ('content', 'Content Dispute'),
+        ('billing', 'Billing Issue'),
+        ('service', 'Service Quality'),
+        ('compliance', 'Compliance Issue'),
+        ('other', 'Other'),
+    ]
+    
+    PRIORITY_CHOICES = [
+        ('low', 'Low'),
+        ('medium', 'Medium'),
+        ('high', 'High'),
+        ('urgent', 'Urgent'),
+    ]
+
+    complaint_id = models.CharField(max_length=50, unique=True, blank=True)
+    station = models.ForeignKey(Station, on_delete=models.CASCADE, related_name='complaints')
+    complainant = models.ForeignKey(User, on_delete=models.CASCADE, related_name='filed_complaints')
+    
+    # Complaint details
+    subject = models.CharField(max_length=200)
+    description = models.TextField()
+    complaint_type = models.CharField(max_length=20, choices=COMPLAINT_TYPE_CHOICES, default='other')
+    priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='medium')
+    
+    # Status and workflow
+    status = models.CharField(max_length=20, choices=COMPLAINT_STATUS_CHOICES, default='open')
+    assigned_to = models.ForeignKey(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='assigned_complaints'
+    )
+    
+    # Resolution details
+    resolution_notes = models.TextField(blank=True, null=True)
+    resolved_by = models.ForeignKey(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='resolved_complaints'
+    )
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    
+    # Contact information
+    contact_email = models.EmailField(blank=True, null=True)
+    contact_phone = models.CharField(max_length=20, blank=True, null=True)
+    
+    # Metadata
+    is_archived = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['station', 'status']),
+            models.Index(fields=['complainant', 'created_at']),
+            models.Index(fields=['assigned_to', 'status']),
+        ]
+
+    def __str__(self):
+        return f"{self.complaint_id} - {self.subject}"
+    
+    def save(self, *args, **kwargs):
+        if not self.complaint_id:
+            # Generate unique complaint ID
+            import uuid
+            self.complaint_id = f"COMP-{uuid.uuid4().hex[:8].upper()}"
+        super().save(*args, **kwargs)
+    
+    def get_status_display_color(self):
+        """Return color class for status display"""
+        status_colors = {
+            'open': 'text-red-600',
+            'investigating': 'text-yellow-600',
+            'resolved': 'text-green-600',
+            'closed': 'text-gray-600',
+        }
+        return status_colors.get(self.status, 'text-gray-600')
+    
+    def get_priority_display_color(self):
+        """Return color class for priority display"""
+        priority_colors = {
+            'low': 'text-blue-600',
+            'medium': 'text-yellow-600',
+            'high': 'text-orange-600',
+            'urgent': 'text-red-600',
+        }
+        return priority_colors.get(self.priority, 'text-gray-600')
+
+
+class ComplaintUpdate(models.Model):
+    complaint = models.ForeignKey(Complaint, on_delete=models.CASCADE, related_name='updates')
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    update_type = models.CharField(
+        max_length=20,
+        choices=[
+            ('comment', 'Comment'),
+            ('status_change', 'Status Change'),
+            ('assignment', 'Assignment'),
+            ('resolution', 'Resolution'),
+        ],
+        default='comment'
+    )
+    message = models.TextField()
+    old_status = models.CharField(max_length=20, blank=True, null=True)
+    new_status = models.CharField(max_length=20, blank=True, null=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.complaint.complaint_id} - {self.update_type} by {self.user.username}"
 

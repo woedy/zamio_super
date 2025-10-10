@@ -3,7 +3,7 @@ import DropdownMessage from './DropdownMessage';
 import DropdownNotification from './DropdownNotification';
 import DropdownUser from './DropdownUser';
 import LogoIcon from '../../images/logo/logo-icon.svg';
-import ThemeToggle from '../ThemeToggle';
+import { ThemeToggle } from '../ThemeToggle';
 
 const Header = (props: {
   sidebarOpen: string | boolean | undefined;
@@ -16,11 +16,13 @@ const Header = (props: {
           {/* <!-- Hamburger Toggle BTN --> */}
           <button
             aria-controls="sidebar"
+            aria-expanded={props.sidebarOpen}
+            aria-label={props.sidebarOpen ? "Close sidebar" : "Open sidebar"}
             onClick={(e) => {
               e.stopPropagation();
               props.setSidebarOpen(!props.sidebarOpen);
             }}
-            className="z-99999 block rounded-sm border border-stroke bg-white p-1.5 shadow-sm dark:border-strokedark dark:bg-boxdark lg:hidden"
+            className="z-99999 block rounded-sm border border-stroke bg-white p-1.5 shadow-sm dark:border-strokedark dark:bg-boxdark lg:hidden focus-visible-ring"
           >
             <span className="relative block h-5.5 w-5.5 cursor-pointer">
               <span className="du-block absolute right-0 h-full w-full">
@@ -65,9 +67,13 @@ const Header = (props: {
 
 
         <div className="hidden sm:block">
-          <form action="https://formbold.com/s/unique_form_id" method="POST">
+          <form action="https://formbold.com/s/unique_form_id" method="POST" role="search">
             <div className="relative">
-              <button className="absolute left-0 top-1/2 -translate-y-1/2">
+              <button 
+                type="submit"
+                className="absolute left-0 top-1/2 -translate-y-1/2 focus-visible-ring rounded-sm p-1"
+                aria-label="Search"
+              >
                 <svg
                   className="fill-body hover:fill-primary dark:fill-bodydark dark:hover:fill-primary"
                   width="20"
@@ -92,9 +98,10 @@ const Header = (props: {
               </button>
 
               <input
-                type="text"
+                type="search"
                 placeholder="Type to search..."
-                className="w-full bg-transparent pl-9 pr-4 text-black focus:outline-none dark:text-white xl:w-125"
+                className="w-full bg-transparent pl-9 pr-4 text-black focus:outline-none focus-visible-ring dark:text-white xl:w-125"
+                aria-label="Search the application"
               />
             </div>
           </form>
@@ -106,7 +113,7 @@ const Header = (props: {
           <ul className="flex items-center gap-2 2xsm:gap-4">
             {/* <!-- Theme Toggler --> */}
             <li>
-              <ThemeToggle size="md" />
+              <ThemeToggle />
             </li>
             {/* <!-- Theme Toggler --> */}
 
