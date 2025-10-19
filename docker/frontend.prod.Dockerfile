@@ -13,7 +13,15 @@ COPY zamio_frontend ./zamio_frontend
 COPY zamio_admin ./zamio_admin
 COPY zamio_stations ./zamio_stations
 COPY zamio_publisher ./zamio_publisher
-RUN npm install --workspaces --include-workspace-root
+RUN npm install --workspaces --include-workspace-root \
+ && ARCH="$(uname -m)" \
+ && case "$ARCH" in \
+      x86_64) PKG="@rollup/rollup-linux-x64-musl" ;; \
+      aarch64) PKG="@rollup/rollup-linux-arm64-musl" ;; \
+      armv7l) PKG="@rollup/rollup-linux-arm-musleabihf" ;; \
+      *) PKG="" ;; \
+    esac \
+ && if [ -n "$PKG" ]; then npm install --ignore-scripts --no-save "$PKG"; fi
 ENV VITE_API_URL=${VITE_API_URL}
 RUN npm --prefix ${WORKSPACE_DIR} run build
 
