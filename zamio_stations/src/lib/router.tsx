@@ -1,21 +1,10 @@
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Outlet } from 'react-router-dom';
 import { ReactNode } from 'react';
 
-// Placeholder for auth check (to be implemented in later tasks)
-const isAuthenticated = () => {
-  // Temporarily return true for dashboard preview
-  return true;
-};
+// Static demo does not enforce authentication
+const PrivateRoute = ({ children }: { children: ReactNode }) => <>{children}</>;
 
-// Private Route Component
-const PrivateRoute = ({ children }: { children: ReactNode }) => {
-  return isAuthenticated() ? <>{children}</> : <Navigate to="/signin" replace />;
-};
-
-// Public Route Component (redirect to dashboard if authenticated)
-const PublicRoute = ({ children }: { children: ReactNode }) => {
-  return !isAuthenticated() ? <>{children}</> : <Navigate to="/dashboard" replace />;
-};
+const PublicRoute = ({ children }: { children: ReactNode }) => <>{children}</>;
 
 // Import onboarding components
 import OnboardingWizard from '../components/onboarding/OnboardingWizard';

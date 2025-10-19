@@ -1,22 +1,10 @@
 import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom';
 import { ReactNode } from 'react';
 
-// Placeholder for auth check (to be implemented in later tasks)
-const isAuthenticated = () => {
-  // For development, always return true to allow dashboard access
-  // TODO: Integrate with proper authentication context
-  return true;
-};
+// Static demo does not enforce authentication
+const PrivateRoute = ({ children }: { children: ReactNode }) => <>{children}</>;
 
-// Private Route Component
-const PrivateRoute = ({ children }: { children: ReactNode }) => {
-  return isAuthenticated() ? <>{children}</> : <Navigate to="/signin" replace />;
-};
-
-// Public Route Component (redirect to dashboard if authenticated)
-const PublicRoute = ({ children }: { children: ReactNode }) => {
-  return !isAuthenticated() ? <>{children}</> : <Navigate to="/dashboard" replace />;
-};
+const PublicRoute = ({ children }: { children: ReactNode }) => <>{children}</>;
 
 // Import pages (assuming they exist in pages/)
 import Landing from '../pages/Landing';
