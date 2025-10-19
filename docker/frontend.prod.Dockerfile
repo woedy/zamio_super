@@ -10,7 +10,7 @@ COPY zamio_frontend ./zamio_frontend
 COPY zamio_admin ./zamio_admin
 COPY zamio_stations ./zamio_stations
 COPY zamio_publisher ./zamio_publisher
-RUN npm install
+RUN npm install --workspaces --include-workspace-root
 ENV VITE_API_URL=${VITE_API_URL}
 RUN npm run build --workspace ${WORKSPACE_NAME}
 
