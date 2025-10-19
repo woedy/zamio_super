@@ -1,0 +1,277 @@
+import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Eye, EyeOff, Shield, ArrowRight, Settings } from 'lucide-react';
+
+export default function SignUp() {
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [formData, setFormData] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    country: '',
+    phoneNumber: '',
+    company: '',
+    role: '',
+    password: '',
+    confirmPassword: '',
+    agreeToTerms: false
+  });
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    // Handle admin registration request logic here
+    console.log('Admin registration request:', formData);
+  };
+
+  return (
+    <div className="relative min-h-screen flex items-center justify-center bg-slate-950 text-white overflow-hidden">
+      {/* Background Effects */}
+      <div className="absolute inset-0 bg-gradient-to-br from-indigo-950 via-slate-950 to-black" />
+      <div className="absolute left-1/2 top-1/4 h-96 w-96 -translate-x-1/2 -translate-y-1/2 rounded-full bg-indigo-600/20 blur-3xl" />
+      <div className="absolute bottom-1/4 right-1/4 h-64 w-64 rounded-full bg-violet-500/10 blur-2xl" />
+
+      <div className="relative z-10 w-full max-w-md mx-4">
+        {/* Logo */}
+        <div className="text-center mb-8">
+          <Link to="/" className="inline-flex items-center space-x-3 mb-4">
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/20 text-indigo-300">
+              <Shield className="h-6 w-6" />
+            </span>
+            <span className="text-2xl font-semibold tracking-tight">Zamio Admin</span>
+          </Link>
+          <h2 className="text-3xl font-semibold">Request admin access</h2>
+          <p className="mt-2 text-slate-400">Apply for administrative access to the Zamio platform</p>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="space-y-6 rounded-2xl border border-white/10 bg-slate-900/60 p-8 shadow-2xl backdrop-blur">
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="firstName" className="block text-sm font-medium text-slate-200 mb-2">
+                  First name
+                </label>
+                <input
+                  id="firstName"
+                  name="firstName"
+                  type="text"
+                  required
+                  value={formData.firstName}
+                  onChange={handleChange}
+                  className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  placeholder="John"
+                />
+              </div>
+              <div>
+                <label htmlFor="lastName" className="block text-sm font-medium text-slate-200 mb-2">
+                  Last name
+                </label>
+                <input
+                  id="lastName"
+                  name="lastName"
+                  type="text"
+                  required
+                  value={formData.lastName}
+                  onChange={handleChange}
+                  className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  placeholder="Doe"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="country" className="block text-sm font-medium text-slate-200 mb-2">
+                  Country
+                </label>
+                <select
+                  id="country"
+                  name="country"
+                  value={formData.country}
+                  onChange={handleChange}
+                  className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                >
+                  <option value="">Select country</option>
+                  <option value="ghana">Ghana</option>
+                  <option value="nigeria">Nigeria</option>
+                  <option value="kenya">Kenya</option>
+                  <option value="south-africa">South Africa</option>
+                  <option value="uk">United Kingdom</option>
+                  <option value="usa">United States</option>
+                  <option value="canada">Canada</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor="phoneNumber" className="block text-sm font-medium text-slate-200 mb-2">
+                  Phone number
+                </label>
+                <input
+                  id="phoneNumber"
+                  name="phoneNumber"
+                  type="tel"
+                  value={formData.phoneNumber}
+                  onChange={handleChange}
+                  className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  placeholder="+233 XX XXX XXXX"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="company" className="block text-sm font-medium text-slate-200 mb-2">
+                Company/Organization
+              </label>
+              <input
+                id="company"
+                name="company"
+                type="text"
+                required
+                value={formData.company}
+                onChange={handleChange}
+                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                placeholder="Your organization name"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="role" className="block text-sm font-medium text-slate-200 mb-2">
+                Role/Position
+              </label>
+              <select
+                id="role"
+                name="role"
+                required
+                value={formData.role}
+                onChange={handleChange}
+                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              >
+                <option value="">Select your role</option>
+                <option value="system-admin">System Administrator</option>
+                <option value="content-manager">Content Manager</option>
+                <option value="data-analyst">Data Analyst</option>
+                <option value="support-lead">Support Lead</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-slate-200 mb-2">
+                Password
+              </label>
+              <div className="relative">
+                <input
+                  id="password"
+                  name="password"
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  required
+                  value={formData.password}
+                  onChange={handleChange}
+                  className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 pr-12 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  placeholder="Create a strong password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                >
+                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-200 mb-2">
+                Confirm password
+              </label>
+              <div className="relative">
+                <input
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  required
+                  value={formData.confirmPassword}
+                  onChange={handleChange}
+                  className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 pr-12 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  placeholder="Confirm your password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                >
+                  {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                name="agreeToTerms"
+                id="agreeToTerms"
+                checked={formData.agreeToTerms}
+                onChange={handleChange}
+                className="rounded border-white/20 bg-slate-800 text-indigo-500 focus:ring-indigo-400"
+              />
+              <label htmlFor="agreeToTerms" className="ml-2 text-sm text-slate-300">
+                I agree to the{' '}
+                <Link to="/terms" className="text-indigo-400 hover:text-indigo-300">
+                  Terms of Service
+                </Link>{' '}
+                and{' '}
+                <Link to="/privacy" className="text-indigo-400 hover:text-indigo-300">
+                  Privacy Policy
+                </Link>
+              </label>
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            className="w-full inline-flex items-center justify-center rounded-lg bg-indigo-500 px-4 py-3 text-base font-semibold text-white transition hover:bg-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2"
+          >
+            Request admin access
+            <ArrowRight className="ml-2 h-4 w-4" />
+          </button>
+
+          <p className="text-center text-sm text-slate-400">
+            Already have admin access?{' '}
+            <Link to="/signin" className="font-medium text-indigo-400 hover:text-indigo-300">
+              Sign in
+            </Link>
+          </p>
+        </form>
+
+        {/* Admin Features */}
+        <div className="mt-6 rounded-xl border border-indigo-500/20 bg-indigo-500/10 p-4">
+          <div className="flex items-center justify-center space-x-2 mb-2">
+            <Settings className="h-4 w-4 text-indigo-400" />
+            <span className="text-sm font-medium text-indigo-300">Admin Capabilities</span>
+          </div>
+          <p className="text-xs text-slate-300 text-center">
+            User management • System monitoring • Analytics dashboards • Security oversight
+          </p>
+        </div>
+
+        {/* Footer */}
+        <div className="mt-8 text-center text-sm text-slate-500">
+          <p>By submitting this request, you acknowledge that admin access requires approval and is subject to{' '}
+            <Link to="/terms" className="text-indigo-400 hover:text-indigo-300">Terms of Service</Link>.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,20 @@
+ARG WORKSPACE_NAME
+ARG WORKSPACE_DIR
+ARG VITE_API_URL=https://example.com
+
+FROM node:20-alpine AS build
+WORKDIR /workspace
+COPY package.json package-lock.json ./
+COPY packages ./packages
+COPY zamio_frontend ./zamio_frontend
+COPY zamio_admin ./zamio_admin
+COPY zamio_stations ./zamio_stations
+COPY zamio_publisher ./zamio_publisher
+RUN npm install
+ENV VITE_API_URL=${VITE_API_URL}
+RUN npm run build --workspace ${WORKSPACE_NAME}
+
+FROM nginx:1.27-alpine
+COPY --from=build /workspace/${WORKSPACE_DIR}/dist /usr/share/nginx/html
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]

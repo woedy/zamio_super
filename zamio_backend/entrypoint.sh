@@ -11,14 +11,24 @@ log "Starting ZamIO Django application..."
 
 # Wait for database to be ready using pg_isready
 log "Waiting for database to be ready..."
-until pg_isready -h db -p 5432 -U zamio_user -d zamio_local >/dev/null 2>&1; do
+DB_HOST=${DB_HOST:-db}
+DB_PORT=${DB_PORT:-5432}
+DB_NAME=${DB_NAME:-zamio_local}
+DB_USER=${DB_USER:-zamio_user}
+until pg_isready -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" >/dev/null 2>&1; do
 	log "Database is not ready yet. Waiting..."
 	sleep 2
 done
 
 # If a command is provided (e.g., Celery), run it; otherwise do Django setup and start server
 if [ "$#" -gt 0 ]; then
-	log "Executing provided command (skipping makemigrations/migrate): $*"
+	if [ "${RUN_MIGRATIONS:-1}" = "1" ]; then
+		log "Running database migrations..."
+		python manage.py migrate
+		log "Collecting static files..."
+		python manage.py collectstatic --noinput || true
+	fi
+	log "Executing provided command: $*"
 	exec "$@"
 else
 	## Run makemigrations (dev convenience)
