@@ -11,11 +11,19 @@ log "Starting ZamIO Django application..."
 
 # Wait for database to be ready using pg_isready
 log "Waiting for database to be ready..."
-DB_HOST=${DB_HOST:-db}
-DB_PORT=${DB_PORT:-5432}
-DB_NAME=${DB_NAME:-zamio_local}
-DB_USER=${DB_USER:-zamio_user}
-until pg_isready -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" >/dev/null 2>&1; do
+PG_ISREADY_CMD=(pg_isready)
+
+if [ -n "$DATABASE_URL" ]; then
+    PG_ISREADY_CMD+=(-d "$DATABASE_URL")
+else
+    DB_HOST=${DB_HOST:-postgres}
+    DB_PORT=${DB_PORT:-5432}
+    DB_NAME=${DB_NAME:-${POSTGRES_DB:-postgres}}
+    DB_USER=${DB_USER:-${POSTGRES_USER:-postgres}}
+    PG_ISREADY_CMD+=(-h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME")
+fi
+
+until "${PG_ISREADY_CMD[@]}" >/dev/null 2>&1; do
 	log "Database is not ready yet. Waiting..."
 	sleep 2
 done
