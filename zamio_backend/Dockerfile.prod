@@ -17,7 +17,8 @@ COPY requirements.txt ./requirements.txt
 RUN pip install --upgrade pip setuptools wheel \
     && pip install --no-cache-dir -r requirements.txt
 COPY . .
-RUN sed -i 's/\r$//' /entrypoint.sh \
+RUN sed -i 's/\r$//' entrypoint.sh \
+    && cp entrypoint.sh /entrypoint.sh \
     && chmod +x /entrypoint.sh \
     && mkdir -p /app/static_cdn /app/media
 RUN python manage.py collectstatic --noinput
@@ -37,6 +38,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 COPY --from=build /usr/local /usr/local
 COPY --from=build /app /app
+COPY --from=build /entrypoint.sh /entrypoint.sh
 EXPOSE 8000
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "core.asgi:application"]
