@@ -130,7 +130,6 @@ services:
     volumes:
       - ../zamio_frontend:/app/zamio_frontend
       - ../packages:/app/packages
-      - /app/zamio_frontend/node_modules
       - /app/zamio_frontend/dist
     environment:
       - CHOKIDAR_USEPOLLING=true
@@ -155,7 +154,6 @@ services:
     volumes:
       - ../zamio_stations:/app/zamio_stations
       - ../packages:/app/packages
-      - /app/zamio_stations/node_modules
       - /app/zamio_stations/dist
     environment:
       - CHOKIDAR_USEPOLLING=true
@@ -179,7 +177,6 @@ services:
     volumes:
       - ../zamio_publisher:/app/zamio_publisher
       - ../packages:/app/packages
-      - /app/zamio_publisher/node_modules
       - /app/zamio_publisher/dist
     environment:
       - CHOKIDAR_USEPOLLING=true
@@ -203,7 +200,6 @@ services:
     volumes:
       - ../zamio_admin:/app/zamio_admin
       - ../packages:/app/packages
-      - /app/zamio_admin/node_modules
       - /app/zamio_admin/dist
     environment:
       - CHOKIDAR_USEPOLLING=true
