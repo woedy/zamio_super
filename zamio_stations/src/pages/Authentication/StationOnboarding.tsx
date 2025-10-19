@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import OnboardingWizard, { OnboardingStep } from '../../components/onboarding/OnboardingWizard';
 import WelcomeStep from './Onboarding/steps/WelcomeStep';
 import ProfileStep from './Onboarding/steps/ProfileStep';
@@ -8,6 +9,7 @@ import ComplianceStep from './Onboarding/steps/ComplianceStep';
 import PaymentStep from './Onboarding/steps/PaymentStep';
 
 export default function StationOnboarding() {
+  const navigate = useNavigate();
   const steps: OnboardingStep[] = [
     {
       id: 'welcome',
@@ -60,8 +62,7 @@ export default function StationOnboarding() {
   ];
 
   const handleComplete = () => {
-    // Navigate to dashboard
-    window.location.href = '/dashboard';
+    navigate('/dashboard');
   };
 
   return (

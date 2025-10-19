@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import OnboardingWizard, { OnboardingStep } from '../../components/onboarding/OnboardingWizard';
 import WelcomeStep from './Onboarding/steps/WelcomeStep';
 import ProfileStep from './Onboarding/steps/ProfileStep';
@@ -10,6 +11,7 @@ import Publisher from './Onboarding/Publisher';
 // All step components are now properly imported above
 
 export default function ArtistOnboarding() {
+  const navigate = useNavigate();
   const steps: OnboardingStep[] = [
     {
       id: 'welcome',
@@ -62,8 +64,7 @@ export default function ArtistOnboarding() {
   ];
 
   const handleComplete = () => {
-    // Navigate to dashboard
-    window.location.href = '/dashboard';
+    navigate('/dashboard');
   };
 
   return (

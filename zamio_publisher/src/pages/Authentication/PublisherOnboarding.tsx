@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import OnboardingWizard, { OnboardingStep } from '../../components/onboarding/OnboardingWizard';
 import WelcomeStep from './Onboarding/steps/WelcomeStep';
 import CompanyProfileStep from './Onboarding/steps/CompanyProfileStep';
@@ -7,6 +8,7 @@ import ArtistManagementStep from './Onboarding/steps/ArtistManagementStep';
 import PublisherPaymentStep from './Onboarding/steps/PublisherPaymentStep';
 
 export default function PublisherOnboarding() {
+  const navigate = useNavigate();
   const steps: OnboardingStep[] = [
     {
       id: 'welcome',
@@ -51,8 +53,7 @@ export default function PublisherOnboarding() {
   ];
 
   const handleComplete = () => {
-    // Navigate to publisher dashboard
-    window.location.href = '/dashboard';
+    navigate('/dashboard');
   };
 
   return (
