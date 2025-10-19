@@ -45,56 +45,68 @@ zamio_backend/
 
 ## 🖥️ **Local Development**
 
-### **Quick Start (Windows)**
+### **Quick Start (Local Docker)**
 ```bash
-# 1. Double-click start-local.bat
-#    This will automatically:
-#    - Check if Docker is running
-#    - Start all services
-#    - Show you the access URLs
+# 1. Copy the sample environment file and edit values as needed
+cp .env.example .env.local
 
-# 2. Access your app
-# Django: http://localhost:9001
-# PostgreSQL: localhost:9003
-# Redis: localhost:9004
+# 2. Build and start all services
+docker compose -f docker-compose.local.yml up --build
 
-# 3. To stop services
-# Double-click stop-local.bat
+# 3. Run database migrations once the containers settle
+docker compose -f docker-compose.local.yml exec backend python manage.py migrate
+
+# 4. (Optional) Create an admin user
+docker compose -f docker-compose.local.yml exec backend python manage.py createsuperuser
+
+# 5. Stop everything
+docker compose -f docker-compose.local.yml down
 ```
 
-### **Quick Start (Command Line)**
-```bash
-# 1. Create environment file
-copy env.local.example .env.local
+- **Backend API**: `http://localhost:8000`
+- **Frontend SPAs**: `http://localhost:5173`, `5174`, `5175`, `5176`
+- **Postgres**: `localhost:5432`
+- **Redis**: `localhost:6379`
 
-# 2. Start services
-docker-compose -f docker-compose.local.yml up -d
+> **Note:** Vite frontends run with hot reload. Each SPA has an isolated `node_modules` volume managed by Docker, so first boot installs dependencies automatically.
 
-# 3. Access your app
-# Django: http://localhost:9001
-# PostgreSQL: localhost:9003
-# Redis: localhost:9004
-
-> **Heads up:** The React/Vite frontends read `VITE_API_URL` at build time to know where to call the Django API. The Docker
-> Compose file now defaults this to the internal service URL (`http://zamio_app:8000`) so every container can always reach the
-> backend without extra configuration. If you're serving the frontend directly from a CDN or static host, override
-> `VITE_API_URL` with the public API endpoint before building (for example
-> `export VITE_API_URL=https://api.example.com && npm run build`).
-```
-
-### **Django Commands**
+### **Key Django Commands (via Docker)**
 ```bash
 # Run migrations
-docker-compose -f docker-compose.local.yml exec zamio_app python manage.py migrate
+docker compose -f docker-compose.local.yml exec backend python manage.py migrate
 
-# Create superuser
-docker-compose -f docker-compose.local.yml exec -it zamio_app python manage.py createsuperuser
+# Collect static files
+docker compose -f docker-compose.local.yml exec backend python manage.py collectstatic --noinput
 
-# Django shell
-docker-compose -f docker-compose.local.yml exec -it zamio_app python manage.py shell
-
-# Collect static
-docker-compose -f docker-compose.local.yml exec zamio_app python manage.py collectstatic --noinput
+# Open Django shell
+docker compose -f docker-compose.local.yml exec backend python manage.py shell
 ```
+
+---
+
+## 🌐 **Environment Variables**
+
+Use `.env.example` as the source of truth. Copy it to `.env.local` for local work or paste values into Coolify’s UI for production.
+
+- **Core Django**: `SECRET_KEY`, `DEBUG`, `BASE_URL`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`
+- **Database**: `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `DATABASE_URL`, `DB_CONN_MAX_AGE`
+- **Redis / Celery**: `REDIS_URL`, `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`, `CELERY_PREFETCH_MULTIPLIER`
+- **Email (optional)**: `EMAIL_BACKEND`, `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USE_TLS`, etc.
+- **Security Flags**: `SECURE_SSL_REDIRECT`, `SECURE_HSTS_SECONDS`, `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE`
+- **Frontend**: `VITE_API_URL` (internal URL in Docker, public API URL in production)
+- **Integrations (optional)**: `PYFCM_API_KEY`, AWS credentials, or storage keys as needed
+
+For Coolify deployments, set the same keys in the app’s environment panel and attach a persistent volume to the `postgres` service.
+
+---
+
+## 🚢 **Coolify Deployment Workflow**
+
+- **Step 1**: Push the repo with updated `docker-compose.coolify.yml`, production Dockerfiles, and `.env.example`
+- **Step 2**: In Coolify, create a new Docker Compose app pointing to `docker-compose.coolify.yml`
+- **Step 3**: Fill environment variables (match `.env.example`, but with production-grade secrets and domains)
+- **Step 4**: Provision a volume for `postgres_data`
+- **Step 5**: Deploy and watch logs; backend will run migrations automatically, and Celery services auto-restart on failure
+- **Step 6**: Verify each service using the domains/ports assigned by Coolify and run smoke tests (`python manage.py check`, API probes, frontend navigation)
 
 ---
