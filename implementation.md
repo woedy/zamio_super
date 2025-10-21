@@ -1,0 +1,190 @@
+# Implementation Plan
+
+## Roadmap Overview
+- **Backend sequence** B1 Authentication → B2 Onboarding → B3 Dashboards → B4 In-App Activities.
+- **Frontend sequence** F1 `zamio_frontend` → F2 `zamio_stations` → F3 `zamio_publisher` → F4 `zamio_admin`.
+- **Dependencies** Backend endpoints must stabilize before SPA integrations in the corresponding phase. Capture provisioning (B2) feeds `zamio_app` and later station flows (F2). Async pipelines (Celery/Redis/Channels) underpin dashboards and activities.
+
+## Backend Roadmap
+
+### Phase B1 · Authentication & Access Control
+- **Vision** Enable artists, station admins, and internal staff to create accounts, authenticate securely, and access role-appropriate areas.
+- **User Stories**
+  - B1.1 Artist Registration: As a Ghanaian artist, I can register an account and verify my email so I can access Zamio services.
+  - B1.2 Station Admin Login: As a station admin, I can log in and receive JWT tokens for API access.
+  - B1.3 Role-Based Access: As an authenticated user, I am routed to the correct SPA/dashboard based on my role (artist, station, admin, publisher).
+- **Acceptance Criteria**
+  - AB1.1 Existing registration + verification endpoints (`POST /api/accounts/register-artist/`, `POST /api/accounts/verify-artist-email/`) continue to accept artist details, trigger the verification workflow, and persist to `accounts.User`.
+  - AB1.2 JWT login endpoint (`POST /api/auth/token/`) issues access + refresh tokens via the custom SimpleJWT serializer while preserving legacy role login endpoints (e.g., `POST /api/accounts/login-artist/`, `login-station/`, `login-admin/`) for device-specific flows.
+  - AB1.3 Token refresh endpoint (`POST /api/auth/token/refresh/`) enforces expiration and invalid token handling.
+  - AB1.4 Role claims remain embedded in tokens and are documented for frontend guard consumption.
+  - AB1.5 Contract/integration tests exercise successful and failure auth scenarios against current endpoints.
+  - AB1.6 Frontend auth flows validate inputs, surface API errors, and store tokens securely.
+- **Task Checklist**
+  - [x] Backend: Audit `accounts/` auth endpoints, update serializers/settings only where contract gaps surface.
+  - [x] Backend QA: Refresh pytest/Postman suites validating login/register/refresh flows.
+  - [x] Frontend: Build shared auth service wrappers and token storage (per SPA) aligned to existing responses.
+  - [ ] Frontend: Implement login/registration UI wiring using the preserved endpoints.
+  - [ ] DevOps: Reconfirm auth env variables/secrets in `.env.example`, `AGENTS.md`, and Coolify configs.
+  - [x] Documentation: Capture token/role claim contract for frontend guards and QA references.
+  - [ ] Tests: Execute automated and manual scenarios (pytest, Postman, Cypress) covering B1 acceptance criteria and user stories.
+
+### Phase B2 · Onboarding & Profile Setup
+- **Vision** Guide newly authenticated users through completing artist/station profiles, linking PRO affiliations, and provisioning the station capture app configuration.
+- **User Stories**
+  - B2.1 Artist Onboarding: As an artist, I can submit bio, repertoire, and PRO affiliation info.
+  - B2.2 Station Setup: As a station admin, I can register my station, upload scheduling data, and set royalty reporting preferences.
+  - B2.3 Station Capture Provisioning: As a station operator using the `zamio_app` capture client, I can receive credentials, chunking policies, and upload endpoints so the device can stream audio snippets to Zamio.
+  - B2.4 Publisher Linkage: As a publisher/PRO partner, I can connect my account to partner profiles for reciprocal reporting.
+- **Acceptance Criteria**
+  - AB2.1 Existing onboarding APIs (`/api/artists/profile/`, `/api/stations/setup/`) are verified for schema accuracy, validation, and error messaging.
+  - AB2.2 Upload endpoints accept station schedule CSV/JSON, persist records, and emit processing tasks as currently implemented.
+  - AB2.3 Station capture provisioning endpoint continues returning tokenized config consumed by `OfflineCaptureService` in `zamio_app` (chunk duration, retry policy, base URL).
+  - AB2.4 Frontend forms persist step-by-step, resume progress, and display backend validation messages.
+  - AB2.5 Successful onboarding toggles status flags (`is_onboarded`) so dashboards unlock and marks station capture app as ready.
+  - AB2.6 Integration tests cover required fields, forbidden transitions, file upload validation, and provisioning payload integrity.
+- **Task Checklist**
+  - [ ] Backend QA: Review serializers/views in `artists/` and `stations/` apps; adjust only if data contract gaps emerge.
+  - [ ] Backend QA: Execute Postman/pytest flows for artist onboarding, station setup, and provisioning.
+  - [ ] Frontend: Build multi-step onboarding UI with progress saving against existing endpoints.
+  - [ ] Frontend: Implement file upload + validation messaging mapped to backend error structure.
+  - [ ] Flutter (`zamio_app`): Confirm provisioning payload compatibility, persist station credentials, and regression-test chunk upload loop against staging backend.
+  - [ ] QA: Expand seed data + collections covering onboarding and capture provisioning scenarios.
+  - [ ] Tests: Validate onboarding acceptance criteria end-to-end across web + Flutter clients (Cypress, pytest, manual UAT).
+
+### Phase B3 · Dashboards & Insights
+- **Vision** Provide real-time visibility into plays, royalties, and compliance for each user role.
+- **User Stories**
+  - B3.1 Artist Dashboard: As an artist, I see royalty earnings, play counts, and upcoming payments.
+  - B3.2 Station Dashboard: As a station admin, I view compliance status, reporting obligations, and usage analytics.
+  - B3.3 Admin Overview: As an internal admin, I monitor platform-wide KPIs (royalty cycles, disputes, remittances).
+- **Acceptance Criteria**
+  - AB3.1 Existing aggregated endpoints return metrics sourced from `music_monitor.PlayLog`, `royalties.RoyaltyDistribution`, `royalties.RoyaltyCycle` with documented field definitions.
+  - AB3.2 Role-based filtering continues to ensure users only see relevant data; access policies are validated by tests.
+  - AB3.3 Frontend dashboard components render charts/cards with loading, empty, and error states using current payloads.
+  - AB3.4 Data refresh strategies (polling or websocket) are documented; initial implementation leverages available Channels topics.
+  - AB3.5 Automated tests and monitoring probes verify aggregations and access control rules.
+- **Task Checklist**
+  - [ ] Backend QA: Catalogue metrics endpoints across `music_monitor/` and `royalties/`; add regression tests where gaps exist.
+  - [ ] Backend Ops: Ensure queryset filters/permissions remain aligned with role expectations; patch edge cases only if discovered.
+  - [ ] Frontend: Implement dashboard views with shared UI components wired to existing endpoints.
+  - [ ] Frontend: Hook charts to API, handling fallback states and websocket subscriptions when available.
+  - [ ] QA: Create/demo seed scripts populating sample plays/royalties for consistent dashboards.
+  - [ ] Docs: Update `AGENTS.md` with dashboard endpoint references and payload notes.
+  - [ ] Tests: Run automated dashboard verification (pytest metrics checks + Cypress visual assertions) against B3 acceptance criteria.
+
+### Phase B4 · In-App Activities & Workflows
+- **Vision** Allow users to act on disputes, withdrawals, reporting, and remittances within the platform.
+- **User Stories**
+  - B4.1 Dispute Resolution: As an operator, I can view, update, and resolve disputes tied to `music_monitor.PlayLog` records.
+  - B4.2 Royalty Cycle Management: As finance staff, I can open, lock, and remit royalty cycles.
+  - B4.3 Withdrawal Processing: As an artist/publisher, I submit withdrawal requests; admins approve or reject them.
+  - B4.4 Partner Reporting: As an admin, I generate partner-specific exports (CSV, CWR, DDEX) for reciprocal PROs.
+- **Acceptance Criteria**
+  - AB4.1 Existing dispute endpoints with state transitions remain compliant; regression tests confirm permissible transitions.
+  - AB4.2 Royalty cycle endpoints trigger calculations and generate `RoyaltyLineItem` records without regressions.
+  - AB4.3 Withdrawal workflow in `royalties/` enforces authority validation and logs actions; audit trail is verified.
+  - AB4.4 Export jobs generate downloadable files and audit logs per current Celery tasks.
+  - AB4.5 Frontend activity pages support pagination, filtering, and action feedback (toasts/alerts).
+  - AB4.6 End-to-end tests cover happy path + failure scenarios for each workflow.
+- **Task Checklist**
+  - [ ] Backend QA: Exercise dispute, royalty cycle, withdrawal, and export endpoints; file targeted fixes only if integration uncovers bugs.
+  - [ ] Backend Ops: Monitor Celery/Redis pipelines supporting these workflows; tune configs where necessary.
+  - [ ] Frontend: Create activity management UIs per role with optimistic updates mapped to existing APIs.
+  - [ ] QA: Extend Postman/E2E suites; ensure demo data scripts cover workflows and exports.
+  - [ ] Tests: Confirm B4 workflows via pytest/Celery task assertions and end-to-end UI regressions.
+
+## Frontend Roadmap
+
+- **Order** F1 `zamio_frontend` → F2 `zamio_stations` → F3 `zamio_publisher` → F4 `zamio_admin`.
+- **Shared Expectations** Each SPA consumes `@zamio/ui` components, central auth/session utilities, and API clients wired to `/api/v1/...` endpoints defined in backend phases.
+
+### Phase F1 · `zamio_frontend` (Artist Portal)
+- **Vision** Deliver the artist-facing experience for catalog submission, royalty insights, and notification management.
+- **User Stories**
+  - F1.1 Catalog Upload: As an artist, I can upload and manage releases through `UploadManagement.tsx` and `AddTrack.tsx`.
+  - F1.2 Royalty Overview: As an artist, I can review dashboards and payment history sourced from backend metrics (`Dashboard.tsx`, `RoyaltyPayments.tsx`).
+  - F1.3 Notification Center: As an artist, I can consume alerts for disputes, payouts, and onboarding steps (`Notifications.tsx`).
+- **Acceptance Criteria**
+  - AF1.1 API client layer in `src/lib` handles authenticated requests (token refresh, error mapping) and covers uploads, metrics, notifications.
+  - AF1.2 Upload workflows support resumable uploads, file validation, and display backend processing statuses.
+  - AF1.3 Dashboard widgets render real API data with loading/empty/error states; totals match backend seed data.
+  - AF1.4 Notification center polls/websocket subscribes to Channels topic when available; unread counts sync with backend.
+  - AF1.5 End-to-end happy paths covered by Cypress or Playwright scripts (login → upload → verify dashboard update).
+- **Task Checklist**
+  - [ ] Build reusable API client + hooks (e.g., `useArtistMetrics`, `useUploadMutation`).
+  - [ ] Wire upload pages (`UploadManagement.tsx`, `AddTrack.tsx`) to media ingestion endpoints with progress UI.
+  - [ ] Connect dashboard components to metrics endpoints, ensuring formatting and unit tests.
+  - [ ] Integrate notifications list/detail with websocket/polling fallback and mark-as-read mutations.
+  - [ ] Implement route guards/layout state in `App.tsx` ensuring auth + onboarding gates.
+  - [ ] Author automated UI tests covering primary flows; update demo data scripts.
+  - [ ] Tests: Execute F1 regression pack (Cypress/Playwright + lint/unit suites) to prove acceptance criteria.
+
+### Phase F2 · `zamio_stations` (Station Compliance Portal)
+- **Vision** Enable station operators to monitor compliance, manage disputes, and configure capture schedules.
+- **User Stories**
+  - F2.1 Compliance Dashboard: As a station admin, I view play/compliance KPIs and outstanding tasks (`Dashboard.tsx`, `Compliance.tsx`).
+  - F2.2 Dispute Handling: As operations staff, I resolve disputes and view audit trails (`MatchDisputeManagement/*`).
+  - F2.3 Staff & Device Setup: As a station owner, I manage staff users and deploy capture app credentials (`StaffManagement.tsx`).
+- **Acceptance Criteria**
+  - AF2.1 Compliance widgets consume backend endpoints for play logs, dispute counts, and capture status; data matches sample fixtures.
+  - AF2.2 Dispute actions trigger PATCH/POST requests with optimistic UI and reflect status transitions defined in backend.
+  - AF2.3 Staff management integrates with invite endpoints and enforces roles/permissions.
+  - AF2.4 Capture provisioning page displays device tokens/config produced in onboarding phase, allowing regen/revoke flows.
+  - AF2.5 Accessibility review ensures critical tables/cards meet keyboard navigation standards.
+- **Task Checklist**
+  - [ ] Implement shared station API client (play logs, disputes, staff, provisioning).
+  - [ ] Connect compliance dashboard cards/charts to backend, add loading skeletons.
+  - [ ] Build dispute detail modals/actions with optimistic updates and rollback handling.
+  - [ ] Create staff management CRUD UI integrated with invite emails and role toggles.
+  - [ ] Surface capture provisioning details, including QR/JSON export for `zamio_app` devices.
+  - [ ] Extend automated tests to cover compliance and dispute scenarios; update documentation for station demos.
+  - [ ] Tests: Run F2 acceptance verification across automated suites and manual capture provisioning walkthroughs.
+
+### Phase F3 · `zamio_publisher` (Publisher & PRO Portal)
+- **Vision** Provide publishers and partner PROs visibility into catalog performance, contract management, and royalty settlements.
+- **User Stories**
+  - F3.1 Catalog Oversight: As a publisher, I manage works and recording metadata (`CatalogManagement.tsx`, `ArtistsManagement.tsx`).
+  - F3.2 Contract Lifecycle: As legal staff, I review and update agreements, including reciprocal contracts (`ContractsLegal.tsx`).
+  - F3.3 Royalty Settlement: As finance, I inspect payments/remittances and download partner exports (`RoyaltiesPayments.tsx`, `PaymentProcessing.tsx`).
+- **Acceptance Criteria**
+  - AF3.1 Catalog tables integrate with backend pagination/search filters; edits sync bi-directionally with validation feedback.
+  - AF3.2 Contract management surfaces statuses, triggers workflow actions, and stores amendment history.
+  - AF3.3 Royalty payment pages present cycle breakdowns, export links, and status tags consistent with backend `PartnerRemittance` data.
+  - AF3.4 Reports download flows stream files securely (signed URLs or direct download tokens).
+  - AF3.5 QA scripts cover end-to-end contract edit → royalty review → export download sequences.
+- **Task Checklist**
+  - [ ] Develop publisher API layer (catalog, contracts, remittances, exports).
+  - [ ] Hook catalog/artist components to CRUD endpoints with inline editing and validation modals.
+  - [ ] Implement contract timeline UI, including upload/view of supporting documents.
+  - [ ] Build royalty settlement views, charts, and export download handlers with error handling.
+  - [ ] Add integration tests validating pagination, contract transitions, and export downloads.
+  - [ ] Update `AGENTS.md`/runbooks with publisher demo scenarios and credentials.
+  - [ ] Tests: Execute F3 regression plan validating reports, contracts, and exports against acceptance criteria.
+
+### Phase F4 · `zamio_admin` (Internal Operations Console)
+- **Vision** Equip internal Zamio teams with cross-cutting oversight for system health, user management, and financial reconciliation.
+- **User Stories**
+  - F4.1 Global Monitoring: As an admin, I monitor platform-wide KPIs, worker health, and ingestion backlogs (`Dashboard.tsx`).
+  - F4.2 User Governance: As support, I manage accounts, roles, and escalations across artists/stations/publishers (`UserManagement` pages).
+  - F4.3 Financial Controls: As finance ops, I reconcile payouts, approve withdrawals, and audit Celery tasks (`Finance`/`Compliance` pages`).
+- **Acceptance Criteria**
+  - AF4.1 Admin dashboard aggregates metrics from multiple services (Celery queues, Redis stats, capture backlog) and surfaces alerts.
+  - AF4.2 User management supports advanced filters, impersonation (where permitted), and audit logging of changes.
+  - AF4.3 Financial views integrate with withdrawal approval endpoints and display Celery job statuses.
+  - AF4.4 Role-based access enforced client-side and server-side; unauthorized nav blocked with clear messaging.
+  - AF4.5 Incident response workflows documented with quick links to logs/monitoring tools.
+- **Task Checklist**
+  - [ ] Craft admin API client for metrics, user management, and finance operations.
+  - [ ] Implement dashboard widgets including worker/queue health using websocket or polling feeds.
+  - [ ] Build user governance tables/forms with bulk actions and audit trail display.
+  - [ ] Connect finance pages to withdrawal/remittance endpoints with status transitions and evidence uploads.
+  - [ ] Add SSO/2FA integration hooks if required; ensure session timeout handling.
+  - [ ] Produce comprehensive admin runbook and automated regression tests.
+  - [ ] Tests: Complete F4 end-to-end validation (Cypress admin suite + pytest backend checks) before release.
+
+## Cross-Cutting Practices
+- **Documentation** Update `AGENTS.md` and this file whenever scopes shift; append changelog entries.
+- **Testing** Maintain backend pytest coverage, frontend unit/integration tests, and integration smoke tests via Postman/Cypress.
+- **Deployment** Keep Docker compose files current; each phase should be deployable independently with feature flags if needed.
+- **Demo Readiness** At the end of every phase, ensure there is a scripted demo scenario with test data, accessible credentials, and instructions.

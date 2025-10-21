@@ -11,7 +11,7 @@ User = get_user_model()
 class ArtistAuthFlowTests(APITestCase):
     def setUp(self):
         self.register_url = reverse('accounts:register_artist')
-        self.verify_url = reverse('accounts:verify_artist_email')
+        self.verify_code_url = reverse('accounts:verify_artist_email_code')
         self.login_url = reverse('accounts:login_artist')
 
         self.payload = {
@@ -32,6 +32,8 @@ class ArtistAuthFlowTests(APITestCase):
         data = resp.data.get('data') or {}
         self.assertIn('user_id', data)
         self.assertIn('token', data)
+        self.assertIn('access_token', data)
+        self.assertIn('refresh_token', data)
 
         # DB assertions
         user = User.objects.filter(email=self.payload['email']).first()
@@ -43,16 +45,17 @@ class ArtistAuthFlowTests(APITestCase):
         # Register first
         self.client.post(self.register_url, self.payload, format='multipart')
         user = User.objects.get(email=self.payload['email'])
-        # Use the generated email_token from DB
         verify_payload = {
             'email': user.email,
-            'email_token': user.email_token,
+            'code': user.verification_code,
         }
-        resp = self.client.post(self.verify_url, verify_payload, format='json')
+        resp = self.client.post(self.verify_code_url, verify_payload, format='json')
         self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
         data = resp.data.get('data') or {}
         self.assertEqual(resp.data.get('message'), 'Successful')
         self.assertIn('artist_id', data)
+        self.assertIn('access_token', data)
+        self.assertIn('refresh_token', data)
         user.refresh_from_db()
         self.assertTrue(user.email_verified)
         self.assertTrue(user.is_active)
@@ -61,7 +64,7 @@ class ArtistAuthFlowTests(APITestCase):
         # Register and verify
         self.client.post(self.register_url, self.payload, format='multipart')
         user = User.objects.get(email=self.payload['email'])
-        self.client.post(self.verify_url, {'email': user.email, 'email_token': user.email_token}, format='json')
+        self.client.post(self.verify_code_url, {'email': user.email, 'code': user.verification_code}, format='json')
 
         # Login
         login_payload = {
@@ -74,13 +77,15 @@ class ArtistAuthFlowTests(APITestCase):
         self.assertEqual(resp.data.get('message'), 'Successful')
         data = resp.data.get('data') or {}
         self.assertIn('token', data)
+        self.assertIn('access_token', data)
+        self.assertIn('refresh_token', data)
         self.assertIn('onboarding_step', data)
 
     def test_04_skip_and_resume_flow(self):
         # Register and verify
         self.client.post(self.register_url, self.payload, format='multipart')
         user = User.objects.get(email=self.payload['email'])
-        self.client.post(self.verify_url, {'email': user.email, 'email_token': user.email_token}, format='json')
+        self.client.post(self.verify_code_url, {'email': user.email, 'code': user.verification_code}, format='json')
 
         login_payload = {
             'email': self.payload['email'],

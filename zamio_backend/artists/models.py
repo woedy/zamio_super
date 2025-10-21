@@ -15,6 +15,7 @@ from django.conf import settings
 from accounts.models import AuditLog
 from fan.models import Fan
 from publishers.models import PublisherProfile
+from core.utils import unique_artist_id_generator
 
 User = get_user_model()
 
@@ -217,7 +218,6 @@ class UploadProcessingStatus(models.Model):
         self.save(update_fields=['status', 'error_message', 'completed_at'])
 
 
-# Core Models
 class Genre(models.Model):
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True, null=True)
@@ -232,11 +232,19 @@ class Genre(models.Model):
 
 
 class Artist(models.Model):
+
     VERIFICATION_STATUS_CHOICES = [
         ('pending', 'Pending'),
         ('verified', 'Verified'),
         ('rejected', 'Rejected'),
         ('skipped', 'Skipped'),
+    ]
+    ONBOARDING_STEPS = [
+        ('profile', 'Profile'),
+        ('social-media', 'Social Media'),
+        ('payment', 'Payment'),
+        ('publisher', 'Publisher'),
+        ('done', 'Done'),
     ]
     
     artist_id = models.CharField(max_length=255, blank=True, null=True, unique=True)
@@ -271,6 +279,13 @@ class Artist(models.Model):
         related_name='managed_artists'
     )
     
+    # Onboarding fields
+    onboarding_step = models.CharField(max_length=32, choices=ONBOARDING_STEPS, default='profile')
+    profile_completed = models.BooleanField(default=False)
+    social_media_added = models.BooleanField(default=False)
+    payment_info_added = models.BooleanField(default=False)
+    publisher_added = models.BooleanField(default=False)
+    
     is_archived = models.BooleanField(default=False)
     active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -284,6 +299,19 @@ class Artist(models.Model):
         if self.is_self_published:
             return True
         return False  # Publisher handles withdrawals for managed artists
+
+    def get_next_onboarding_step(self):
+        """Return next onboarding step based on completion flags."""
+        steps = [
+            ('profile', self.profile_completed),
+            ('social-media', self.social_media_added),
+            ('payment', self.payment_info_added),
+            ('publisher', self.publisher_added),
+        ]
+        for step, completed in steps:
+            if not completed:
+                return step
+        return 'done'
 
 
 class Album(models.Model):
@@ -709,6 +737,11 @@ class Fingerprint(models.Model):
 
 
 # Signal handlers
+@receiver(pre_save, sender=Artist)
+def pre_save_artist_id_receiver(sender, instance, *args, **kwargs):
+    if not instance.artist_id:
+        instance.artist_id = unique_artist_id_generator(instance)
+
 @receiver(pre_save, sender=Track)
 def pre_save_track_id_receiver(sender, instance, *args, **kwargs):
     if not instance.track_id:

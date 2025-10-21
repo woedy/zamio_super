@@ -1,11 +1,25 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Zap, ArrowRight, BarChart3 } from 'lucide-react';
+import { legacyRoleLogin, persistLegacyLoginResponse } from '@zamio/ui';
+
+import type { LegacyLoginResponse } from '@zamio/ui';
 
 export default function SignIn() {
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({ email: '', password: '', rememberMe: false });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  interface ArtistLoginData extends Record<string, unknown> {
+    onboarding_step?: string;
+    next_step?: string;
+  }
+
+  type ArtistLoginResponse = LegacyLoginResponse & {
+    data?: ArtistLoginData | null;
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
@@ -15,11 +29,41 @@ export default function SignIn() {
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle sign-in logic here
-    console.log('Sign-in attempt:', formData);
-    navigate('/dashboard');
+    setLoading(true);
+    setError(null);
+
+    try {
+      const payload = {
+        email: formData.email.trim().toLowerCase(),
+        password: formData.password,
+        fcm_token: 'web-artist-client',
+      };
+
+      const response = await legacyRoleLogin<ArtistLoginResponse>('/api/accounts/login-artist/', payload);
+      persistLegacyLoginResponse(response);
+
+      const nextStep = response?.data?.next_step ?? response?.data?.onboarding_step;
+      if (typeof nextStep === 'string' && nextStep && nextStep !== 'done') {
+        navigate(`/onboarding/${nextStep}`);
+      } else {
+        navigate('/dashboard');
+      }
+    } catch (err) {
+      const maybeResponse = (err as { response?: { data?: { message?: string; errors?: Record<string, unknown>; }; }; }).response;
+      const message = maybeResponse?.data?.message;
+      const errorKeys = maybeResponse?.data?.errors ? Object.keys(maybeResponse.data.errors) : [];
+      if (message) {
+        setError(message);
+      } else if (errorKeys.length > 0) {
+        setError(`Issues with: ${errorKeys.join(', ')}`);
+      } else {
+        setError('Unable to sign in. Please verify your credentials and try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -103,13 +147,20 @@ export default function SignIn() {
                 Forgot password?
               </Link>
             </div>
+
+            {error && (
+              <div className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                {error}
+              </div>
+            )}
           </div>
 
           <button
             type="submit"
-            className="w-full inline-flex items-center justify-center rounded-lg bg-indigo-500 px-4 py-3 text-base font-semibold text-white transition hover:bg-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2"
+            className="w-full inline-flex items-center justify-center rounded-lg bg-indigo-500 px-4 py-3 text-base font-semibold text-white transition hover:bg-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2 disabled:opacity-60"
+            disabled={loading}
           >
-            Sign in
+            {loading ? 'Signing in…' : 'Sign in'}
             <ArrowRight className="ml-2 h-4 w-4" />
           </button>
 

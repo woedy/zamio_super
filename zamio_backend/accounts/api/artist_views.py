@@ -15,6 +15,7 @@ from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated
 
 from accounts.api.serializers import UserRegistrationSerializer
+from accounts.api.token_utils import get_jwt_tokens_for_user
 from accounts.models import AuditLog
 from accounts.api.enhanced_auth import SecurityEventHandler
 from accounts.services import EmailVerificationService
@@ -176,6 +177,10 @@ def register_artist_view(request):
             user.photo = photo
         user.save()
 
+        # Initialize 4-digit verification code flow immediately
+        verification_service = EmailVerificationService()
+        verification_service.initialize_verification(user, method='code')
+
         # Create artist profile and wallet
         artist_profile = Artist.objects.create(
             user=user,
@@ -201,7 +206,10 @@ def register_artist_view(request):
 
         # Token for client session (email must still be verified to log in)
         token_obj, _ = Token.objects.get_or_create(user=user)
+        jwt_tokens = get_jwt_tokens_for_user(user)
         data['token'] = token_obj.key
+        data['access_token'] = jwt_tokens['access']
+        data['refresh_token'] = jwt_tokens['refresh']
 
         try:
             # Use the new Celery email task system for email verification
@@ -245,7 +253,7 @@ def verify_artist_email(request):
     data = {}
     
     email = request.data.get('email', '').lower().strip()
-    email_token = request.data.get('email_token', '').strip()
+    email_token = (request.data.get('email_token') or '').strip()
     
     # Get client IP for audit logging
     ip_address = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR'))
@@ -290,6 +298,7 @@ def verify_artist_email(request):
             token = Token.objects.get(user=user)
         except Token.DoesNotExist:
             token = Token.objects.create(user=user)
+        jwt_tokens = get_jwt_tokens_for_user(user)
         
         # Get artist profile
         artist = Artist.objects.get(user=user)
@@ -302,6 +311,8 @@ def verify_artist_email(request):
         data["last_name"] = user.last_name
         data["photo"] = user.photo.url if user.photo else None
         data["token"] = token.key
+        data["access_token"] = jwt_tokens['access']
+        data["refresh_token"] = jwt_tokens['refresh']
         data["country"] = user.country
         data["phone"] = user.phone
         data["next_step"] = artist.onboarding_step
@@ -318,6 +329,8 @@ def verify_artist_email(request):
         )
         new_activity.save()
         
+        return Response(payload, status=status.HTTP_200_OK)
+        
     except User.DoesNotExist:
         payload['message'] = "Errors"
         payload['errors'] = {'email': ['Email does not exist.']}
@@ -331,8 +344,6 @@ def verify_artist_email(request):
         payload['message'] = "Errors"
         payload['errors'] = {'general': ['An error occurred during verification']}
         return Response(payload, status=status.HTTP_400_BAD_REQUEST)
-
-    return Response(payload, status=status.HTTP_200_OK)
 
 
 @api_view(['POST'])
@@ -348,7 +359,7 @@ def verify_artist_email_code(request):
     data = {}
     
     email = request.data.get('email', '').lower().strip()
-    code = request.data.get('code', '').strip()
+    code = (request.data.get('code') or '').strip()
     
     # Get client IP for audit logging
     ip_address = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR'))
@@ -396,6 +407,8 @@ def verify_artist_email_code(request):
         except Token.DoesNotExist:
             token = Token.objects.create(user=user)
         
+        jwt_tokens = get_jwt_tokens_for_user(user)
+
         # Get artist profile
         artist = Artist.objects.get(user=user)
         
@@ -407,12 +420,14 @@ def verify_artist_email_code(request):
         data["last_name"] = user.last_name
         data["photo"] = user.photo.url if user.photo else None
         data["token"] = token.key
+        data["access_token"] = jwt_tokens['access']
+        data["refresh_token"] = jwt_tokens['refresh']
         data["country"] = user.country
         data["phone"] = user.phone
         data["next_step"] = artist.onboarding_step
         data["profile_completed"] = artist.profile_completed
         
-        payload['message'] = "Email verified successfully"
+        payload['message'] = "Successful"
         payload['data'] = data
         
         # Create activity log
@@ -550,6 +565,7 @@ class ArtistLogin(APIView):
 
         # Token and FCM token
         token, _ = Token.objects.get_or_create(user=user)
+        jwt_tokens = get_jwt_tokens_for_user(user)
         user.fcm_token = fcm_token
         user.save(update_fields=['fcm_token'])
 
@@ -567,6 +583,8 @@ class ArtistLogin(APIView):
             "country": user.country,
             "phone": user.phone,
             "token": token.key,
+            "access_token": jwt_tokens['access'],
+            "refresh_token": jwt_tokens['refresh'],
             "onboarding_step": artist.onboarding_step,
         }
 

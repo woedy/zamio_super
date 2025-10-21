@@ -15,6 +15,8 @@ from rest_framework.authentication import TokenAuthentication
 from rest_framework.response import Response
 
 from accounts.api.serializers import UserRegistrationSerializer
+from accounts.api.token_utils import get_jwt_tokens_for_user
+
 from accounts.models import AuditLog
 from accounts.api.enhanced_auth import SecurityEventHandler
 from accounts.services import EmailVerificationService
@@ -135,8 +137,11 @@ def register_publisher_view(request):
             data['country'] = user.country
             data['photo'] = user.photo.url
 
-        token = Token.objects.get(user=user).key
-        data['token'] = token
+        token = Token.objects.get(user=user)
+        jwt_tokens = get_jwt_tokens_for_user(user)
+        data['token'] = token.key
+        data['access_token'] = jwt_tokens['access']
+        data['refresh_token'] = jwt_tokens['refresh']
 
         try:
             # Use the new Celery email task system for email verification
@@ -227,6 +232,7 @@ def verify_publisher_email(request):
             token = Token.objects.get(user=user)
         except Token.DoesNotExist:
             token = Token.objects.create(user=user)
+        jwt_tokens = get_jwt_tokens_for_user(user)
         
         # Get publisher profile
         publisher = PublisherProfile.objects.get(user=user)
@@ -239,6 +245,8 @@ def verify_publisher_email(request):
         data["last_name"] = user.last_name
         data["photo"] = user.photo.url if user.photo else None
         data["token"] = token.key
+        data["access_token"] = jwt_tokens['access']
+        data["refresh_token"] = jwt_tokens['refresh']
         data["country"] = user.country
         data["phone"] = user.phone
         data["next_step"] = publisher.onboarding_step
@@ -332,6 +340,7 @@ def verify_publisher_email_code(request):
             token = Token.objects.get(user=user)
         except Token.DoesNotExist:
             token = Token.objects.create(user=user)
+        jwt_tokens = get_jwt_tokens_for_user(user)
         
         # Get publisher profile
         publisher = PublisherProfile.objects.get(user=user)
@@ -344,6 +353,8 @@ def verify_publisher_email_code(request):
         data["last_name"] = user.last_name
         data["photo"] = user.photo.url if user.photo else None
         data["token"] = token.key
+        data["access_token"] = jwt_tokens['access']
+        data["refresh_token"] = jwt_tokens['refresh']
         data["country"] = user.country
         data["phone"] = user.phone
         data["next_step"] = publisher.onboarding_step
@@ -483,6 +494,7 @@ class PublisherLogin(APIView):
 
         # Token and FCM token
         token, _ = Token.objects.get_or_create(user=user)
+        jwt_tokens = get_jwt_tokens_for_user(user)
         user.fcm_token = fcm_token
         user.save(update_fields=['fcm_token'])
 
@@ -500,6 +512,8 @@ class PublisherLogin(APIView):
             "country": user.country,
             "phone": user.phone,
             "token": token.key,
+            "access_token": jwt_tokens['access'],
+            "refresh_token": jwt_tokens['refresh'],
             "onboarding_step": publisher.onboarding_step,
         }
 

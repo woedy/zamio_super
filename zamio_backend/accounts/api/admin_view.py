@@ -15,6 +15,7 @@ from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated
 
 from accounts.api.serializers import UserRegistrationSerializer
+from accounts.api.token_utils import get_jwt_tokens_for_user
 from accounts.models import AuditLog
 from accounts.services import EmailVerificationService
 from activities.models import AllActivity
@@ -141,8 +142,11 @@ def register_admin_view(request):
             data['phone'] = user.phone
             data['photo'] = getattr(user.photo, 'url', None)
 
-        token = Token.objects.get(user=user).key
-        data['token'] = token
+        token = Token.objects.get(user=user)
+        jwt_tokens = get_jwt_tokens_for_user(user)
+        data['token'] = token.key
+        data['access_token'] = jwt_tokens['access']
+        data['refresh_token'] = jwt_tokens['refresh']
 
         try:
             # Use the new Celery email task system for email verification
@@ -254,6 +258,7 @@ class AdminLogin(APIView):
             token = Token.objects.get(user=user)
         except Token.DoesNotExist:
             token = Token.objects.create(user=user)
+        jwt_tokens = get_jwt_tokens_for_user(user)
 
         user.fcm_token = fcm_token
         user.last_activity = timezone.now()
@@ -269,6 +274,8 @@ class AdminLogin(APIView):
         data["country"] = user.country
         data["phone"] = user.phone
         data["token"] = token.key
+        data["access_token"] = jwt_tokens['access']
+        data["refresh_token"] = jwt_tokens['refresh']
         needs_profile = not (admin.city and admin.postal_code)
         data["next_step"] = 'profile' if needs_profile else 'done'
         data["profile"] = {

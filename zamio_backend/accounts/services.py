@@ -10,6 +10,7 @@ This module provides centralized verification logic that supports:
 
 import hashlib
 import logging
+import secrets
 from datetime import timedelta
 from typing import Dict, Any, Optional
 
@@ -36,7 +37,39 @@ class EmailVerificationService:
         self.block_duration_minutes = 30
         self.resend_cooldown_minutes = 2  # Minimum time between resends
         self.max_resends_per_hour = 3
-    
+
+    def initialize_verification(self, user: User, method: str = 'code') -> str:
+        """Prepare user for verification by generating a 4-digit code."""
+        code = f"{secrets.randbelow(10000):04d}"
+        code_hash = self.hash_verification_code(code)
+        now = timezone.now()
+
+        update_fields = [
+            'verification_code',
+            'verification_code_hash',
+            'verification_expires_at',
+            'last_verification_request',
+            'verification_attempts',
+            'verification_blocked_until',
+            'verification_method',
+        ]
+
+        user.verification_code = code
+        user.verification_code_hash = code_hash
+        user.verification_expires_at = now + timedelta(minutes=15)
+        user.last_verification_request = now
+        user.verification_attempts = 0
+        user.verification_blocked_until = None
+        user.verification_method = method
+
+        # Reset legacy token fields when relying on code verification only
+        if user.email_token:
+            user.email_token = None
+            update_fields.append('email_token')
+
+        user.save(update_fields=update_fields)
+        return code
+
     def hash_verification_code(self, code: str) -> str:
         """
         Hash verification code for secure storage.

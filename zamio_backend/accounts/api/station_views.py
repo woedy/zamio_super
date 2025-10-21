@@ -15,13 +15,13 @@ from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated
 
 from accounts.api.serializers import UserRegistrationSerializer
+from accounts.api.token_utils import get_jwt_tokens_for_user
 from accounts.models import AuditLog
 from accounts.api.enhanced_auth import SecurityEventHandler
 from accounts.services import EmailVerificationService
 from activities.models import AllActivity
 from django.core.mail import send_mail
 from django.contrib.auth import get_user_model, authenticate
-
 
 from rest_framework.views import APIView
 
@@ -33,10 +33,7 @@ from core.utils import generate_email_token, is_valid_email, is_valid_password
 
 logger = logging.getLogger(__name__)
 
-
 User = get_user_model()
-
-
 
 @api_view(['POST', ])
 @permission_classes([])
@@ -57,7 +54,6 @@ def register_station_view(request):
         country = request.data.get('country', "")
         password = request.data.get('password', "")
         password2 = request.data.get('password2', "")
-
 
         if not email:
             errors['email'] = ['User Email is required.']
@@ -107,7 +103,6 @@ def register_station_view(request):
             if country:
                 data["country"] = user.country
 
-
             user.user_type = "Station"
             user.phone = phone
 
@@ -126,13 +121,15 @@ def register_station_view(request):
                 currency="Ghc"
             )
 
-
             data['phone'] = user.phone
             data['country'] = user.country
             data['photo'] = user.photo.url
 
-        token = Token.objects.get(user=user).key
-        data['token'] = token
+        token = Token.objects.get(user=user)
+        jwt_tokens = get_jwt_tokens_for_user(user)
+        data['token'] = token.key
+        data['access_token'] = jwt_tokens['access']
+        data['refresh_token'] = jwt_tokens['refresh']
 
         try:
             # Use the new Celery email task system for email verification
@@ -147,9 +144,6 @@ def register_station_view(request):
             logger.error(f"Failed to send verification email during station registration: {str(e)}")
             # Continue with registration even if email fails
 
-
-
-#
         new_activity = AllActivity.objects.create(
             user=user,
             subject="User Registration",
@@ -161,8 +155,6 @@ def register_station_view(request):
         payload['data'] = data
 
     return Response(payload)
-
-
 
 @api_view(['POST', ])
 @permission_classes([])
@@ -222,6 +214,7 @@ def verify_station_email(request):
             token = Token.objects.get(user=user)
         except Token.DoesNotExist:
             token = Token.objects.create(user=user)
+        jwt_tokens = get_jwt_tokens_for_user(user)
         
         # Get station profile
         station = Station.objects.get(user=user)
@@ -234,6 +227,8 @@ def verify_station_email(request):
         data["last_name"] = user.last_name
         data["photo"] = user.photo.url if user.photo else None
         data["token"] = token.key
+        data["access_token"] = jwt_tokens['access']
+        data["refresh_token"] = jwt_tokens['refresh']
         data["country"] = user.country
         data["phone"] = user.phone
         data["next_step"] = station.onboarding_step
@@ -265,7 +260,6 @@ def verify_station_email(request):
         payload['message'] = "Errors"
         payload['errors'] = {'general': ['An error occurred during verification']}
         return Response(payload, status=status.HTTP_400_BAD_REQUEST)
-
 
 @api_view(['POST'])
 @permission_classes([])
@@ -327,6 +321,7 @@ def verify_station_email_code(request):
             token = Token.objects.get(user=user)
         except Token.DoesNotExist:
             token = Token.objects.create(user=user)
+        jwt_tokens = get_jwt_tokens_for_user(user)
         
         # Get station profile
         station = Station.objects.get(user=user)
@@ -339,6 +334,8 @@ def verify_station_email_code(request):
         data["last_name"] = user.last_name
         data["photo"] = user.photo.url if user.photo else None
         data["token"] = token.key
+        data["access_token"] = jwt_tokens['access']
+        data["refresh_token"] = jwt_tokens['refresh']
         data["country"] = user.country
         data["phone"] = user.phone
         data["next_step"] = station.onboarding_step
@@ -366,18 +363,6 @@ def verify_station_email_code(request):
         logger.error(f"Error in verify_station_email_code: {str(e)}")
         payload['message'] = "An error occurred during verification"
         return Response(payload, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-
-def check_email_exist(email):
-
-    qs = User.objects.filter(email=email)
-    if qs.exists():
-        return True
-    else:
-        return False
-
-
 
 class StationLogin(APIView):
     authentication_classes = []
@@ -477,6 +462,7 @@ class StationLogin(APIView):
 
         # Token and FCM token
         token, _ = Token.objects.get_or_create(user=user)
+        jwt_tokens = get_jwt_tokens_for_user(user)
         user.fcm_token = fcm_token
         user.save(update_fields=['fcm_token'])
 
@@ -503,6 +489,8 @@ class StationLogin(APIView):
             "country": user.country,
             "phone": user.phone,
             "token": token.key,
+            "access_token": jwt_tokens['access'],
+            "refresh_token": jwt_tokens['refresh'],
             "onboarding_step": station.onboarding_step,
         }
 

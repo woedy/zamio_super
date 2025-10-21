@@ -53,6 +53,8 @@ cp .env.example .env.local
 # 2. Build and start all services
 docker compose -f docker-compose.local.yml up --build
 
+docker compose -f docker-compose.local.yml up -d
+
 # 3. Run database migrations once the containers settle
 docker compose -f docker-compose.local.yml exec backend python manage.py migrate
 

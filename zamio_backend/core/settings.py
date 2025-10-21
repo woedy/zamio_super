@@ -49,6 +49,10 @@ def _split_env_list(value: str) -> list[str]:
 ALLOWED_HOSTS = _split_env_list(os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1'))
 CSRF_TRUSTED_ORIGINS = _split_env_list(os.environ.get('CSRF_TRUSTED_ORIGINS', ''))
 
+
+def _env_flag(name: str, default: bool) -> bool:
+    return os.environ.get(name, str(default)).lower() in {"1", "true", "yes"}
+
 # Email configuration
 # Default to file-based backend for local development; override via env for SMTP.
 EMAIL_BACKEND = os.environ.get('EMAIL_BACKEND', 'django.core.mail.backends.filebased.EmailBackend')
@@ -293,6 +297,19 @@ CHANNEL_LAYERS = {
 APPEND_SLASH = False
 
 CORS_ALLOW_CREDENTIALS = True
+
+CORS_ALLOW_ALL_ORIGINS = _env_flag('CORS_ALLOW_ALL_ORIGINS', DEBUG)
+
+if not CORS_ALLOW_ALL_ORIGINS:
+    CORS_ALLOWED_ORIGINS = _split_env_list(
+        os.environ.get(
+            'CORS_ALLOWED_ORIGINS',
+            'http://localhost:5173,http://127.0.0.1:5173,'
+            'http://localhost:5174,http://127.0.0.1:5174,'
+            'http://localhost:5175,http://127.0.0.1:5175,'
+            'http://localhost:5176,http://127.0.0.1:5176'
+        )
+    )
 
 
 def _env_flag(name: str, default: bool) -> bool:
