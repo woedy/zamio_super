@@ -82,7 +82,7 @@ def register_fan_view(request):
         serializer = UserRegistrationSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
-            data["user_id"] = user.user_id
+            data["user_id"] = str(user.user_id)
             data["email"] = user.email
             data["first_name"] = user.first_name
             data["last_name"] = user.last_name
@@ -244,7 +244,7 @@ class FanLogin(APIView):
         user.save()
 
 
-        data["user_id"] = user.user_id
+        data["user_id"] = str(user.user_id)
         data["email"] = user.email
         data["first_name"] = user.first_name
         data["last_name"] = user.last_name

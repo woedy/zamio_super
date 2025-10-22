@@ -61,7 +61,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             
             # Add user info to response
             data['user'] = {
-                'user_id': user.user_id,
+                'user_id': str(user.user_id),
                 'email': user.email,
                 'user_type': user.user_type,
                 'profile_complete': user.profile_complete,
@@ -94,7 +94,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         token = RefreshToken.for_user(user)
 
         # Customize the access token payload
-        token.payload['user_id'] = user.user_id
+        token.payload['user_id'] = str(user.user_id)
         token.payload['user_type'] = user.user_type
         token.payload['permissions'] = list(user.user_permissions.filter(
             is_active=True,
@@ -132,7 +132,7 @@ class CustomTokenRefreshView(BaseTokenRefreshView):
                     return Response({
                         'access': access_token,
                         'user': {
-                            'user_id': user.user_id,
+                            'user_id': str(user.user_id),
                             'email': user.email,
                             'user_type': user.user_type,
                             'profile_complete': user.profile_complete,
