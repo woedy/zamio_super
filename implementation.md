@@ -4,6 +4,8 @@
 - **Backend sequence** B1 Authentication → B2 Onboarding → B3 Dashboards → B4 In-App Activities.
 - **Frontend sequence** F1 `zamio_frontend` → F2 `zamio_stations` → F3 `zamio_publisher` → F4 `zamio_admin`.
 - **Dependencies** Backend endpoints must stabilize before SPA integrations in the corresponding phase. Capture provisioning (B2) feeds `zamio_app` and later station flows (F2). Async pipelines (Celery/Redis/Channels) underpin dashboards and activities.
+- **Verification → Onboarding Hand-off** Treat successful email verification as the immediate hand-off point to onboarding flows. All clients should redirect or surface onboarding steps directly after verification without additional gating.
+- **Static UI as Contract** All SPA UIs (front, station, publisher, admin) currently live as static builds and define the data contract we must honor. Backend models, serializers, and business logic may evolve to match UI requirements, while UI layout/structure changes must be explicitly requested before implementation.
 
 ## Backend Roadmap
 
@@ -38,7 +40,10 @@
   - B2.4 Publisher Linkage: As a publisher/PRO partner, I can connect my account to partner profiles for reciprocal reporting.
 - **Acceptance Criteria**
   - AB2.1 Existing onboarding APIs (`/api/artists/profile/`, `/api/stations/setup/`) are verified for schema accuracy, validation, and error messaging.
+  - AB2.1a Artist onboarding captures profile metadata required by the static UI (primary genre, music style, social links, website, regional context) and returns a structured `profile` + `social_links` payload for the frontend wizard.
   - AB2.2 Upload endpoints accept station schedule CSV/JSON, persist records, and emit processing tasks as currently implemented.
+  - AB2.2a Payment preferences persist structured `preferred_method` snapshots (MoMo, bank, international) for reuse across artist profile, payouts, and frontend state rehydration.
+  - AB2.2b Publisher onboarding records self-publish decisions and optional publisher metadata so the UI can resume exactly where the artist left off.
   - AB2.3 Station capture provisioning endpoint continues returning tokenized config consumed by `OfflineCaptureService` in `zamio_app` (chunk duration, retry policy, base URL).
   - AB2.4 Frontend forms persist step-by-step, resume progress, and display backend validation messages.
   - AB2.5 Successful onboarding toggles status flags (`is_onboarded`) so dashboards unlock and marks station capture app as ready.
@@ -188,3 +193,4 @@
 - **Testing** Maintain backend pytest coverage, frontend unit/integration tests, and integration smoke tests via Postman/Cypress.
 - **Deployment** Keep Docker compose files current; each phase should be deployable independently with feature flags if needed.
 - **Demo Readiness** At the end of every phase, ensure there is a scripted demo scenario with test data, accessible credentials, and instructions.
+- **Frontend Contract Discipline** Treat the existing static SPA screens as non-negotiable guides for data structure, copy, and flow unless explicit approval is given to revise them. Any backend/domain changes should be driven by aligning responses with these UI expectations.
