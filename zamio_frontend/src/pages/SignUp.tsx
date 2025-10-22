@@ -1,51 +1,175 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, ArrowRight, Zap, TrendingUp } from 'lucide-react';
+import { isAxiosError } from 'axios';
+
+import { registerArtist, type ApiErrorMap } from '../lib/api';
+
+type FieldErrors = Record<string, string[]>;
+
+interface FormState {
+  firstName: string;
+  lastName: string;
+  stageName: string;
+  email: string;
+  country: string;
+  location: string;
+  phoneNumber: string;
+  password: string;
+  confirmPassword: string;
+  agreeToTerms: boolean;
+  newsletter: boolean;
+}
+
+const INITIAL_FORM_STATE: FormState = {
+  firstName: '',
+  lastName: '',
+  stageName: '',
+  email: '',
+  country: '',
+  location: '',
+  phoneNumber: '',
+  password: '',
+  confirmPassword: '',
+  agreeToTerms: false,
+  newsletter: false,
+};
+
+const normalizeErrors = (errors?: ApiErrorMap): FieldErrors => {
+  if (!errors) return {};
+  return Object.entries(errors).reduce<FieldErrors>((acc, [key, value]) => {
+    if (!value) return acc;
+    if (Array.isArray(value)) {
+      acc[key] = value.map(String);
+    } else {
+      acc[key] = [String(value)];
+    }
+    return acc;
+  }, {} as FieldErrors);
+};
 
 export default function SignUp() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const navigate = useNavigate();
-  const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
-    email: '',
-    country: '',
-    phoneNumber: '',
-    password: '',
-    confirmPassword: '',
-    agreeToTerms: false,
-    newsletter: false
-  });
+  const [formData, setFormData] = useState<FormState>(INITIAL_FORM_STATE);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [generalError, setGeneralError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const serverErrorKeyMap: Record<keyof FormState, string[]> = {
+    firstName: ['first_name'],
+    lastName: ['last_name'],
+    stageName: ['stage_name'],
+    email: ['email', 'detail'],
+    country: ['country'],
+    location: ['location'],
+    phoneNumber: ['phone'],
+    password: ['password'],
+    confirmPassword: ['password2'],
+    agreeToTerms: ['agreeToTerms'],
+    newsletter: ['newsletter'],
+  };
+
+  const hasFieldError = useMemo(() => (field: string) => fieldErrors[field]?.length > 0, [fieldErrors]);
+
+  const inputClass = (field: string, extra?: string) =>
+    `w-full rounded-lg border ${
+      hasFieldError(field)
+        ? 'border-red-400 focus:border-red-400 focus:ring-red-400'
+        : 'border-white/20 focus:border-indigo-400 focus:ring-indigo-400'
+    } bg-slate-800/50 px-4 py-3 ${extra ?? ''} text-white placeholder:text-slate-400 focus:outline-none focus:ring-1`;
+
+  const renderFieldErrors = (field: string) =>
+    fieldErrors[field]?.map((message, index) => (
+      <p key={`${field}-${index}`} className="mt-1 text-xs text-red-400">
+        {message}
+      </p>
+    ));
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type, checked } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value
+      [name]: type === 'checkbox' ? checked : value,
     }));
+    const relatedServerKeys = serverErrorKeyMap[name as keyof FormState] ?? [];
+    if (fieldErrors[name] || relatedServerKeys.some(key => fieldErrors[key])) {
+      setFieldErrors(prev => {
+        const next = { ...prev };
+        delete next[name];
+        relatedServerKeys.forEach((key) => {
+          if (next[key]) {
+            delete next[key];
+          }
+        });
+        return next;
+      });
+    }
+    setGeneralError(null);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Basic validation
+    const validationErrors: FieldErrors = {};
     if (formData.password !== formData.confirmPassword) {
-      alert('Passwords do not match');
-      return;
+      validationErrors.password = ['Passwords do not match'];
+      validationErrors.password2 = ['Passwords do not match'];
     }
 
     if (!formData.agreeToTerms) {
-      alert('Please agree to the Terms of Service');
+      validationErrors.agreeToTerms = ['You must agree to the Terms of Service to continue'];
+    }
+
+    if (Object.keys(validationErrors).length > 0) {
+      setFieldErrors(validationErrors);
+      setGeneralError('Please correct the highlighted fields and try again.');
       return;
     }
 
-    // Simulate successful signup
-    console.log('Sign-up successful:', formData);
+    setIsSubmitting(true);
+    setGeneralError(null);
+    setFieldErrors({});
 
-    // In a real app, this would be an API call that sends verification email
-    // For demo purposes, we'll redirect to email verification first
-    navigate('/verify-email');
+    const normalizedEmail = formData.email.trim().toLowerCase();
+
+    try {
+      const payload = {
+        first_name: formData.firstName.trim(),
+        last_name: formData.lastName.trim(),
+        stage_name: formData.stageName.trim(),
+        email: normalizedEmail,
+        phone: formData.phoneNumber.trim(),
+        country: formData.country || undefined,
+        location: formData.location.trim() || undefined,
+        password: formData.password,
+        password2: formData.confirmPassword,
+      };
+
+      await registerArtist(payload);
+
+      navigate({
+        pathname: '/verify-email',
+        search: normalizedEmail ? `?email=${encodeURIComponent(normalizedEmail)}` : '',
+      }, {
+        state: { email: normalizedEmail },
+      });
+    } catch (error) {
+      if (isAxiosError(error) && error.response) {
+        const data = error.response.data as { message?: string; errors?: ApiErrorMap; detail?: string };
+        const normalized = normalizeErrors(data.errors);
+        if (data.detail && !normalized.detail) {
+          normalized.detail = [data.detail];
+        }
+        setFieldErrors(normalized);
+        setGeneralError(data.message || data.detail || 'Unable to create your account.');
+      } else {
+        setGeneralError('An unexpected error occurred. Please try again later.');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -83,9 +207,10 @@ export default function SignUp() {
                   required
                   value={formData.firstName}
                   onChange={handleChange}
-                  className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  className={inputClass('first_name')}
                   placeholder="John"
                 />
+                {renderFieldErrors('first_name')}
               </div>
               <div>
                 <label htmlFor="lastName" className="block text-sm font-medium text-slate-200 mb-2">
@@ -98,10 +223,28 @@ export default function SignUp() {
                   required
                   value={formData.lastName}
                   onChange={handleChange}
-                  className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  className={inputClass('last_name')}
                   placeholder="Doe"
                 />
+                {renderFieldErrors('last_name')}
               </div>
+            </div>
+
+            <div>
+              <label htmlFor="stageName" className="block text-sm font-medium text-slate-200 mb-2">
+                Stage name
+              </label>
+              <input
+                id="stageName"
+                name="stageName"
+                type="text"
+                required
+                value={formData.stageName}
+                onChange={handleChange}
+                className={inputClass('stage_name')}
+                placeholder="Artist alias"
+              />
+              {renderFieldErrors('stage_name')}
             </div>
 
             <div>
@@ -116,9 +259,11 @@ export default function SignUp() {
                 required
                 value={formData.email}
                 onChange={handleChange}
-                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                className={inputClass('email')}
                 placeholder="you@musicprofessional.com"
               />
+              {renderFieldErrors('email')}
+              {renderFieldErrors('detail')}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -131,7 +276,7 @@ export default function SignUp() {
                   name="country"
                   value={formData.country}
                   onChange={handleChange}
-                  className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  className={inputClass('country')}
                 >
                   <option value="">Select country</option>
                   <option value="ghana">Ghana</option>
@@ -143,6 +288,7 @@ export default function SignUp() {
                   <option value="canada">Canada</option>
                   <option value="other">Other</option>
                 </select>
+                {renderFieldErrors('country')}
               </div>
               <div>
                 <label htmlFor="phoneNumber" className="block text-sm font-medium text-slate-200 mb-2">
@@ -154,10 +300,27 @@ export default function SignUp() {
                   type="tel"
                   value={formData.phoneNumber}
                   onChange={handleChange}
-                  className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  className={inputClass('phone')}
                   placeholder="+233 XX XXX XXXX"
                 />
+                {renderFieldErrors('phone')}
               </div>
+            </div>
+
+            <div>
+              <label htmlFor="location" className="block text-sm font-medium text-slate-200 mb-2">
+                City or location (optional)
+              </label>
+              <input
+                id="location"
+                name="location"
+                type="text"
+                value={formData.location}
+                onChange={handleChange}
+                className={inputClass('location')}
+                placeholder="Accra, Ghana"
+              />
+              {renderFieldErrors('location')}
             </div>
 
             <div>
@@ -173,7 +336,7 @@ export default function SignUp() {
                   required
                   value={formData.password}
                   onChange={handleChange}
-                  className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 pr-12 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  className={inputClass('password', 'pr-12')}
                   placeholder="Create a strong password"
                 />
                 <button
@@ -184,6 +347,7 @@ export default function SignUp() {
                   {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                 </button>
               </div>
+              {renderFieldErrors('password')}
             </div>
 
             <div>
@@ -199,7 +363,7 @@ export default function SignUp() {
                   required
                   value={formData.confirmPassword}
                   onChange={handleChange}
-                  className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 pr-12 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  className={inputClass('password2', 'pr-12')}
                   placeholder="Confirm your password"
                 />
                 <button
@@ -210,6 +374,7 @@ export default function SignUp() {
                   {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                 </button>
               </div>
+              {renderFieldErrors('password2')}
             </div>
 
             <div className="space-y-3">
@@ -233,6 +398,7 @@ export default function SignUp() {
                   </Link>
                 </label>
               </div>
+              {renderFieldErrors('agreeToTerms')}
 
               <div className="flex items-center">
                 <input
@@ -250,11 +416,18 @@ export default function SignUp() {
             </div>
           </div>
 
+          {generalError && (
+            <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+              {generalError}
+            </div>
+          )}
+
           <button
             type="submit"
-            className="w-full inline-flex items-center justify-center rounded-lg bg-indigo-500 px-4 py-3 text-base font-semibold text-white transition hover:bg-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2"
+            className="w-full inline-flex items-center justify-center rounded-lg bg-indigo-500 px-4 py-3 text-base font-semibold text-white transition hover:bg-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2 disabled:opacity-60 disabled:hover:bg-indigo-500"
+            disabled={isSubmitting}
           >
-            Create account
+            {isSubmitting ? 'Creating account…' : 'Create account'}
             <ArrowRight className="ml-2 h-4 w-4" />
           </button>
 

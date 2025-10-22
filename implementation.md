@@ -24,7 +24,7 @@
   - [x] Backend: Audit `accounts/` auth endpoints, update serializers/settings only where contract gaps surface.
   - [x] Backend QA: Refresh pytest/Postman suites validating login/register/refresh flows.
   - [x] Frontend: Build shared auth service wrappers and token storage (per SPA) aligned to existing responses.
-  - [ ] Frontend: Implement login/registration UI wiring using the preserved endpoints.
+  - [x] Frontend: Implement login/registration UI wiring using the preserved endpoints.
   - [ ] DevOps: Reconfirm auth env variables/secrets in `.env.example`, `AGENTS.md`, and Coolify configs.
   - [x] Documentation: Capture token/role claim contract for frontend guards and QA references.
   - [ ] Tests: Execute automated and manual scenarios (pytest, Postman, Cypress) covering B1 acceptance criteria and user stories.
