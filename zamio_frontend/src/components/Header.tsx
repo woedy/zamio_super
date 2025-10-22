@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Search, Bell, Settings, User, LogOut, Menu, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { ThemeToggle } from '@zamio/ui';
+import { useAuth } from '../lib/auth';
 
 interface HeaderProps {
   onMenuToggle?: () => void;
@@ -20,6 +21,7 @@ const Header: React.FC<HeaderProps> = ({
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const navigate = useNavigate();
+  const { logout } = useAuth();
 
   const notificationRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -86,8 +88,9 @@ const Header: React.FC<HeaderProps> = ({
   };
 
   const handleLogout = () => {
-    // Handle logout functionality
-    navigate('/signin');
+    setShowUserMenu(false);
+    logout();
+    navigate('/signin', { replace: true });
   };
 
   return (
