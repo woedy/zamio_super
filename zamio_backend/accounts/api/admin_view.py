@@ -100,7 +100,7 @@ def register_admin_view(request):
             user.staff = True  # Set staff flag
             user.save()
 
-            data["user_id"] = user.user_id
+            data["user_id"] = str(user.user_id)
             data["email"] = user.email
             data["first_name"] = user.first_name
             data["last_name"] = user.last_name
@@ -265,7 +265,7 @@ class AdminLogin(APIView):
         user.failed_login_attempts = 0  # Reset failed attempts on successful login
         user.save()
 
-        data["user_id"] = user.user_id
+        data["user_id"] = str(user.user_id)
         data["admin_id"] = admin.admin_id
         data["email"] = user.email
         data["first_name"] = user.first_name
@@ -372,7 +372,7 @@ def resend_email_verification(request):
     # Check if email is already verified
     if user.email_verified:
         payload['message'] = "Email is already verified"
-        payload['data'] = {"email": user.email, "user_id": user.user_id}
+        payload['data'] = {"email": user.email, "user_id": str(user.user_id)}
         return Response(payload, status=status.HTTP_200_OK)
 
     try:
@@ -381,7 +381,7 @@ def resend_email_verification(request):
         task_id = send_verification_email(user)
         
         data["email"] = user.email
-        data["user_id"] = user.user_id
+        data["user_id"] = str(user.user_id)
         data["task_id"] = task_id
 
         # Create activity log
@@ -472,7 +472,7 @@ def verify_admin_email(request):
         admin = MrAdmin.objects.filter(user=user).first()
         
         # Prepare response data (maintain backward compatibility)
-        data["user_id"] = user.user_id
+        data["user_id"] = str(user.user_id)
         if admin:
             data["admin_id"] = admin.admin_id
         data["email"] = user.email
@@ -569,7 +569,7 @@ def verify_admin_email_code(request):
             token = Token.objects.create(user=user)
         
         # Prepare response data
-        data["user_id"] = user.user_id
+        data["user_id"] = str(user.user_id)
         data["email"] = user.email
         data["first_name"] = user.first_name
         data["last_name"] = user.last_name
@@ -619,7 +619,7 @@ def admin_onboarding_status_view(request):
     needs_profile = not (admin.city and admin.postal_code)
     next_step = 'profile' if needs_profile else 'done'
 
-    data["user_id"] = user.user_id
+    data["user_id"] = str(user.user_id)
     data["admin_id"] = admin.admin_id
     data["next_step"] = next_step
     data["profile"] = {

@@ -215,7 +215,7 @@ def register_artist_view(request):
         )
 
         # Prepare response data
-        data["user_id"] = user.user_id
+        data["user_id"] = str(user.user_id)
         data["email"] = user.email
         data["first_name"] = user.first_name
         data["last_name"] = user.last_name
@@ -324,7 +324,7 @@ def verify_artist_email(request):
         artist = Artist.objects.get(user=user)
         
         # Prepare response data (maintain backward compatibility)
-        data["user_id"] = user.user_id
+        data["user_id"] = str(user.user_id)
         data["artist_id"] = artist.artist_id
         data["email"] = user.email
         data["first_name"] = user.first_name
@@ -433,7 +433,7 @@ def verify_artist_email_code(request):
         artist = Artist.objects.get(user=user)
         
         # Prepare response data
-        data["user_id"] = user.user_id
+        data["user_id"] = str(user.user_id)
         data["artist_id"] = artist.artist_id
         data["email"] = user.email
         data["first_name"] = user.first_name
@@ -594,7 +594,7 @@ class ArtistLogin(APIView):
         artist.save()
 
         data = {
-            "user_id": user.user_id,
+            "user_id": str(user.user_id),
             "artist_id": artist.artist_id,
             "email": user.email,
             "first_name": user.first_name,
@@ -1818,7 +1818,7 @@ def onboard_artist_view(request):
     artist.save()
 
     
-    data["user_id"] = artist.user.user_id
+    data["user_id"] = str(artist.user.user_id)
     data["email"] = artist.user.email
     data["artist_id"] = artist.artist_id
     data["name"] = artist.stage_name

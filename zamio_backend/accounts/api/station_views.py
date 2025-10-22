@@ -111,7 +111,7 @@ def register_station_view(request):
         serializer = UserRegistrationSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
-            data["user_id"] = user.user_id
+            data["user_id"] = str(user.user_id)
             data["email"] = user.email
             data["first_name"] = user.first_name
             data["last_name"] = user.last_name
@@ -237,7 +237,7 @@ def verify_station_email(request):
         station = Station.objects.get(user=user)
         
         # Prepare response data (maintain backward compatibility)
-        data["user_id"] = user.user_id
+        data["user_id"] = str(user.user_id)
         data["station_id"] = station.station_id
         data["email"] = user.email
         data["first_name"] = user.first_name
@@ -344,7 +344,7 @@ def verify_station_email_code(request):
         station = Station.objects.get(user=user)
         
         # Prepare response data
-        data["user_id"] = user.user_id
+        data["user_id"] = str(user.user_id)
         data["station_id"] = station.station_id
         data["email"] = user.email
         data["first_name"] = user.first_name
@@ -497,7 +497,7 @@ class StationLogin(APIView):
             station.save()
 
         data = {
-            "user_id": user.user_id,
+            "user_id": str(user.user_id),
             "station_id": station.station_id,
             "email": user.email,
             "first_name": user.first_name,
