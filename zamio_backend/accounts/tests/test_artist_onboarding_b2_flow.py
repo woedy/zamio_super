@@ -46,10 +46,18 @@ class ArtistOnboardingB2FlowTests(APITestCase):
             self.complete_profile_url,
             {
                 "artist_id": self.artist.artist_id,
+                "artistName": "B2 Artist",
                 "bio": "Test bio",
                 "country": "GH",
                 "region": "Greater Accra",
                 "location": "Accra",
+                "genre": "Afrobeats",
+                "style": "Fusion",
+                "website": "https://b2.example.com",
+                "instagram": "https://instagram.com/b2-artist",
+                "twitter": "https://twitter.com/b2-artist",
+                "facebook": "https://facebook.com/b2-artist",
+                "youtube": "https://youtube.com/@b2-artist",
             },
             format="multipart",
         )
@@ -57,6 +65,12 @@ class ArtistOnboardingB2FlowTests(APITestCase):
         profile_data = profile_response.data["data"]
         self.assertEqual(profile_data["next_step"], "social-media")
         self.assertTrue(profile_data["progress"]["profile_completed"])
+        profile_snapshot = profile_data["profile"]
+        self.assertEqual(profile_snapshot["stage_name"], "B2 Artist")
+        self.assertEqual(profile_snapshot["primary_genre"], "Afrobeats")
+        self.assertEqual(profile_snapshot["music_style"], "Fusion")
+        self.assertEqual(profile_snapshot["website"], "https://b2.example.com")
+        self.assertEqual(profile_data["social_links"]["instagram"], "https://instagram.com/b2-artist")
 
         social_response = self.client.post(
             self.complete_social_url,
@@ -64,6 +78,10 @@ class ArtistOnboardingB2FlowTests(APITestCase):
                 "artist_id": self.artist.artist_id,
                 "instagram": "https://instagram.com/zamio-test",
                 "twitter": "https://twitter.com/zamio-test",
+                "accounts": [
+                    {"platform": "Instagram", "username": "@zamio-test", "followers": 1200},
+                    {"platform": "Twitter", "username": "@zamio-gh", "followers": 900},
+                ],
             },
             format="json",
         )
@@ -71,12 +89,18 @@ class ArtistOnboardingB2FlowTests(APITestCase):
         social_data = social_response.data["data"]
         self.assertEqual(social_data["next_step"], "payment")
         self.assertTrue(social_data["progress"]["social_media_added"])
+        metrics = social_data["social_metrics"]["accounts"]
+        self.assertEqual(metrics[0]["platform"], "Instagram")
 
         payment_response = self.client.post(
             self.complete_payment_url,
             {
                 "artist_id": self.artist.artist_id,
-                "momo": "+233555000111",
+                "preferred_method": "mobile-money",
+                "currency": "GHS",
+                "mobile_provider": "MTN",
+                "mobile_number": "+233555000111",
+                "mobile_account_name": "B2 Artist",
             },
             format="json",
         )
@@ -84,12 +108,18 @@ class ArtistOnboardingB2FlowTests(APITestCase):
         payment_data = payment_response.data["data"]
         self.assertEqual(payment_data["next_step"], "publisher")
         self.assertTrue(payment_data["progress"]["payment_info_added"])
+        self.assertEqual(payment_data["payment_preferences"]["preferred_method"], "mobile-money")
 
         publisher_response = self.client.post(
             self.complete_publisher_url,
             {
                 "artist_id": self.artist.artist_id,
-                "self_publish": True,
+                "self_publish": False,
+                "publisher_name": "Ghana Music Alliance",
+                "publisher_type": "Independent",
+                "publisher_location": "Accra, Ghana",
+                "publisher_specialties": ["Ghanaian Music"],
+                "agreed_to_terms": True,
             },
             format="json",
         )
@@ -97,6 +127,11 @@ class ArtistOnboardingB2FlowTests(APITestCase):
         publisher_data = publisher_response.data["data"]
         self.assertEqual(publisher_data["next_step"], "done")
         self.assertTrue(publisher_data["progress"]["publisher_added"])
+        self.assertFalse(publisher_data["publisher"]["is_self_published"])
+        self.assertEqual(
+            publisher_data["publisher"]["preferences"].get("publisher_name"),
+            "Ghana Music Alliance",
+        )
 
         self.artist.refresh_from_db()
         self.assertTrue(self.artist.profile_completed)
@@ -104,6 +139,11 @@ class ArtistOnboardingB2FlowTests(APITestCase):
         self.assertTrue(self.artist.payment_info_added)
         self.assertTrue(self.artist.publisher_added)
         self.assertEqual(self.artist.onboarding_step, "done")
+        self.assertEqual(self.artist.payment_preferences["preferred_method"], "mobile-money")
+        self.assertEqual(
+            self.artist.publisher_preferences.get("publisher_name"),
+            "Ghana Music Alliance",
+        )
 
         status_response = self.client.get(self.status_url, format="json")
         self.assertEqual(status_response.status_code, status.HTTP_200_OK, status_response.data)
@@ -111,3 +151,9 @@ class ArtistOnboardingB2FlowTests(APITestCase):
         self.assertEqual(status_data["onboarding_step"], "done")
         self.assertGreaterEqual(status_data["profile_complete_percentage"], 50)
         self.assertTrue(status_data["required_fields"]["payment_required"] is False)
+        self.assertEqual(status_data["profile"]["primary_genre"], "Afrobeats")
+        self.assertEqual(status_data["payment_preferences"]["preferred_method"], "mobile-money")
+        self.assertEqual(
+            status_data["publisher"]["preferences"].get("publisher_name"),
+            "Ghana Music Alliance",
+        )
