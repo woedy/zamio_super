@@ -25,6 +25,7 @@
 - **Phased Delivery** Follow the sequence defined in `implementation.md`: Authentication → Onboarding → Dashboard → In-App Activities.
 - **API Standards** Implement REST endpoints under `/api/v1/` with clear serializers, JWT auth, pagination, and error handling aligned to DRF conventions.
 - **Auth Endpoints** Use `POST /api/auth/token/` + `/api/auth/token/refresh/` for SimpleJWT access/refresh flow while legacy role logins (`POST /api/accounts/login-artist/`, `login-station/`, `login-admin/`) remain for device-specific tokens.
+- **Auth Configuration** Keep `.env.example`, `docker-compose.coolify.yml`, and deployment secrets aligned: default `CORS_ALLOW_ALL_ORIGINS=False`, populate `CORS_ALLOWED_ORIGINS` with the SPA hosts (5173-5176 locally), and ensure each Vite app points `VITE_API_URL` at the deployed backend.
 - **Data Contract Source of Truth** Keep schema definitions, payload examples, and acceptance criteria synchronized with `implementation.md` and update both docs when requirements shift.
 
 ## Agent Guidance
