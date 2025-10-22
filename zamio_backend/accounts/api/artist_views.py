@@ -13,6 +13,7 @@ from rest_framework.decorators import api_view, permission_classes, authenticati
 from rest_framework.response import Response
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated
+from accounts.api.custom_jwt import CustomJWTAuthentication
 
 from accounts.api.serializers import UserRegistrationSerializer
 from accounts.api.token_utils import get_jwt_tokens_for_user
@@ -642,7 +643,7 @@ import json
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @csrf_exempt
 def complete_artist_profile_view(request):
     payload = {}
@@ -775,7 +776,7 @@ def complete_artist_profile_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @csrf_exempt
 def skip_artist_onboarding_view(request):
     payload = {}
@@ -818,7 +819,7 @@ def skip_artist_onboarding_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @csrf_exempt
 def skip_verification_view(request):
     """
@@ -1023,7 +1024,7 @@ def skip_verification_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @csrf_exempt
 def resume_verification_view(request):
     """
@@ -1186,7 +1187,7 @@ def resume_verification_view(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def verification_status_view(request):
     """
     Get current verification status and available actions for the user
@@ -1267,7 +1268,7 @@ def verification_status_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def send_verification_reminder_view(request):
     """
     Send verification reminder to users who have skipped verification
@@ -1392,7 +1393,7 @@ def send_verification_reminder_view(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def verification_requirements_view(request):
     """
     Get detailed verification requirements and guidelines for the user
@@ -1594,7 +1595,7 @@ def verification_requirements_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @csrf_exempt
 def complete_artist_social_view(request):
     payload = {}
@@ -1648,7 +1649,7 @@ def complete_artist_social_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @csrf_exempt
 def complete_artist_payment_view(request):
     payload = {}
@@ -1698,7 +1699,7 @@ def complete_artist_payment_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @csrf_exempt
 def complete_artist_publisher_view(request):
     payload = {}
@@ -1767,7 +1768,7 @@ def complete_artist_publisher_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @csrf_exempt
 def onboard_artist_view(request):
     payload = {}
@@ -1832,7 +1833,7 @@ def onboard_artist_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @csrf_exempt
 def logout_artist_view(request):
     payload = {}
@@ -1920,7 +1921,7 @@ def logout_artist_view(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def artist_onboarding_status_view(request, artist_id):
     """Get current onboarding status for an artist"""
     payload = {}
@@ -1968,7 +1969,7 @@ def artist_onboarding_status_view(request, artist_id):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @csrf_exempt
 def update_onboarding_status_view(request):
     """Update specific onboarding step status"""
@@ -2023,7 +2024,7 @@ def update_onboarding_status_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @csrf_exempt
 def complete_artist_onboarding_view(request):
     """Mark artist onboarding as complete and set self-published status"""
@@ -2077,7 +2078,7 @@ def complete_artist_onboarding_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @csrf_exempt
 def set_self_published_status_view(request):
     """Explicitly set artist self-published status"""
@@ -2121,7 +2122,7 @@ def set_self_published_status_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @csrf_exempt
 def upload_kyc_documents_view(request):
     """Enhanced KYC document upload with proper file handling and security"""
@@ -2197,7 +2198,7 @@ def upload_kyc_documents_view(request):
 
 
 @api_view(['GET'])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @permission_classes([IsAuthenticated])
 def get_kyc_documents_view(request):
     """Get all KYC documents for the authenticated user"""
@@ -2222,7 +2223,7 @@ def get_kyc_documents_view(request):
 
 
 @api_view(['DELETE'])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @permission_classes([IsAuthenticated])
 def delete_kyc_document_view(request, document_id):
     """Delete a KYC document (only if not approved)"""
@@ -2261,7 +2262,7 @@ def delete_kyc_document_view(request, document_id):
 
 
 @api_view(['GET'])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @permission_classes([IsAuthenticated])
 def download_kyc_document_view(request, document_id):
     """Download a KYC document with enhanced access control"""
@@ -2300,7 +2301,7 @@ def download_kyc_document_view(request, document_id):
 
 
 @api_view(['GET'])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @permission_classes([IsAuthenticated])
 def get_secure_download_url_view(request, document_id):
     """Get a secure download URL for a KYC document"""
@@ -2343,7 +2344,7 @@ def get_secure_download_url_view(request, document_id):
 
 
 @api_view(['GET'])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @permission_classes([IsAuthenticated])
 def secure_download_view(request, document_id):
     """Secure file download with token verification"""
