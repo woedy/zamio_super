@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
+
 def calculate_profile_completion_percentage(artist):
     """Calculate the completion percentage of an artist's profile"""
     total_steps = 6  # profile, social, payment, publisher, kyc, track
