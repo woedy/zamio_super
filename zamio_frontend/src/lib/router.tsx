@@ -76,7 +76,6 @@ import {
 
 // Import layout and onboarding components
 import Layout from '../components/Layout';
-import OnboardingWizard from '../components/onboarding/OnboardingWizard';
 import ArtistOnboarding from '../pages/Authentication/ArtistOnboarding';
 
 const router = createBrowserRouter([
@@ -113,11 +112,11 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/onboarding',
+    path: '/onboarding/:stepId?',
     element: (
-      <PublicRoute>
+      <PrivateRoute>
         <ArtistOnboarding />
-      </PublicRoute>
+      </PrivateRoute>
     ),
   },
   {

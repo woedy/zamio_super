@@ -52,7 +52,7 @@ def calculate_profile_completion_percentage(artist):
         completed_steps += 1
     if artist.user.verification_status in ['verified', 'skipped']:
         completed_steps += 1
-    if artist.track_uploaded:
+    if getattr(artist, 'track_uploaded', False):
         completed_steps += 1
     
     return round((completed_steps / total_steps) * 100)
@@ -70,7 +70,7 @@ def get_next_recommended_step(artist):
         return 'publisher'
     elif artist.user.verification_status == 'pending':
         return 'kyc'
-    elif not artist.track_uploaded:
+    elif not getattr(artist, 'track_uploaded', False):
         return 'track'
     return 'done'
 
@@ -83,7 +83,7 @@ def get_required_fields_status(artist):
         'payment_required': not artist.payment_info_added,
         'publisher_required': not artist.publisher_added,
         'social_media_optional': not artist.social_media_added,
-        'track_optional': not artist.track_uploaded,
+        'track_optional': not getattr(artist, 'track_uploaded', False),
     }
 
 
@@ -91,13 +91,32 @@ def get_verification_required_features(user):
     """Get list of features that require verification"""
     if user.verification_status == 'verified':
         return []
-    
+
     return [
         'royalty_withdrawals',
         'publisher_partnerships',
         'advanced_analytics',
         'priority_support'
     ]
+
+
+def serialize_artist_onboarding_state(artist):
+    """Serialize the artist onboarding state for consistent API responses."""
+    return {
+        "artist_id": artist.artist_id,
+        "onboarding_step": artist.onboarding_step,
+        "next_step": artist.onboarding_step,
+        "progress": {
+            "profile_completed": bool(getattr(artist, 'profile_completed', False)),
+            "social_media_added": bool(getattr(artist, 'social_media_added', False)),
+            "payment_info_added": bool(getattr(artist, 'payment_info_added', False)),
+            "publisher_added": bool(getattr(artist, 'publisher_added', False)),
+            "track_uploaded": bool(getattr(artist, 'track_uploaded', False)),
+        },
+        "completion_percentage": calculate_profile_completion_percentage(artist),
+        "next_recommended_step": get_next_recommended_step(artist),
+        "required_fields": get_required_fields_status(artist),
+    }
 
 
 
@@ -696,6 +715,8 @@ def complete_artist_profile_view(request):
         changes_made['bio'] = {'old': old_values['bio'], 'new': bio}
     if country and country != old_values['country']:
         artist.country = country
+        artist.user.country = country
+        artist.user.save(update_fields=['country'])
         changes_made['country'] = {'old': old_values['country'], 'new': country}
     if region and region != old_values['region']:
         artist.region = region
@@ -717,14 +738,13 @@ def complete_artist_profile_view(request):
         photo_url = artist.user.photo.url if artist.user.photo else None
         changes_made['photo'] = {'old': old_values['photo'], 'new': artist.user.photo.name}
     
-    # Save artist changes
+    # Save artist changes and advance onboarding pointer
     artist.save()
-    # Mark this step as complete (profile)
     artist.profile_completed = True
+    artist.onboarding_step = artist.get_next_onboarding_step()
     artist.save()
 
-    data["artist_id"] = artist.artist_id
-    data["next_step"] = artist.onboarding_step
+    data.update(serialize_artist_onboarding_state(artist))
     if photo_url:
         data["photo"] = photo_url
 
@@ -962,12 +982,8 @@ def skip_verification_view(request):
         "verification_required_for_features": get_verification_required_features(user),
         "profile_completion_percentage": calculate_profile_completion_percentage(artist),
         "onboarding_progress": {
-            "profile_completed": artist.profile_completed,
-            "social_media_added": artist.social_media_added,
-            "payment_info_added": artist.payment_info_added,
-            "publisher_added": artist.publisher_added,
+            **serialize_artist_onboarding_state(artist)["progress"],
             "verification_skipped": True,
-            "track_uploaded": artist.track_uploaded
         },
         "skip_details": {
             "reason": reason or "No reason provided",
@@ -1621,8 +1637,7 @@ def complete_artist_social_view(request):
     artist.onboarding_step = artist.get_next_onboarding_step()
     artist.save()
 
-    data["artist_id"] = artist.artist_id
-    data["next_step"] = artist.onboarding_step
+    data.update(serialize_artist_onboarding_state(artist))
 
     payload['message'] = "Successful"
     payload['data'] = data
@@ -1657,11 +1672,14 @@ def complete_artist_payment_view(request):
         payload['errors'] = errors
         return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
-    # Apply changes if provided
-    if momo:
-        artist.momo_account = momo
-    if bankAccount:
-        artist.bank_account = bankAccount
+    # Persist payment preferences on the user profile for reference
+    payment_snapshot = dict(getattr(artist.user, 'kyc_documents', {}) or {})
+    payment_snapshot['payment_preferences'] = {
+        'momo': momo or None,
+        'bank_account': bankAccount or None,
+    }
+    artist.user.kyc_documents = payment_snapshot
+    artist.user.save(update_fields=['kyc_documents'])
 
     # Mark this step as complete
     artist.payment_info_added = True
@@ -1670,8 +1688,7 @@ def complete_artist_payment_view(request):
     artist.onboarding_step = artist.get_next_onboarding_step()
     artist.save()
 
-    data["artist_id"] = artist.artist_id
-    data["next_step"] = artist.onboarding_step
+    data.update(serialize_artist_onboarding_state(artist))
 
     payload['message'] = "Successful"
     payload['data'] = data
@@ -1711,11 +1728,11 @@ def complete_artist_publisher_view(request):
 
     # Apply changes
     if self_publish is True:
-        artist.self_publish = True
+        artist.is_self_published = True
         # Clear any previously set publisher if switching to self-publish
         artist.publisher = None
     else:
-        artist.self_publish = False
+        artist.is_self_published = False
         if publisher_id:
             try:
                 publisher = PublisherProfile.objects.get(publisher_id=publisher_id)
@@ -1735,8 +1752,7 @@ def complete_artist_publisher_view(request):
     artist.onboarding_step = artist.get_next_onboarding_step()
     artist.save()
 
-    data["artist_id"] = artist.artist_id
-    data["next_step"] = artist.onboarding_step
+    data.update(serialize_artist_onboarding_state(artist))
 
     payload['message'] = "Successful"
     payload['data'] = data
@@ -1922,25 +1938,25 @@ def artist_onboarding_status_view(request, artist_id):
     # Get user KYC status
     user = artist.user
     
+    onboarding_state = serialize_artist_onboarding_state(artist)
     data = {
-        "artist_id": artist.artist_id,
-        "onboarding_step": artist.onboarding_step,
-        "profile_completed": artist.profile_completed,
-        "social_media_added": artist.social_media_added,
-        "payment_info_added": artist.payment_info_added,
-        "publisher_added": artist.publisher_added,
-        "track_uploaded": artist.track_uploaded,
+        **onboarding_state,
+        "profile_completed": onboarding_state["progress"].get("profile_completed", False),
+        "social_media_added": onboarding_state["progress"].get("social_media_added", False),
+        "payment_info_added": onboarding_state["progress"].get("payment_info_added", False),
+        "publisher_added": onboarding_state["progress"].get("publisher_added", False),
+        "track_uploaded": onboarding_state["progress"].get("track_uploaded", False),
         "kyc_status": user.kyc_status,
         "kyc_documents": user.kyc_documents,
         "verification_status": user.verification_status,
         "verification_skipped_at": user.verification_skipped_at.isoformat() if user.verification_skipped_at else None,
         "verification_reminder_sent": user.verification_reminder_sent,
-        "self_published": artist.self_published,
-        "publisher_relationship_status": artist.publisher_relationship_status,
-        "royalty_collection_method": artist.royalty_collection_method,
-        "profile_complete_percentage": calculate_profile_completion_percentage(artist),
-        "next_recommended_step": get_next_recommended_step(artist),
-        "required_fields": get_required_fields_status(artist),
+        "self_published": getattr(artist, 'is_self_published', True),
+        "publisher_relationship_status": getattr(artist, 'publisher_relationship_status', None),
+        "royalty_collection_method": getattr(artist, 'royalty_collection_method', None),
+        "profile_complete_percentage": onboarding_state["completion_percentage"],
+        "required_fields": onboarding_state["required_fields"],
+        "next_recommended_step": onboarding_state["next_recommended_step"],
         "can_skip_verification": user.verification_status == 'pending',
         "verification_required_for_features": get_verification_required_features(user),
     }
@@ -1995,10 +2011,9 @@ def update_onboarding_status_view(request):
         artist.save()
 
     data = {
-        "artist_id": artist.artist_id,
         "step": step,
         "completed": completed,
-        "next_step": artist.onboarding_step,
+        **serialize_artist_onboarding_state(artist),
     }
 
     payload['message'] = "Successful"
@@ -2036,9 +2051,9 @@ def complete_artist_onboarding_view(request):
     
     # Ensure self-published status is set correctly
     if not artist.publisher:
-        artist.self_published = True
-        artist.royalty_collection_method = 'direct'
-        artist.publisher_relationship_status = 'independent'
+        setattr(artist, 'is_self_published', True)
+        setattr(artist, 'royalty_collection_method', 'direct')
+        setattr(artist, 'publisher_relationship_status', 'independent')
     
     artist.save()
 
@@ -2048,11 +2063,11 @@ def complete_artist_onboarding_view(request):
     user.save()
 
     data = {
-        "artist_id": artist.artist_id,
         "onboarding_complete": True,
-        "self_published": artist.self_published,
-        "royalty_collection_method": artist.royalty_collection_method,
-        "publisher_relationship_status": artist.publisher_relationship_status,
+        "self_published": getattr(artist, 'is_self_published', True),
+        "royalty_collection_method": getattr(artist, 'royalty_collection_method', None),
+        "publisher_relationship_status": getattr(artist, 'publisher_relationship_status', None),
+        **serialize_artist_onboarding_state(artist),
     }
 
     payload['message'] = "Successful"
@@ -2094,9 +2109,9 @@ def set_self_published_status_view(request):
 
     data = {
         "artist_id": artist.artist_id,
-        "self_published": artist.self_published,
-        "royalty_collection_method": artist.royalty_collection_method,
-        "publisher_relationship_status": artist.publisher_relationship_status,
+        "self_published": getattr(artist, 'is_self_published', True),
+        "royalty_collection_method": getattr(artist, 'royalty_collection_method', None),
+        "publisher_relationship_status": getattr(artist, 'publisher_relationship_status', None),
     }
 
     payload['message'] = "Successful"
@@ -2371,45 +2386,3 @@ def secure_download_view(request, document_id):
             'errors': {'general': [str(e)]}
         }
         return Response(payload, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    if not artist.profile_completed:
-        return 'profile'
-    elif artist.user.kyc_status == 'pending':
-        return 'kyc'
-    elif not artist.social_media_added:
-        return 'social-media'
-    elif not artist.payment_info_added:
-        return 'payment'
-    elif not artist.publisher_added and not artist.self_published:
-        return 'publisher'
-    elif not artist.track_uploaded:
-        return 'track'
-    return 'done'
-
-
-def get_required_fields_status(artist):
-    """Get status of required fields for profile completion"""
-    user = artist.user
-    
-    return {
-        'basic_info': {
-            'completed': bool(user.first_name and user.last_name and artist.stage_name),
-            'fields': ['first_name', 'last_name', 'stage_name']
-        },
-        'profile_details': {
-            'completed': bool(artist.bio and artist.country and user.photo),
-            'fields': ['bio', 'country', 'photo']
-        },
-        'contact_info': {
-            'completed': bool(user.email and user.phone),
-            'fields': ['email', 'phone']
-        },
-        'kyc_verification': {
-            'completed': user.kyc_status in ['verified', 'uploaded'],
-            'status': user.kyc_status,
-            'required_documents': ['id_card', 'utility_bill']
-        },
-        'payment_info': {
-            'completed': bool(artist.momo_account or artist.bank_account),
-            'fields': ['momo_account', 'bank_account']
-        }
-    }

@@ -35,6 +35,23 @@ logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
+
+def serialize_station_onboarding_state(station):
+    """Serialize station onboarding progress for consistent responses."""
+    return {
+        "station_id": station.station_id,
+        "onboarding_step": station.onboarding_step,
+        "next_step": station.onboarding_step,
+        "progress": {
+            "profile_completed": bool(getattr(station, 'profile_completed', False)),
+            "staff_completed": bool(getattr(station, 'staff_completed', False)),
+            "report_completed": bool(getattr(station, 'report_completed', False)),
+            "payment_info_added": bool(getattr(station, 'payment_info_added', False)),
+        },
+        "stream_status": getattr(station, 'stream_status', None),
+        "stream_validation_errors": getattr(station, 'stream_validation_errors', None),
+    }
+
 @api_view(['POST', ])
 @permission_classes([])
 @authentication_classes([])
@@ -630,8 +647,7 @@ def complete_station_profile_view(request):
     station.onboarding_step = station.get_next_onboarding_step()
     station.save()
 
-    data["station_id"] = station.station_id
-    data["next_step"] = station.onboarding_step
+    data.update(serialize_station_onboarding_state(station))
     if photo_url:
         data["photo"] = photo_url
 
@@ -699,8 +715,7 @@ def complete_add_staff_view(request):
     station.onboarding_step = station.get_next_onboarding_step()
     station.save()
 
-    data["station_id"] = station.station_id
-    data["next_step"] = station.onboarding_step
+    data.update(serialize_station_onboarding_state(station))
 
     payload['message'] = "Successful"
     payload['data'] = data
@@ -750,8 +765,7 @@ def complete_report_method_view(request):
     station.onboarding_step = station.get_next_onboarding_step()
     station.save()
 
-    data["station_id"] = station.station_id
-    data["next_step"] = station.onboarding_step
+    data.update(serialize_station_onboarding_state(station))
 
     payload['message'] = "Successful"
     payload['data'] = data
@@ -847,8 +861,7 @@ def complete_station_payment_view(request):
     station.onboarding_step = station.get_next_onboarding_step()
     station.save()
 
-    data["station_id"] = station.station_id
-    data["next_step"] = station.onboarding_step
+    data.update(serialize_station_onboarding_state(station))
 
     payload['message'] = "Successful"
     payload['data'] = data
@@ -970,8 +983,7 @@ def skip_station_onboarding_view(request):
     station.onboarding_step = step
     station.save()
 
-    data['station_id'] = station.station_id
-    data['next_step'] = station.onboarding_step
+    data.update(serialize_station_onboarding_state(station))
 
     payload['message'] = 'Successful'
     payload['data'] = data
@@ -1000,12 +1012,7 @@ def station_onboarding_status_view(request):
         payload['errors'] = {'station_id': ['Station not found.']}
         return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
-    data['station_id'] = station.station_id
-    data['onboarding_step'] = station.onboarding_step
-    data['profile_completed'] = station.profile_completed
-    data['staff_completed'] = station.staff_completed
-    data['report_completed'] = station.report_completed
-    data['payment_info_added'] = station.payment_info_added
+    data.update(serialize_station_onboarding_state(station))
 
     payload['message'] = 'Successful'
     payload['data'] = data
@@ -1033,12 +1040,12 @@ def enhanced_station_onboarding_status_view(request, station_id):
     # Get user KYC status
     user = station.user
     
+    onboarding_state = serialize_station_onboarding_state(station)
     data = {
-        "station_id": station.station_id,
-        "onboarding_step": station.onboarding_step,
-        "profile_completed": station.profile_completed,
-        "staff_completed": station.staff_completed,
-        "payment_info_added": station.payment_info_added,
+        **onboarding_state,
+        "profile_completed": onboarding_state["progress"].get("profile_completed", False),
+        "staff_completed": onboarding_state["progress"].get("staff_completed", False),
+        "payment_info_added": onboarding_state["progress"].get("payment_info_added", False),
         "kyc_status": user.kyc_status,
         "kyc_documents": user.kyc_documents,
         "station_name": station.name,
@@ -1104,10 +1111,9 @@ def update_station_onboarding_status_view(request):
         station.save()
 
     data = {
-        "station_id": station.station_id,
         "step": step,
         "completed": completed,
-        "next_step": station.onboarding_step,
+        **serialize_station_onboarding_state(station),
     }
 
     payload['message'] = "Successful"

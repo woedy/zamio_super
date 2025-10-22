@@ -44,9 +44,9 @@
   - AB2.5 Successful onboarding toggles status flags (`is_onboarded`) so dashboards unlock and marks station capture app as ready.
   - AB2.6 Integration tests cover required fields, forbidden transitions, file upload validation, and provisioning payload integrity.
 - **Task Checklist**
-  - [ ] Backend QA: Review serializers/views in `artists/` and `stations/` apps; adjust only if data contract gaps emerge.
-  - [ ] Backend QA: Execute Postman/pytest flows for artist onboarding, station setup, and provisioning.
-  - [ ] Frontend: Build multi-step onboarding UI with progress saving against existing endpoints.
+  - [x] Backend QA: Review serializers/views in `artists/` and `stations/` apps; adjust only if data contract gaps emerge.
+  - [x] Backend QA: Execute Postman/pytest flows for artist onboarding, station setup, and provisioning.
+  - [x] Frontend: Build multi-step onboarding UI with progress saving against existing endpoints.
   - [ ] Frontend: Implement file upload + validation messaging mapped to backend error structure.
   - [ ] Flutter (`zamio_app`): Confirm provisioning payload compatibility, persist station credentials, and regression-test chunk upload loop against staging backend.
   - [ ] QA: Expand seed data + collections covering onboarding and capture provisioning scenarios.

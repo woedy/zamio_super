@@ -1,277 +1,158 @@
-import React, { useState } from 'react';
-import { Camera, Music, Instagram, Twitter, Facebook, Youtube } from 'lucide-react';
-import { OnboardingStepProps } from '../../../../components/onboarding/OnboardingWizard';
+import { FormEvent, useState } from 'react';
 
-const ProfileStep: React.FC<OnboardingStepProps> = ({ onNext, onPrevious }) => {
-  const [formData, setFormData] = useState({
-    artistName: '',
-    bio: '',
-    genre: '',
-    style: '',
-    location: '',
-    website: '',
-    instagram: '',
-    twitter: '',
-    facebook: '',
-    youtube: ''
-  });
+import {
+  completeArtistProfile,
+  type ApiErrorMap,
+} from '../../../../lib/api';
+import { useArtistOnboarding } from '../ArtistOnboardingContext';
+import type { OnboardingStepProps } from '../../../../components/onboarding/OnboardingWizard';
 
-  const [profileImage, setProfileImage] = useState<string | null>(null);
+const defaultForm = {
+  bio: '',
+  country: '',
+  region: '',
+  location: '',
+};
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+const ProfileStep = ({ onNext }: OnboardingStepProps) => {
+  const { artistId, applyEnvelope } = useArtistOnboarding();
+  const [formState, setFormState] = useState(defaultForm);
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [errors, setErrors] = useState<ApiErrorMap | null>(null);
+  const [feedback, setFeedback] = useState<string | null>(null);
+
+  const handleChange = (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = event.target;
+    setFormState(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setProfileImage(e.target?.result as string);
-      };
-      reader.readAsDataURL(file);
+  const handlePhoto = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    setPhoto(file ?? null);
+  };
+
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    setSubmitting(true);
+    setErrors(null);
+    setFeedback(null);
+
+    const payload = new FormData();
+    payload.append('artist_id', artistId);
+    Object.entries(formState).forEach(([key, value]) => {
+      if (value) {
+        payload.append(key, value);
+      }
+    });
+    if (photo) {
+      payload.append('photo', photo);
+    }
+
+    try {
+      const response = await completeArtistProfile(payload);
+      applyEnvelope(response);
+      setFeedback('Profile saved successfully.');
+      onNext?.();
+    } catch (err) {
+      const apiErrors = (err as { response?: { data?: { errors?: ApiErrorMap; message?: string } } }).response?.data;
+      setErrors(apiErrors?.errors ?? null);
+      setFeedback(apiErrors?.message ?? 'Unable to save your profile. Please review the fields and try again.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const genres = [
-    'Afrobeats', 'Afro-Pop', 'Afro-Fusion', 'Highlife', 'Hiplife',
-    'Gospel', 'Reggae/Dancehall', 'Hip-Hop/Rap', 'R&B/Soul',
-    'Traditional', 'Jazz', 'Electronic', 'Rock', 'Other'
-  ];
-
-  const styles = [
-    'Contemporary', 'Traditional', 'Fusion', 'Experimental',
-    'Commercial', 'Underground', 'Mainstream', 'Alternative'
-  ];
-
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="mb-8">
-        <h2 className="text-2xl font-semibold text-white mb-2">Complete Your Artist Profile</h2>
-        <p className="text-slate-300">Tell us about yourself and your music to help us personalize your experience.</p>
-      </div>
+    <form onSubmit={handleSubmit} className="space-y-6">
+      <p className="text-sm text-slate-300">
+        Provide a short bio and location so we can tailor royalty insights and communications for you. You can update this
+        information later in your profile settings.
+      </p>
 
-      <div className="space-y-8">
-        {/* Profile Picture Upload */}
-        <div className="flex items-center space-x-6">
-          <div className="relative">
-            <div className={`w-24 h-24 rounded-full border-2 border-dashed flex items-center justify-center bg-slate-800/50 ${
-              profileImage ? 'border-indigo-400' : 'border-slate-600'
-            }`}>
-              {profileImage ? (
-                <img
-                  src={profileImage}
-                  alt="Profile"
-                  className="w-full h-full rounded-full object-cover"
-                />
-              ) : (
-                <Camera className="w-8 h-8 text-slate-400" />
-              )}
-            </div>
-            <label className="absolute -bottom-2 -right-2 w-8 h-8 bg-indigo-500 hover:bg-indigo-400 rounded-full flex items-center justify-center cursor-pointer transition-colors">
-              <Camera className="w-4 h-4 text-white" />
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                className="hidden"
-              />
-            </label>
-          </div>
-          <div>
-            <h3 className="text-lg font-medium text-white mb-1">Profile Picture</h3>
-            <p className="text-sm text-slate-400">Upload a photo that represents you as an artist</p>
-          </div>
-        </div>
-
-        {/* Basic Information */}
-        <div className="grid md:grid-cols-2 gap-6">
-          <div>
-            <label htmlFor="artistName" className="block text-sm font-medium text-slate-200 mb-2">
-              Artist Name *
-            </label>
-            <input
-              id="artistName"
-              name="artistName"
-              type="text"
-              required
-              value={formData.artistName}
-              onChange={handleInputChange}
-              className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-              placeholder="Your artist name"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="location" className="block text-sm font-medium text-slate-200 mb-2">
-              Location
-            </label>
-            <input
-              id="location"
-              name="location"
-              type="text"
-              value={formData.location}
-              onChange={handleInputChange}
-              className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-              placeholder="City, Country"
-            />
-          </div>
-        </div>
-
-        {/* Bio */}
-        <div>
-          <label htmlFor="bio" className="block text-sm font-medium text-slate-200 mb-2">
-            Artist Bio
-          </label>
-          <textarea
-            id="bio"
-            name="bio"
-            value={formData.bio}
-            onChange={handleInputChange}
-            rows={4}
-            className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-            placeholder="Tell us about your musical journey, influences, and what makes your music unique..."
-          />
-        </div>
-
-        {/* Music Information */}
-        <div className="grid md:grid-cols-2 gap-6">
-          <div>
-            <label htmlFor="genre" className="block text-sm font-medium text-slate-200 mb-2">
-              Primary Genre
-            </label>
-            <select
-              id="genre"
-              name="genre"
-              value={formData.genre}
-              onChange={handleInputChange}
-              className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-            >
-              <option value="">Select your primary genre</option>
-              {genres.map((genre) => (
-                <option key={genre} value={genre}>{genre}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label htmlFor="style" className="block text-sm font-medium text-slate-200 mb-2">
-              Musical Style
-            </label>
-            <select
-              id="style"
-              name="style"
-              value={formData.style}
-              onChange={handleInputChange}
-              className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-            >
-              <option value="">Select your musical style</option>
-              {styles.map((style) => (
-                <option key={style} value={style}>{style}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Website */}
-        <div>
-          <label htmlFor="website" className="block text-sm font-medium text-slate-200 mb-2">
-            Website (Optional)
-          </label>
+      <div className="grid gap-4 md:grid-cols-2">
+        <label className="flex flex-col space-y-2">
+          <span className="text-sm font-medium text-slate-200">Country</span>
           <input
-            id="website"
-            name="website"
-            type="url"
-            value={formData.website}
-            onChange={handleInputChange}
-            className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-            placeholder="https://yourwebsite.com"
+            name="country"
+            value={formState.country}
+            onChange={handleChange}
+            className="rounded-lg border border-white/20 bg-slate-900/60 px-4 py-2 text-white focus:border-indigo-400 focus:outline-none"
+            placeholder="e.g. Ghana"
           />
-        </div>
-
-        {/* Social Media Links */}
-        <div>
-          <h3 className="text-lg font-medium text-white mb-4">Social Media Links</h3>
-          <div className="grid md:grid-cols-2 gap-4">
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Instagram className="h-5 w-5 text-slate-400" />
-              </div>
-              <input
-                type="text"
-                name="instagram"
-                value={formData.instagram}
-                onChange={handleInputChange}
-                className="w-full pl-10 rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                placeholder="@instagram"
-              />
-            </div>
-
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Twitter className="h-5 w-5 text-slate-400" />
-              </div>
-              <input
-                type="text"
-                name="twitter"
-                value={formData.twitter}
-                onChange={handleInputChange}
-                className="w-full pl-10 rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                placeholder="@twitter"
-              />
-            </div>
-
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Facebook className="h-5 w-5 text-slate-400" />
-              </div>
-              <input
-                type="text"
-                name="facebook"
-                value={formData.facebook}
-                onChange={handleInputChange}
-                className="w-full pl-10 rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                placeholder="facebook.com/yourpage"
-              />
-            </div>
-
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Youtube className="h-5 w-5 text-slate-400" />
-              </div>
-              <input
-                type="text"
-                name="youtube"
-                value={formData.youtube}
-                onChange={handleInputChange}
-                className="w-full pl-10 rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                placeholder="youtube.com/yourchannel"
-              />
-            </div>
-          </div>
-        </div>
+        </label>
+        <label className="flex flex-col space-y-2">
+          <span className="text-sm font-medium text-slate-200">Region</span>
+          <input
+            name="region"
+            value={formState.region}
+            onChange={handleChange}
+            className="rounded-lg border border-white/20 bg-slate-900/60 px-4 py-2 text-white focus:border-indigo-400 focus:outline-none"
+            placeholder="e.g. Greater Accra"
+          />
+        </label>
       </div>
 
-      {/* Navigation */}
-      <div className="flex justify-between mt-8 pt-6 border-t border-white/10">
+      <label className="flex flex-col space-y-2">
+        <span className="text-sm font-medium text-slate-200">City / Location</span>
+        <input
+          name="location"
+          value={formState.location}
+          onChange={handleChange}
+          className="rounded-lg border border-white/20 bg-slate-900/60 px-4 py-2 text-white focus:border-indigo-400 focus:outline-none"
+          placeholder="Where are you based?"
+        />
+      </label>
+
+      <label className="flex flex-col space-y-2">
+        <span className="text-sm font-medium text-slate-200">Artist Bio</span>
+        <textarea
+          name="bio"
+          value={formState.bio}
+          onChange={handleChange}
+          rows={4}
+          className="rounded-lg border border-white/20 bg-slate-900/60 px-4 py-2 text-white focus:border-indigo-400 focus:outline-none"
+          placeholder="Tell us about your music story..."
+        />
+      </label>
+
+      <label className="flex flex-col space-y-2">
+        <span className="text-sm font-medium text-slate-200">Profile Photo (optional)</span>
+        <input
+          type="file"
+          accept="image/*"
+          onChange={handlePhoto}
+          className="text-sm text-slate-300"
+        />
+      </label>
+
+      {errors && (
+        <div className="rounded border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+          <p className="font-medium">Please fix the issues below:</p>
+          <ul className="mt-2 space-y-1">
+            {Object.entries(errors).map(([field, message]) => (
+              <li key={field}>{Array.isArray(message) ? message.join(', ') : message}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {feedback && !errors && (
+        <div className="rounded border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+          {feedback}
+        </div>
+      )}
+
+      <div className="flex justify-end">
         <button
-          onClick={onPrevious}
-          className="bg-slate-800/50 hover:bg-slate-800 text-white px-6 py-2 rounded-lg transition-colors"
+          type="submit"
+          className="inline-flex items-center rounded-lg bg-indigo-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-400 disabled:opacity-60"
+          disabled={submitting}
         >
-          Previous
-        </button>
-        <button
-          onClick={onNext}
-          className="bg-indigo-500 hover:bg-indigo-400 text-white px-6 py-2 rounded-lg transition-colors"
-        >
-          Continue to Verification
+          {submitting ? 'Saving…' : 'Save and continue'}
         </button>
       </div>
-    </div>
+    </form>
   );
 };
 
