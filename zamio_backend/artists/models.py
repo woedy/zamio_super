@@ -244,13 +244,16 @@ class Artist(models.Model):
         ('social-media', 'Social Media'),
         ('payment', 'Payment'),
         ('publisher', 'Publisher'),
+        ('kyc', 'Identity Verification'),
         ('done', 'Done'),
     ]
-    
+
     artist_id = models.CharField(max_length=255, blank=True, null=True, unique=True)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='artists')
     stage_name = models.CharField(max_length=255)
     bio = models.TextField(blank=True, null=True)
+    country = models.CharField(max_length=255, blank=True, null=True)
+    region = models.CharField(max_length=255, blank=True, null=True)
     location = models.CharField(max_length=255, blank=True, null=True)
     
     # Social media links
@@ -311,6 +314,8 @@ class Artist(models.Model):
         for step, completed in steps:
             if not completed:
                 return step
+        if getattr(self.user, 'verification_status', 'pending') == 'pending':
+            return 'kyc'
         return 'done'
 
 

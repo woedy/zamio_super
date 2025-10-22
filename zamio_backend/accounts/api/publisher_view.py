@@ -100,7 +100,7 @@ def register_publisher_view(request):
         serializer = UserRegistrationSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
-            data["user_id"] = user.user_id
+            data["user_id"] = str(user.user_id)
             data["email"] = user.email
             data["first_name"] = user.first_name
             data["last_name"] = user.last_name
@@ -238,7 +238,7 @@ def verify_publisher_email(request):
         publisher = PublisherProfile.objects.get(user=user)
         
         # Prepare response data (maintain backward compatibility)
-        data["user_id"] = user.user_id
+        data["user_id"] = str(user.user_id)
         data["publisher_id"] = publisher.publisher_id
         data["email"] = user.email
         data["first_name"] = user.first_name
@@ -346,7 +346,7 @@ def verify_publisher_email_code(request):
         publisher = PublisherProfile.objects.get(user=user)
         
         # Prepare response data
-        data["user_id"] = user.user_id
+        data["user_id"] = str(user.user_id)
         data["publisher_id"] = publisher.publisher_id
         data["email"] = user.email
         data["first_name"] = user.first_name
@@ -503,7 +503,7 @@ class PublisherLogin(APIView):
         publisher.save()
 
         data = {
-            "user_id": user.user_id,
+            "user_id": str(user.user_id),
             "publisher_id": publisher.publisher_id,
             "email": user.email,
             "first_name": user.first_name,

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import type { FormEvent } from 'react';
 
 import type { OnboardingStepProps } from '../../../components/onboarding/OnboardingWizard';
 import {
@@ -8,13 +9,20 @@ import {
 import { useArtistOnboarding } from './ArtistOnboardingContext';
 
 const Publisher = ({ onNext }: OnboardingStepProps) => {
-  const { artistId, applyEnvelope } = useArtistOnboarding();
+  const { artistId, applyEnvelope, status } = useArtistOnboarding();
   const [selfPublish, setSelfPublish] = useState(true);
   const [publisherId, setPublisherId] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<ApiErrorMap | null>(null);
 
-  const handleSubmit = async (event: React.FormEvent) => {
+  useEffect(() => {
+    const publisher = status?.publisher_preferences;
+    if (!publisher) return;
+    setSelfPublish(publisher.is_self_published !== false);
+    setPublisherId(publisher.publisher_id ? String(publisher.publisher_id) : '');
+  }, [status?.publisher_preferences?.is_self_published, status?.publisher_preferences?.publisher_id]);
+
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setSubmitting(true);
     setErrors(null);

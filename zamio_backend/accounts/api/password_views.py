@@ -69,7 +69,7 @@ class PasswordResetView(generics.GenericAPIView):
             task_id = send_password_reset_email(user)
 
             data["email"] = user.email
-            data["user_id"] = user.user_id
+            data["user_id"] = str(user.user_id)
             data["task_id"] = task_id
 
             # Create activity log
@@ -131,7 +131,7 @@ def confirm_otp_password_view(request):
         return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
     data['email'] = user.email if user else ''
-    data['user_id'] = user.user_id if user else ''
+    data['user_id'] = str(user.user_id) if user else ''
 
     payload['message'] = "Successful"
     payload['data'] = data
@@ -185,7 +185,7 @@ def resend_password_otp(request):
         task_id = send_password_reset_email(user)
 
         data["email"] = user.email
-        data["user_id"] = user.user_id
+        data["user_id"] = str(user.user_id)
         data["task_id"] = task_id
 
         # Create activity log
@@ -519,7 +519,7 @@ def new_password_reset_view(request):
     user.save()
 
     data['email'] = user.email
-    data['user_id'] = user.user_id
+    data['user_id'] = str(user.user_id)
 
 
     payload['message'] = "Successful, Password reset successfully."

@@ -30,7 +30,7 @@
   - [x] Tests: Execute automated and manual scenarios (pytest, Postman, Cypress) covering B1 acceptance criteria and user stories.
 
 ### Phase B2 · Onboarding & Profile Setup
-- **Vision** Guide newly authenticated users through completing artist/station profiles, linking PRO affiliations, and provisioning the station capture app configuration.
+- **Vision** Guide newly authenticated users through completing artist/station profiles, linking PRO affiliations, and provisioning the station capture app configuration while keeping the refreshed artist onboarding UI as the canonical data contract.
 - **User Stories**
   - B2.1 Artist Onboarding: As an artist, I can submit bio, repertoire, and PRO affiliation info.
   - B2.2 Station Setup: As a station admin, I can register my station, upload scheduling data, and set royalty reporting preferences.
@@ -46,7 +46,7 @@
 - **Task Checklist**
   - [x] Backend QA: Review serializers/views in `artists/` and `stations/` apps; adjust only if data contract gaps emerge.
   - [x] Backend QA: Execute Postman/pytest flows for artist onboarding, station setup, and provisioning.
-  - [x] Frontend: Build multi-step onboarding UI with progress saving against existing endpoints.
+  - [ ] Frontend: Rework the artist onboarding wiring so the restored static UI screens persist data step-by-step without altering the approved layout.
   - [ ] Frontend: Implement file upload + validation messaging mapped to backend error structure.
   - [ ] Flutter (`zamio_app`): Confirm provisioning payload compatibility, persist station credentials, and regression-test chunk upload loop against staging backend.
   - [ ] QA: Expand seed data + collections covering onboarding and capture provisioning scenarios.

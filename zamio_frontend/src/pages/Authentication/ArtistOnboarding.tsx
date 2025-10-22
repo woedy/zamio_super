@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import OnboardingWizard, { OnboardingStep } from '../../components/onboarding/OnboardingWizard';
 import WelcomeStep from './Onboarding/steps/WelcomeStep';
@@ -8,6 +8,7 @@ import SocialMediaInfo from './Onboarding/SocialMediaInfo';
 import PaymentInfo from './Onboarding/PaymentInfo';
 import Publisher from './Onboarding/Publisher';
 import { useAuth } from '../../lib/auth';
+import { deriveNextArtistOnboardingStep } from '../../lib/api';
 import {
   ArtistOnboardingProvider,
   useArtistOnboarding,
@@ -52,7 +53,17 @@ const onboardingSequence: Array<{ id: string; title: string; description: string
 const ArtistOnboardingInner = () => {
   const navigate = useNavigate();
   const params = useParams<{ stepId?: string }>();
-  const { status, loading, error, currentStep, setCurrentStep } = useArtistOnboarding();
+  const {
+    status,
+    loading,
+    error,
+    currentStep,
+    setCurrentStep,
+    skipStep,
+    completeOnboarding,
+  } = useArtistOnboarding();
+  const [completionError, setCompletionError] = useState<string | null>(null);
+  const [isBusy, setIsBusy] = useState(false);
 
   useEffect(() => {
     const target = params.stepId;
@@ -62,8 +73,9 @@ const ArtistOnboardingInner = () => {
   }, [params.stepId, currentStep, setCurrentStep]);
 
   useEffect(() => {
-    const nextStep = status?.next_step ?? status?.onboarding_step;
-    if (nextStep === 'done') {
+    const pointer = deriveNextArtistOnboardingStep(status ?? undefined);
+    const isComplete = (status?.next_step === 'done' || status?.onboarding_step === 'done') && !pointer;
+    if (isComplete) {
       navigate('/dashboard', { replace: true });
     }
   }, [status, navigate]);
@@ -71,6 +83,7 @@ const ArtistOnboardingInner = () => {
   const progress = status?.progress ?? {};
 
   const steps: OnboardingStep[] = useMemo(() => {
+    const kycCanSkip = status?.kyc?.can_skip;
     return onboardingSequence.map(({ id, title, description, required }) => ({
       id,
       title,
@@ -98,15 +111,51 @@ const ArtistOnboardingInner = () => {
                 ? Boolean(progress.payment_info_added)
                 : id === 'publisher'
                   ? Boolean(progress.publisher_added)
-                  : false,
-      isRequired: required ?? false,
+                  : id === 'kyc'
+                    ? Boolean(progress.kyc_verified || progress.kyc_submitted)
+                    : false,
+      isRequired:
+        id === 'kyc'
+          ? kycCanSkip === false
+          : required ?? false,
     }));
-  }, [progress]);
+  }, [progress, status?.kyc?.can_skip]);
 
   const handleStepChange = (stepId: string) => {
+    setCompletionError(null);
     setCurrentStep(stepId);
     const targetPath = stepId ? `/onboarding/${stepId}` : '/onboarding';
     navigate(targetPath, { replace: true });
+  };
+
+  const handleSkip = async (stepId: string) => {
+    if (!stepId) return;
+    setCompletionError(null);
+    setIsBusy(true);
+    try {
+      await skipStep(stepId);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to skip this step right now.';
+      setCompletionError(message);
+      throw err;
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const handleComplete = async () => {
+    setIsBusy(true);
+    setCompletionError(null);
+    try {
+      await completeOnboarding();
+      navigate('/dashboard', { replace: true });
+    } catch (err) {
+      const message = err instanceof Error
+        ? err.message
+        : 'We could not finalize your onboarding. Please try again.';
+      setCompletionError(message);
+      setIsBusy(false);
+    }
   };
 
   if (loading) {
@@ -132,15 +181,24 @@ const ArtistOnboardingInner = () => {
   }
 
   return (
-    <OnboardingWizard
-      steps={steps}
-      onComplete={() => navigate('/dashboard')}
-      title="Artist Onboarding"
-      subtitle="Let's get you set up to start earning from your music"
-      initialStepId="welcome"
-      currentStepId={currentStep || 'profile'}
-      onStepChange={handleStepChange}
-    />
+    <>
+      {completionError && (
+        <div className="bg-red-500/10 text-red-100 border border-red-500/30 mx-auto mb-4 max-w-3xl rounded-lg px-4 py-3 text-sm">
+          {completionError}
+        </div>
+      )}
+      <OnboardingWizard
+        steps={steps}
+        onComplete={handleComplete}
+        title="Artist Onboarding"
+        subtitle="Let's get you set up to start earning from your music"
+        initialStepId="welcome"
+        currentStepId={currentStep || 'profile'}
+        onStepChange={handleStepChange}
+        onStepSkip={handleSkip}
+        isBusy={isBusy}
+      />
+    </>
   );
 };
 

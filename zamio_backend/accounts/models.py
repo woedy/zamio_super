@@ -201,7 +201,7 @@ KYC_STATUS_CHOICES = (
 
 
 class User(AbstractBaseUser):
-    user_id = models.UUIDField(blank=True, null=True, unique=True)
+    user_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     email = models.EmailField(max_length=255, unique=True)
     username = models.CharField(max_length=255, blank=True, null=True, unique=True)
     first_name = models.CharField(max_length=255, blank=True, null=True)
@@ -403,6 +403,7 @@ class KYCDocument(models.Model):
         ('bank_statement', 'Bank Statement'),
         ('business_registration', 'Business Registration'),
         ('tax_certificate', 'Tax Certificate'),
+        ('selfie', 'Selfie with Identification'),
     )
     
     STATUS_CHOICES = (

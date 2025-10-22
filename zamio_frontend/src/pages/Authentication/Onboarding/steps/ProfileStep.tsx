@@ -1,4 +1,5 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
+import type { ChangeEvent } from 'react';
 
 import {
   completeArtistProfile,
@@ -15,19 +16,34 @@ const defaultForm = {
 };
 
 const ProfileStep = ({ onNext }: OnboardingStepProps) => {
-  const { artistId, applyEnvelope } = useArtistOnboarding();
+  const { artistId, applyEnvelope, status } = useArtistOnboarding();
   const [formState, setFormState] = useState(defaultForm);
   const [photo, setPhoto] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<ApiErrorMap | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
 
-  const handleChange = (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  useEffect(() => {
+    const profile = status?.profile;
+    if (!profile) return;
+    setFormState(prev => {
+      const next = {
+        bio: profile.bio ? String(profile.bio) : '',
+        country: profile.country ? String(profile.country) : '',
+        region: profile.region ? String(profile.region) : '',
+        location: profile.location ? String(profile.location) : '',
+      };
+      const hasChanged = Object.entries(next).some(([key, value]) => value !== (prev as typeof next)[key as keyof typeof next]);
+      return hasChanged ? next : prev;
+    });
+  }, [status?.profile?.bio, status?.profile?.country, status?.profile?.region, status?.profile?.location]);
+
+  const handleChange = (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = event.target;
     setFormState(prev => ({ ...prev, [name]: value }));
   };
 
-  const handlePhoto = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhoto = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     setPhoto(file ?? null);
   };

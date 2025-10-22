@@ -30,6 +30,7 @@
 
 ## Agent Guidance
 - **Documentation Discipline** Update `AGENTS.md` and `implementation.md` whenever new domain insights or scope changes emerge; treat them as canonical references.
+- **Frontend Contract Source** The latest artist onboarding UI screens are the source of truth for data requirements—do not alter their layout or visual design without explicit stakeholder approval. Align backend contracts and models to the existing UI instead.
 - **Tooling Expectations** Use Docker for end-to-end verification, DRF tests/pytest for backend validation, and Vite/Flutter dev servers for UI checks.
 - **Collaboration Notes** Coordinate feature branches around the phased plan, merging only when corresponding checkboxes in `implementation.md` are satisfied.
 - **Demo Readiness** Ensure each phase remains demoable: seed data/scripts should accompany backend endpoints, and UI should have guarded states for missing data.

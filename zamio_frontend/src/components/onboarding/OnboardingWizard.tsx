@@ -22,14 +22,15 @@ export interface OnboardingStepProps {
 
 interface OnboardingWizardProps {
   steps: OnboardingStep[];
-  onComplete: () => void;
+  onComplete: () => void | Promise<void>;
   title: string;
   subtitle?: string;
   initialStepId?: string;
   currentStepId?: string;
   onStepComplete?: (stepId: string) => void;
-  onStepSkip?: (stepId: string) => void;
+  onStepSkip?: (stepId: string) => void | Promise<void>;
   onStepChange?: (stepId: string) => void;
+  isBusy?: boolean;
 }
 
 export default function OnboardingWizard({
@@ -42,6 +43,7 @@ export default function OnboardingWizard({
   onStepComplete,
   onStepSkip,
   onStepChange,
+  isBusy = false,
 }: OnboardingWizardProps) {
   const [activeStepId, setActiveStepId] = useState(currentStepId || initialStepId);
 
@@ -56,7 +58,10 @@ export default function OnboardingWizard({
   const isFirstStep = activeStepIndex === 0;
   const isLastStep = activeStepIndex === steps.length - 1;
 
-  const handleNext = () => {
+  const handleNext = (options?: { bypassBusy?: boolean }) => {
+    if (isBusy && !options?.bypassBusy) {
+      return;
+    }
     if (isLastStep) {
       onComplete();
       return;
@@ -70,7 +75,7 @@ export default function OnboardingWizard({
   };
 
   const handlePrevious = () => {
-    if (isFirstStep) return;
+    if (isFirstStep || isBusy) return;
 
     const prevStep = steps[activeStepIndex - 1];
     if (prevStep) {
@@ -80,8 +85,21 @@ export default function OnboardingWizard({
   };
 
   const handleSkip = () => {
-    onStepSkip?.(activeStepId);
-    handleNext();
+    if (isBusy) {
+      return;
+    }
+    const result = onStepSkip?.(activeStepId);
+    if (result && typeof (result as Promise<unknown>).then === 'function') {
+      (result as Promise<unknown>)
+        .then(() => {
+          handleNext({ bypassBusy: true });
+        })
+        .catch(() => {
+          /* parent handles error state */
+        });
+      return;
+    }
+    handleNext({ bypassBusy: true });
   };
 
   const handleStepClick = (stepId: string, stepIndex: number) => {
@@ -201,9 +219,9 @@ export default function OnboardingWizard({
           <div className="mt-8 flex items-center justify-between">
             <button
               onClick={handlePrevious}
-              disabled={isFirstStep}
+              disabled={isFirstStep || isBusy}
               className={`inline-flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
-                isFirstStep
+                isFirstStep || isBusy
                   ? 'bg-slate-800/50 text-slate-600 cursor-not-allowed'
                   : 'bg-slate-800/50 text-slate-300 hover:bg-slate-800 hover:text-white'
               }`}
@@ -216,7 +234,10 @@ export default function OnboardingWizard({
               {activeStep.isRequired === false && (
                 <button
                   onClick={handleSkip}
-                  className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg border border-white/20 text-slate-300 hover:border-indigo-400 hover:text-white transition-colors"
+                  disabled={isBusy}
+                  className={`inline-flex items-center space-x-2 px-4 py-2 rounded-lg border border-white/20 text-slate-300 transition-colors ${
+                    isBusy ? 'cursor-not-allowed opacity-60' : 'hover:border-indigo-400 hover:text-white'
+                  }`}
                 >
                   <SkipForward className="h-4 w-4" />
                   <span>Skip</span>
@@ -225,6 +246,7 @@ export default function OnboardingWizard({
 
               <button
                 onClick={handleNext}
+                disabled={isBusy}
                 className="inline-flex items-center space-x-2 bg-indigo-500 hover:bg-indigo-400 disabled:bg-slate-600 text-white px-6 py-2 rounded-lg transition-colors disabled:cursor-not-allowed"
               >
                 <span>{isLastStep ? 'Complete' : 'Next'}</span>

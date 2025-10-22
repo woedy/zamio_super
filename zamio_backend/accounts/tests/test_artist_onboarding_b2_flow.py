@@ -95,7 +95,7 @@ class ArtistOnboardingB2FlowTests(APITestCase):
         )
         self.assertEqual(publisher_response.status_code, status.HTTP_200_OK, publisher_response.data)
         publisher_data = publisher_response.data["data"]
-        self.assertEqual(publisher_data["next_step"], "done")
+        self.assertEqual(publisher_data["next_step"], "kyc")
         self.assertTrue(publisher_data["progress"]["publisher_added"])
 
         self.artist.refresh_from_db()
@@ -103,11 +103,25 @@ class ArtistOnboardingB2FlowTests(APITestCase):
         self.assertTrue(self.artist.social_media_added)
         self.assertTrue(self.artist.payment_info_added)
         self.assertTrue(self.artist.publisher_added)
-        self.assertEqual(self.artist.onboarding_step, "done")
+        self.assertEqual(self.artist.onboarding_step, "kyc")
 
         status_response = self.client.get(self.status_url, format="json")
         self.assertEqual(status_response.status_code, status.HTTP_200_OK, status_response.data)
         status_data = status_response.data["data"]
-        self.assertEqual(status_data["onboarding_step"], "done")
+        self.assertEqual(status_data["onboarding_step"], "kyc")
         self.assertGreaterEqual(status_data["profile_complete_percentage"], 50)
         self.assertTrue(status_data["required_fields"]["payment_required"] is False)
+
+        complete_response = self.client.post(
+            reverse("accounts:complete_artist_onboarding_view"),
+            {
+                "artist_id": self.artist.artist_id,
+            },
+            format="json",
+        )
+        self.assertEqual(complete_response.status_code, status.HTTP_200_OK, complete_response.data)
+        final_data = complete_response.data["data"]
+        self.assertEqual(final_data["next_step"], "done")
+
+        self.artist.refresh_from_db()
+        self.assertEqual(self.artist.onboarding_step, "done")

@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Zap, ArrowRight, BarChart3 } from 'lucide-react';
 import { legacyRoleLogin, persistLegacyLoginResponse } from '@zamio/ui';
 import { useAuth } from '../lib/auth';
+import { deriveNextArtistOnboardingStep } from '../lib/api';
 
 import type { LegacyLoginResponse } from '@zamio/ui';
 
@@ -20,6 +21,7 @@ export default function SignIn() {
   interface ArtistLoginData extends Record<string, unknown> {
     onboarding_step?: string;
     next_step?: string;
+    next_recommended_step?: string;
   }
 
   type ArtistLoginResponse = LegacyLoginResponse & {
@@ -68,8 +70,8 @@ export default function SignIn() {
 
       hydrateAuth(loginSnapshot);
 
-      const nextStep = response?.data?.next_step ?? response?.data?.onboarding_step;
-      if (typeof nextStep === 'string' && nextStep && nextStep !== 'done') {
+      const nextStep = deriveNextArtistOnboardingStep(response?.data ?? undefined);
+      if (nextStep) {
         navigate(`/onboarding/${nextStep}`, { replace: true });
       } else {
         const fallback = fromState && fromState !== '/signin' ? fromState : '/dashboard';

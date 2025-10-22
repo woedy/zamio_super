@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import type { ChangeEvent, FormEvent } from 'react';
 
 import type { OnboardingStepProps } from '../../../components/onboarding/OnboardingWizard';
 import {
@@ -8,17 +9,30 @@ import {
 import { useArtistOnboarding } from './ArtistOnboardingContext';
 
 const PaymentInfo = ({ onNext }: OnboardingStepProps) => {
-  const { artistId, applyEnvelope } = useArtistOnboarding();
+  const { artistId, applyEnvelope, status } = useArtistOnboarding();
   const [formState, setFormState] = useState({ momo: '', bankAccount: '' });
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<ApiErrorMap | null>(null);
 
-  const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  useEffect(() => {
+    const payment = status?.payment_preferences;
+    if (!payment) return;
+    setFormState(prev => {
+      const next = {
+        momo: payment.momo ? String(payment.momo) : '',
+        bankAccount: payment.bank_account ? String(payment.bank_account) : '',
+      };
+      const hasChanged = Object.entries(next).some(([key, value]) => value !== (prev as typeof next)[key as keyof typeof next]);
+      return hasChanged ? next : prev;
+    });
+  }, [status?.payment_preferences?.momo, status?.payment_preferences?.bank_account]);
+
+  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;
     setFormState(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = async (event: React.FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setSubmitting(true);
     setErrors(null);

@@ -5,7 +5,7 @@ import { isAxiosError } from 'axios';
 
 import { persistLegacyLoginResponse, type LegacyLoginResponse, type StoredUserPayload } from '@zamio/ui';
 
-import { verifyArtistEmailCode, type ApiErrorMap } from '../lib/api';
+import { verifyArtistEmailCode, deriveNextArtistOnboardingStep, type ApiErrorMap } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
 const VALID_CODE_REGEX = /^\d{4}$/;
@@ -130,9 +130,8 @@ const EmailVerification = () => {
 
       setVerificationStatus('success');
 
-      const dataRecord = (response?.data ?? {}) as Record<string, unknown>;
-      const nextStep = (dataRecord['next_step'] || dataRecord['onboarding_step']) as string | undefined;
-      const destination = nextStep && typeof nextStep === 'string' && nextStep && nextStep !== 'done'
+      const nextStep = deriveNextArtistOnboardingStep(response?.data ?? undefined);
+      const destination = nextStep
         ? `/onboarding/${nextStep}`
         : '/dashboard';
 

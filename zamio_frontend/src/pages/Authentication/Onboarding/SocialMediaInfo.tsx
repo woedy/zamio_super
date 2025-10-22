@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import type { ChangeEvent, FormEvent } from 'react';
 
 import type { OnboardingStepProps } from '../../../components/onboarding/OnboardingWizard';
 import {
@@ -8,7 +9,7 @@ import {
 import { useArtistOnboarding } from './ArtistOnboardingContext';
 
 const SocialMediaInfo = ({ onNext }: OnboardingStepProps) => {
-  const { artistId, applyEnvelope } = useArtistOnboarding();
+  const { artistId, applyEnvelope, status } = useArtistOnboarding();
   const [formState, setFormState] = useState({
     instagram: '',
     twitter: '',
@@ -19,12 +20,28 @@ const SocialMediaInfo = ({ onNext }: OnboardingStepProps) => {
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<ApiErrorMap | null>(null);
 
-  const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  useEffect(() => {
+    const social = status?.social_links;
+    if (!social) return;
+    setFormState(prev => {
+      const next = {
+        instagram: social.instagram ? String(social.instagram) : '',
+        twitter: social.twitter ? String(social.twitter) : '',
+        facebook: social.facebook ? String(social.facebook) : '',
+        youtube: social.youtube ? String(social.youtube) : '',
+        website: social.website ? String(social.website) : '',
+      };
+      const hasChanged = Object.entries(next).some(([key, value]) => value !== (prev as typeof next)[key as keyof typeof next]);
+      return hasChanged ? next : prev;
+    });
+  }, [status?.social_links?.instagram, status?.social_links?.twitter, status?.social_links?.facebook, status?.social_links?.youtube, status?.social_links?.website]);
+
+  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;
     setFormState(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = async (event: React.FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setSubmitting(true);
     setErrors(null);
