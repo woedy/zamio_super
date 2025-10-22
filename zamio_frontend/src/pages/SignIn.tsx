@@ -1,16 +1,21 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Zap, ArrowRight, BarChart3 } from 'lucide-react';
 import { legacyRoleLogin, persistLegacyLoginResponse } from '@zamio/ui';
+import { useAuth } from '../lib/auth';
 
 import type { LegacyLoginResponse } from '@zamio/ui';
 
 export default function SignIn() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { login: hydrateAuth } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({ email: '', password: '', rememberMe: false });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const fromState = (location.state as { from?: string } | null)?.from;
 
   interface ArtistLoginData extends Record<string, unknown> {
     onboarding_step?: string;
@@ -44,11 +49,31 @@ export default function SignIn() {
       const response = await legacyRoleLogin<ArtistLoginResponse>('/api/accounts/login-artist/', payload);
       persistLegacyLoginResponse(response);
 
+      let loginSnapshot: {
+        accessToken?: string;
+        refreshToken?: string;
+        user?: Record<string, unknown> | null;
+      } | undefined;
+
+      if (response?.data && typeof response.data === 'object') {
+        const dataRecord = response.data as Record<string, unknown>;
+        const accessToken = dataRecord['access_token'];
+        const refreshToken = dataRecord['refresh_token'];
+        loginSnapshot = {
+          accessToken: typeof accessToken === 'string' ? accessToken : undefined,
+          refreshToken: typeof refreshToken === 'string' ? refreshToken : undefined,
+          user: response.data,
+        };
+      }
+
+      hydrateAuth(loginSnapshot);
+
       const nextStep = response?.data?.next_step ?? response?.data?.onboarding_step;
       if (typeof nextStep === 'string' && nextStep && nextStep !== 'done') {
-        navigate(`/onboarding/${nextStep}`);
+        navigate(`/onboarding/${nextStep}`, { replace: true });
       } else {
-        navigate('/dashboard');
+        const fallback = fromState && fromState !== '/signin' ? fromState : '/dashboard';
+        navigate(fallback, { replace: true });
       }
     } catch (err) {
       const maybeResponse = (err as { response?: { data?: { message?: string; errors?: Record<string, unknown>; }; }; }).response;
