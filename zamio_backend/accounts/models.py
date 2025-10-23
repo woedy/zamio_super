@@ -403,6 +403,7 @@ class KYCDocument(models.Model):
         ('bank_statement', 'Bank Statement'),
         ('business_registration', 'Business Registration'),
         ('tax_certificate', 'Tax Certificate'),
+        ('selfie', 'Selfie Verification'),
     )
     
     STATUS_CHOICES = (

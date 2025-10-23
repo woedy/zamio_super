@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Search, Bell, Settings, User, LogOut, Menu, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { ThemeToggle } from '@zamio/ui';
@@ -21,7 +21,20 @@ const Header: React.FC<HeaderProps> = ({
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
+
+  const artistName = useMemo(() => {
+    if (!user || typeof user !== 'object') {
+      return '';
+    }
+    const record = user as Record<string, unknown>;
+    return (
+      (typeof record['stage_name'] === 'string' && record['stage_name']) ||
+      (typeof record['artist_name'] === 'string' && record['artist_name']) ||
+      (typeof record['name'] === 'string' && record['name']) ||
+      ''
+    );
+  }, [user]);
 
   const notificationRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -143,6 +156,13 @@ const Header: React.FC<HeaderProps> = ({
               <Search className="w-5 h-5" />
             </button>
 
+            <div className="hidden md:flex flex-col text-right mr-2">
+              <span className="text-xs text-gray-400 dark:text-slate-500">Artist</span>
+              <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                {artistName || '—'}
+              </span>
+            </div>
+
             {/* Notifications */}
             <div className="relative" ref={notificationRef}>
               <button
@@ -237,7 +257,7 @@ const Header: React.FC<HeaderProps> = ({
                   <User className="w-4 h-4 text-white" />
                 </div>
                 <span className="hidden sm:block text-sm font-medium text-gray-700 dark:text-gray-200">
-                  Artist Name
+                  {artistName || '—'}
                 </span>
               </button>
 
@@ -245,7 +265,7 @@ const Header: React.FC<HeaderProps> = ({
               {showUserMenu && (
                 <div className="absolute right-0 mt-3 w-56 bg-white dark:bg-slate-800 rounded-xl shadow-xl py-2 z-50 border border-gray-200 dark:border-slate-700 backdrop-blur-sm">
                   <div className="px-4 py-3 border-b border-gray-200 dark:border-slate-700">
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white">Artist Name</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">{artistName || '—'}</p>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Premium Artist</p>
                   </div>
                   <Link
