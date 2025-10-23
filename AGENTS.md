@@ -22,11 +22,13 @@
 - **Flutter Capture App** `zamio_app/` serves broadcast stations lacking stream endpoints. It authenticates station operators, runs continuous/interval microphone capture via `OfflineCaptureService`, queues AAC chunks locally with storage safeguards, and pushes them to backend upload endpoints for fingerprinting.
 
 ## Integration Approach
-- **Phased Delivery** Follow the sequence defined in `implementation.md`: Authentication → Onboarding → Dashboard → In-App Activities.
+- **Phased Delivery** Follow the sequence defined in `implementation.md`: Authentication → Onboarding → Dashboard → In-App Activities. Treat the completion of email verification as the trigger for immediately launching the onboarding journey in every client.
 - **API Standards** Implement REST endpoints under `/api/v1/` with clear serializers, JWT auth, pagination, and error handling aligned to DRF conventions.
 - **Auth Endpoints** Use `POST /api/auth/token/` + `/api/auth/token/refresh/` for SimpleJWT access/refresh flow while legacy role logins (`POST /api/accounts/login-artist/`, `login-station/`, `login-admin/`) remain for device-specific tokens.
 - **Auth Configuration** Keep `.env.example`, `docker-compose.coolify.yml`, and deployment secrets aligned: default `CORS_ALLOW_ALL_ORIGINS=False`, populate `CORS_ALLOWED_ORIGINS` with the SPA hosts (5173-5176 locally), and ensure each Vite app points `VITE_API_URL` at the deployed backend.
-- **Data Contract Source of Truth** Keep schema definitions, payload examples, and acceptance criteria synchronized with `implementation.md` and update both docs when requirements shift.
+- **Data Contract Source of Truth** Keep schema definitions, payload examples, and acceptance criteria synchronized with `implementation.md` and update both docs when requirements shift. Static frontend UIs across `zamio_frontend/`, `zamio_stations/`, `zamio_publisher/`, and `zamio_admin/` are the canonical reference for data needs; avoid redesigning layouts unless explicitly requested and instead evolve backend models/serializers to satisfy the UI contracts.
+- **Onboarding Wiring** When posting onboarding payloads from React, let the browser set multipart boundaries (do not override `Content-Type` when using `FormData`), trim optional strings via the shared sanitizers before sending, and prefer the provided skip helpers for optional steps like social connections. Each successful response should refresh the auth snapshot so the dashboard header/sidebar immediately reflect the artist's stage name.
+- **Onboarding Resumption** Preserve the backend-provided `next_step` pointer so artists who skipped payment or other required stages are routed back on the next login. Skipping the publisher step should mark the artist as self-published, while the identity verification step must use `/api/accounts/upload-kyc-documents/` (plus `/api/accounts/skip-verification/` when deferring) before calling the completion endpoint.
 
 ## Agent Guidance
 - **Documentation Discipline** Update `AGENTS.md` and `implementation.md` whenever new domain insights or scope changes emerge; treat them as canonical references.
