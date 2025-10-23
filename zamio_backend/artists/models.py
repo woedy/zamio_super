@@ -252,7 +252,11 @@ class Artist(models.Model):
     stage_name = models.CharField(max_length=255)
     bio = models.TextField(blank=True, null=True)
     location = models.CharField(max_length=255, blank=True, null=True)
-    
+    country = models.CharField(max_length=100, blank=True, null=True)
+    region = models.CharField(max_length=100, blank=True, null=True)
+    primary_genre = models.CharField(max_length=100, blank=True, null=True)
+    music_style = models.CharField(max_length=100, blank=True, null=True)
+
     # Social media links
     website = models.URLField(blank=True, null=True)
     instagram = models.URLField(blank=True, null=True)
@@ -260,15 +264,16 @@ class Artist(models.Model):
     facebook = models.URLField(blank=True, null=True)
     youtube = models.URLField(blank=True, null=True)
     spotify = models.URLField(blank=True, null=True)
-    
+    social_metrics = models.JSONField(default=dict, blank=True)
+
     # Verification status
     verification_status = models.CharField(
-        max_length=20, 
-        choices=VERIFICATION_STATUS_CHOICES, 
+        max_length=20,
+        choices=VERIFICATION_STATUS_CHOICES,
         default='pending'
     )
     verification_documents = models.JSONField(default=list, blank=True)
-    
+
     # Publishing relationship
     is_self_published = models.BooleanField(default=True)
     publisher = models.ForeignKey(
@@ -285,6 +290,8 @@ class Artist(models.Model):
     social_media_added = models.BooleanField(default=False)
     payment_info_added = models.BooleanField(default=False)
     publisher_added = models.BooleanField(default=False)
+    payment_preferences = models.JSONField(default=dict, blank=True)
+    publisher_preferences = models.JSONField(default=dict, blank=True)
     
     is_archived = models.BooleanField(default=False)
     active = models.BooleanField(default=True)

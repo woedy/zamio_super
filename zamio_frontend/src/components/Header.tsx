@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Search, Bell, Settings, User, LogOut, Menu, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { ThemeToggle } from '@zamio/ui';
@@ -21,7 +21,20 @@ const Header: React.FC<HeaderProps> = ({
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
+
+  const artistName = useMemo(() => {
+    if (!user || typeof user !== 'object') {
+      return '';
+    }
+    const record = user as Record<string, unknown>;
+    return (
+      (typeof record['stage_name'] === 'string' && record['stage_name']) ||
+      (typeof record['artist_name'] === 'string' && record['artist_name']) ||
+      (typeof record['name'] === 'string' && record['name']) ||
+      ''
+    );
+  }, [user]);
 
   const notificationRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -142,6 +155,13 @@ const Header: React.FC<HeaderProps> = ({
             <button className="md:hidden p-2 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-slate-800">
               <Search className="w-5 h-5" />
             </button>
+
+            <div className="hidden md:flex flex-col text-right mr-2">
+              <span className="text-xs text-gray-400 dark:text-slate-500">Artist</span>
+              <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                {artistName || '—'}
+              </span>
+            </div>
 
             {/* Notifications */}
             <div className="relative" ref={notificationRef}>
