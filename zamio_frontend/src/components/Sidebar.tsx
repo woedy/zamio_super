@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   Home,
@@ -21,6 +21,7 @@ import {
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
+import { useAuth } from '../lib/auth';
 
 interface SidebarProps {
   isOpen?: boolean;
@@ -36,6 +37,20 @@ const Sidebar: React.FC<SidebarProps> = ({
   onToggleCollapse
 }) => {
   const location = useLocation();
+  const { user } = useAuth();
+
+  const artistName = useMemo(() => {
+    if (!user || typeof user !== 'object') {
+      return '';
+    }
+    const record = user as Record<string, unknown>;
+    return (
+      (typeof record['stage_name'] === 'string' && record['stage_name']) ||
+      (typeof record['artist_name'] === 'string' && record['artist_name']) ||
+      (typeof record['name'] === 'string' && record['name']) ||
+      ''
+    );
+  }, [user]);
 
   const navigationItems = [
     {
@@ -174,6 +189,9 @@ const Sidebar: React.FC<SidebarProps> = ({
               <div>
                 <h2 className="text-lg font-bold text-gray-900 dark:text-white tracking-tight">Zamio</h2>
                 <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Royalty Platform</p>
+                <p className="text-xs font-semibold text-gray-700 dark:text-slate-200 mt-1 truncate">
+                  {artistName || 'Artist'}
+                </p>
               </div>
             )}
           </div>
