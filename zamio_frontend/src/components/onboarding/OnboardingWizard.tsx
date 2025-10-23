@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, ArrowRight, CheckCircle, Circle, SkipForward } from 'lucide-react';
+
+type StepAdvanceHandler = () => Promise<boolean | void> | boolean | void;
 
 export interface OnboardingStep {
   id: string;
@@ -18,6 +20,8 @@ export interface OnboardingStepProps {
   isFirst?: boolean;
   isLast?: boolean;
   canSkip?: boolean;
+  registerNextHandler?: (handler: StepAdvanceHandler | null) => void;
+  registerSkipHandler?: (handler: StepAdvanceHandler | null) => void;
 }
 
 interface OnboardingWizardProps {
@@ -44,6 +48,9 @@ export default function OnboardingWizard({
   onStepChange,
 }: OnboardingWizardProps) {
   const [activeStepId, setActiveStepId] = useState(currentStepId || initialStepId);
+  const [isAdvancing, setIsAdvancing] = useState(false);
+  const nextHandlerRef = useRef<StepAdvanceHandler | null>(null);
+  const skipHandlerRef = useRef<StepAdvanceHandler | null>(null);
 
   useEffect(() => {
     if (currentStepId && currentStepId !== activeStepId) {
@@ -51,21 +58,63 @@ export default function OnboardingWizard({
     }
   }, [currentStepId, activeStepId]);
 
+  useEffect(() => {
+    nextHandlerRef.current = null;
+    skipHandlerRef.current = null;
+    setIsAdvancing(false);
+  }, [activeStepId]);
+
+  const registerNextHandler = useCallback((handler: StepAdvanceHandler | null) => {
+    nextHandlerRef.current = handler;
+  }, []);
+
+  const registerSkipHandler = useCallback((handler: StepAdvanceHandler | null) => {
+    skipHandlerRef.current = handler;
+  }, []);
+
   const activeStep = steps.find(step => step.id === activeStepId);
   const activeStepIndex = steps.findIndex(step => step.id === activeStepId);
   const isFirstStep = activeStepIndex === 0;
   const isLastStep = activeStepIndex === steps.length - 1;
 
-  const handleNext = () => {
-    if (isLastStep) {
+  const executeHandler = async (handler: StepAdvanceHandler | null) => {
+    if (!handler) {
+      return true;
+    }
+    const result = await handler();
+    return result !== false;
+  };
+
+  const moveToIndex = (index: number) => {
+    if (index >= steps.length) {
       onComplete();
       return;
     }
+    const target = steps[index];
+    if (target) {
+      setActiveStepId(target.id);
+      onStepChange?.(target.id);
+    }
+  };
 
-    const nextStep = steps[activeStepIndex + 1];
-    if (nextStep) {
-      setActiveStepId(nextStep.id);
-      onStepChange?.(nextStep.id);
+  const handleNext = async () => {
+    if (isAdvancing) {
+      return;
+    }
+    setIsAdvancing(true);
+    try {
+      const proceed = await executeHandler(nextHandlerRef.current);
+      if (!proceed) {
+        return;
+      }
+
+      if (isLastStep) {
+        onComplete();
+      } else {
+        moveToIndex(activeStepIndex + 1);
+      }
+    } finally {
+      setIsAdvancing(false);
     }
   };
 
@@ -79,9 +128,21 @@ export default function OnboardingWizard({
     }
   };
 
-  const handleSkip = () => {
-    onStepSkip?.(activeStepId);
-    handleNext();
+  const handleSkip = async () => {
+    if (isAdvancing) {
+      return;
+    }
+    setIsAdvancing(true);
+    try {
+      const proceed = await executeHandler(skipHandlerRef.current);
+      if (!proceed) {
+        return;
+      }
+      onStepSkip?.(activeStepId);
+      moveToIndex(activeStepIndex + 1);
+    } finally {
+      setIsAdvancing(false);
+    }
   };
 
   const handleStepClick = (stepId: string, stepIndex: number) => {
@@ -194,6 +255,8 @@ export default function OnboardingWizard({
               isFirst={isFirstStep}
               isLast={isLastStep}
               canSkip={activeStep.isRequired === false}
+              registerNextHandler={registerNextHandler}
+              registerSkipHandler={registerSkipHandler}
             />
           </div>
 
@@ -216,7 +279,8 @@ export default function OnboardingWizard({
               {activeStep.isRequired === false && (
                 <button
                   onClick={handleSkip}
-                  className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg border border-white/20 text-slate-300 hover:border-indigo-400 hover:text-white transition-colors"
+                  disabled={isAdvancing}
+                  className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg border border-white/20 text-slate-300 hover:border-indigo-400 hover:text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   <SkipForward className="h-4 w-4" />
                   <span>Skip</span>
@@ -225,10 +289,11 @@ export default function OnboardingWizard({
 
               <button
                 onClick={handleNext}
+                disabled={isAdvancing}
                 className="inline-flex items-center space-x-2 bg-indigo-500 hover:bg-indigo-400 disabled:bg-slate-600 text-white px-6 py-2 rounded-lg transition-colors disabled:cursor-not-allowed"
               >
-                <span>{isLastStep ? 'Complete' : 'Next'}</span>
-                {!isLastStep && <ArrowRight className="h-4 w-4" />}
+                <span>{isAdvancing ? 'Saving…' : isLastStep ? 'Complete' : 'Next'}</span>
+                {!isLastStep && !isAdvancing && <ArrowRight className="h-4 w-4" />}
               </button>
             </div>
           </div>

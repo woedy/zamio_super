@@ -93,7 +93,6 @@ export const completeArtistProfile = async (formData: FormData) => {
   const { data } = await authApi.post<ApiEnvelope<ArtistOnboardingStatus>>(
     '/api/accounts/complete-artist-profile/',
     formData,
-    { headers: { 'Content-Type': 'multipart/form-data' } },
   );
   return data;
 };
@@ -125,6 +124,14 @@ export const completeArtistPublisher = async (payload: Record<string, unknown>) 
 export const completeArtistOnboarding = async (payload: Record<string, unknown>) => {
   const { data } = await authApi.post<ApiEnvelope<ArtistOnboardingStatus>>(
     '/api/accounts/complete-artist-onboarding/',
+    payload,
+  );
+  return data;
+};
+
+export const skipArtistOnboardingStep = async (payload: Record<string, unknown>) => {
+  const { data } = await authApi.post<ApiEnvelope<ArtistOnboardingStatus>>(
+    '/api/accounts/skip-artist-onboarding/',
     payload,
   );
   return data;
