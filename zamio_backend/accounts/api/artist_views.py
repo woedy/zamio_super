@@ -1,5 +1,6 @@
 import logging
 from decimal import Decimal
+from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -104,10 +105,53 @@ def get_verification_required_features(user):
 
 def serialize_artist_onboarding_state(artist):
     """Serialize the artist onboarding state for consistent API responses."""
+    user = artist.user
+
+    profile_snapshot = {
+        "stage_name": artist.stage_name,
+        "bio": artist.bio or "",
+        "location": artist.location or getattr(user, 'location', ""),
+        "country": artist.country or getattr(user, 'country', ""),
+        "region": artist.region or "",
+        "primary_genre": artist.primary_genre or "",
+        "music_style": artist.music_style or "",
+        "website": artist.website or "",
+    }
+
+    social_links = {
+        "instagram": artist.instagram or "",
+        "twitter": artist.twitter or "",
+        "facebook": artist.facebook or "",
+        "youtube": artist.youtube or "",
+        "spotify": artist.spotify or "",
+        "website": artist.website or "",
+    }
+
+    payment_preferences = dict(getattr(artist, 'payment_preferences', {}) or {})
+    # Fall back to legacy storage if JSON field is empty
+    if not payment_preferences:
+        payment_preferences = dict(getattr(user, 'kyc_documents', {}) or {}).get('payment_preferences', {}) or {}
+
+    publisher_snapshot = {
+        "is_self_published": getattr(artist, 'is_self_published', True),
+        "publisher_id": artist.publisher.publisher_id if getattr(artist, 'publisher', None) else None,
+        "publisher_name": getattr(artist.publisher, 'company_name', None) if getattr(artist, 'publisher', None) else None,
+        "preferences": dict(getattr(artist, 'publisher_preferences', {}) or {}),
+    }
+
+    if not publisher_snapshot["publisher_name"] and publisher_snapshot["preferences"].get("publisher_name"):
+        publisher_snapshot["publisher_name"] = publisher_snapshot["preferences"].get("publisher_name")
+
+    stored_step = artist.onboarding_step
+    next_step = artist.get_next_onboarding_step()
+    if stored_step == 'done':
+        next_step = 'done'
+    active_step = stored_step or next_step
+
     return {
         "artist_id": artist.artist_id,
-        "onboarding_step": artist.onboarding_step,
-        "next_step": artist.onboarding_step,
+        "onboarding_step": active_step,
+        "next_step": next_step,
         "progress": {
             "profile_completed": bool(getattr(artist, 'profile_completed', False)),
             "social_media_added": bool(getattr(artist, 'social_media_added', False)),
@@ -118,6 +162,17 @@ def serialize_artist_onboarding_state(artist):
         "completion_percentage": calculate_profile_completion_percentage(artist),
         "next_recommended_step": get_next_recommended_step(artist),
         "required_fields": get_required_fields_status(artist),
+        "profile": profile_snapshot,
+        "social_links": social_links,
+        "payment_preferences": payment_preferences,
+        "publisher": publisher_snapshot,
+        "social_metrics": dict(getattr(artist, 'social_metrics', {}) or {}),
+        "stage_name": artist.stage_name,
+        "artist_name": artist.stage_name,
+        "verification_status": getattr(user, 'verification_status', None),
+        "kyc_status": getattr(user, 'kyc_status', None),
+        "can_resume_verification": getattr(user, 'verification_status', '') in ['skipped', 'incomplete'],
+        "can_skip_verification": getattr(user, 'verification_status', '') in ['pending', 'incomplete'],
     }
 
 
@@ -433,6 +488,14 @@ def verify_artist_email_code(request):
         # Get artist profile
         artist = Artist.objects.get(user=user)
         
+        onboarding_state = serialize_artist_onboarding_state(artist)
+        stage_name_value = (
+            onboarding_state.get('stage_name')
+            or artist.stage_name
+            or f"{user.first_name} {user.last_name}".strip()
+            or user.email
+        )
+
         # Prepare response data
         data["user_id"] = str(user.user_id)
         data["artist_id"] = artist.artist_id
@@ -445,9 +508,12 @@ def verify_artist_email_code(request):
         data["refresh_token"] = jwt_tokens['refresh']
         data["country"] = user.country
         data["phone"] = user.phone
-        data["next_step"] = artist.onboarding_step
-        data["profile_completed"] = artist.profile_completed
-        
+        data.update(onboarding_state)
+        data["profile_completed"] = onboarding_state["progress"].get("profile_completed", False)
+        data["stage_name"] = stage_name_value
+        data["artist_name"] = stage_name_value
+        data["display_name"] = stage_name_value
+
         payload['message'] = "Successful"
         payload['data'] = data
         
@@ -609,6 +675,18 @@ class ArtistLogin(APIView):
             "onboarding_step": artist.onboarding_step,
         }
 
+        onboarding_state = serialize_artist_onboarding_state(artist)
+        data.update(onboarding_state)
+        stage_name_value = (
+            onboarding_state.get('stage_name')
+            or artist.stage_name
+            or f"{user.first_name} {user.last_name}".strip()
+            or user.email
+        )
+        data["stage_name"] = stage_name_value
+        data["artist_name"] = stage_name_value
+        data.setdefault("display_name", stage_name_value)
+
         # Create activity log
         AllActivity.objects.create(user=user, subject="Artist Login", body=f"{user.email} just logged in.")
 
@@ -642,51 +720,73 @@ from rest_framework.response import Response
 from rest_framework import status
 import json
 
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 @authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @csrf_exempt
 def complete_artist_profile_view(request):
     payload = {}
-    data = {}
     errors = {}
 
-    # Get client IP for audit logging
-    def get_client_ip(request):
-        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    def get_client_ip(req):
+        x_forwarded_for = req.META.get('HTTP_X_FORWARDED_FOR')
         if x_forwarded_for:
-            ip = x_forwarded_for.split(',')[0]
-        else:
-            ip = request.META.get('REMOTE_ADDR')
-        return ip
+            return x_forwarded_for.split(',')[0]
+        return req.META.get('REMOTE_ADDR')
 
     ip_address = get_client_ip(request)
 
     artist_id = request.data.get('artist_id', "")
-    bio = request.data.get('bio', "")
-    country = request.data.get('country', "")
-    region = request.data.get('region', "")
-    location = request.data.get('location', "")
-    photo = request.FILES.get('photo')
+    stage_name = (
+        request.data.get('artist_name')
+        or request.data.get('artistName')
+        or request.data.get('stage_name')
+        or request.data.get('stageName')
+    )
+    bio = request.data.get('bio', "").strip()
+    location = request.data.get('location', "").strip()
+    country = request.data.get('country', "").strip()
+    region = request.data.get('region', "").strip()
+    primary_genre = request.data.get('primary_genre') or request.data.get('genre')
+    music_style = request.data.get('music_style') or request.data.get('style')
+    website = request.data.get('website')
+    instagram = request.data.get('instagram')
+    twitter = request.data.get('twitter')
+    facebook = request.data.get('facebook')
+    youtube = request.data.get('youtube')
+    spotify = (
+        request.data.get('spotify')
+        or request.data.get('spotify_url')
+        or request.data.get('spotifyUrl')
+    )
+    photo = (
+        request.FILES.get('profile_image')
+        or request.FILES.get('profileImage')
+        or request.FILES.get('photo')
+    )
 
     if not artist_id:
         errors['artist_id'] = ['Artist ID is required.']
 
+    artist = None
     try:
         artist = Artist.objects.get(artist_id=artist_id)
-        
-        # Verify the artist belongs to the authenticated user
         if artist.user != request.user:
             errors['permission'] = ['You can only update your own profile.']
-            
     except Artist.DoesNotExist:
         errors['artist_id'] = ['Artist not found.']
+
+    if artist and not stage_name:
+        errors['artist_name'] = ['Artist name is required.']
+    if artist and not bio:
+        errors['bio'] = ['Artist bio is required.']
+    if artist and not primary_genre:
+        errors['genre'] = ['Primary genre is required.']
 
     if errors:
         payload['message'] = "Errors"
         payload['errors'] = errors
-        
-        # Log failed profile update attempt
         AuditLog.objects.create(
             user=request.user,
             action='artist_profile_update_failed',
@@ -696,61 +796,101 @@ def complete_artist_profile_view(request):
             user_agent=request.META.get('HTTP_USER_AGENT', ''),
             request_data={'artist_id': artist_id, 'errors': list(errors.keys())},
             response_data={'error': 'validation_failed'},
-            status_code=400
+            status_code=400,
         )
-        
         return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
-    # Store old values for audit logging
     old_values = {
-        'bio': getattr(artist, 'bio', ''),
-        'country': getattr(artist, 'country', ''),
-        'region': getattr(artist, 'region', ''),
-        'location': getattr(artist.user, 'location', ''),
-        'photo': artist.user.photo.name if artist.user.photo else None
+        'stage_name': artist.stage_name,
+        'bio': artist.bio or '',
+        'location': artist.location or '',
+        'country': artist.country or getattr(artist.user, 'country', ''),
+        'region': artist.region or '',
+        'primary_genre': artist.primary_genre or '',
+        'music_style': artist.music_style or '',
+        'website': artist.website or '',
+        'instagram': artist.instagram or '',
+        'twitter': artist.twitter or '',
+        'facebook': artist.facebook or '',
+        'youtube': artist.youtube or '',
+        'spotify': artist.spotify or '',
+        'photo': artist.user.photo.name if artist.user.photo else None,
     }
 
-    # Apply changes if provided
     changes_made = {}
+    user_update_fields = set()
+
+    if stage_name and stage_name != old_values['stage_name']:
+        artist.stage_name = stage_name
+        changes_made['stage_name'] = {'old': old_values['stage_name'], 'new': stage_name}
     if bio and bio != old_values['bio']:
         artist.bio = bio
         changes_made['bio'] = {'old': old_values['bio'], 'new': bio}
+    if location and location != old_values['location']:
+        artist.location = location
+        artist.user.location = location
+        changes_made['location'] = {'old': old_values['location'], 'new': location}
+        user_update_fields.add('location')
     if country and country != old_values['country']:
         artist.country = country
         artist.user.country = country
-        artist.user.save(update_fields=['country'])
         changes_made['country'] = {'old': old_values['country'], 'new': country}
+        user_update_fields.add('country')
     if region and region != old_values['region']:
         artist.region = region
         changes_made['region'] = {'old': old_values['region'], 'new': region}
-    if location and location != old_values['location']:
-        artist.user.location = location
-        artist.user.save()
-        changes_made['location'] = {'old': old_values['location'], 'new': location}
-    
-    # Handle photo upload
-    photo_url = None
+    if primary_genre and primary_genre != old_values['primary_genre']:
+        artist.primary_genre = primary_genre
+        changes_made['primary_genre'] = {'old': old_values['primary_genre'], 'new': primary_genre}
+    if music_style and music_style != old_values['music_style']:
+        artist.music_style = music_style
+        changes_made['music_style'] = {'old': old_values['music_style'], 'new': music_style}
+    if website and website != old_values['website']:
+        artist.website = website
+        changes_made['website'] = {'old': old_values['website'], 'new': website}
+    if instagram and instagram != old_values['instagram']:
+        artist.instagram = instagram
+        changes_made['instagram'] = {'old': old_values['instagram'], 'new': instagram}
+    if twitter and twitter != old_values['twitter']:
+        artist.twitter = twitter
+        changes_made['twitter'] = {'old': old_values['twitter'], 'new': twitter}
+    if facebook and facebook != old_values['facebook']:
+        artist.facebook = facebook
+        changes_made['facebook'] = {'old': old_values['facebook'], 'new': facebook}
+    if youtube and youtube != old_values['youtube']:
+        artist.youtube = youtube
+        changes_made['youtube'] = {'old': old_values['youtube'], 'new': youtube}
+    if spotify and spotify != old_values['spotify']:
+        artist.spotify = spotify
+        changes_made['spotify'] = {'old': old_values['spotify'], 'new': spotify}
+
     if photo:
-        # Delete old photo if it exists and is not the default
         if artist.user.photo and 'default' not in artist.user.photo.name:
             artist.user.photo.delete(save=False)
-        # Save new photo
         artist.user.photo = photo
-        artist.user.save()
-        photo_url = artist.user.photo.url if artist.user.photo else None
+        user_update_fields.add('photo')
         changes_made['photo'] = {'old': old_values['photo'], 'new': artist.user.photo.name}
-    
-    # Save artist changes and advance onboarding pointer
-    artist.save()
-    artist.profile_completed = True
+
+    artist.profile_completed = all([
+        artist.stage_name,
+        artist.bio,
+        artist.primary_genre,
+    ])
     artist.onboarding_step = artist.get_next_onboarding_step()
     artist.save()
 
-    data.update(serialize_artist_onboarding_state(artist))
-    if photo_url:
-        data["photo"] = photo_url
+    if user_update_fields:
+        artist.user.save(update_fields=list(user_update_fields))
 
-    # Log successful profile update
+    photo_url = artist.user.photo.url if artist.user.photo else None
+
+    serialized = serialize_artist_onboarding_state(artist)
+    if photo_url:
+        serialized['profile'] = {
+            **serialized.get('profile', {}),
+            'photo': photo_url,
+        }
+
     AuditLog.objects.create(
         user=request.user,
         action='artist_profile_updated',
@@ -758,22 +898,14 @@ def complete_artist_profile_view(request):
         resource_id=str(artist.artist_id),
         ip_address=ip_address,
         user_agent=request.META.get('HTTP_USER_AGENT', ''),
-        request_data={
-            'artist_id': artist_id,
-            'fields_updated': list(changes_made.keys())
-        },
-        response_data={
-            'success': True,
-            'changes_made': changes_made,
-            'profile_completed': True
-        },
-        status_code=200
+        request_data={'artist_id': artist_id, 'fields_updated': list(changes_made.keys())},
+        response_data={'success': True, 'profile_completed': artist.profile_completed},
+        status_code=200,
     )
 
     payload['message'] = "Successful"
-    payload['data'] = data
+    payload['data'] = serialized
     return Response(payload, status=status.HTTP_200_OK)
-
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -798,7 +930,9 @@ def skip_artist_onboarding_view(request):
         errors['artist_id'] = ['Artist not found.']
         artist = None
 
-    if artist and step not in dict(Artist.ONBOARDING_STEPS).keys():
+    normalized_step = step.replace('_', '-') if isinstance(step, str) else step
+    valid_steps = {choice[0] for choice in Artist.ONBOARDING_STEPS}
+    if artist and normalized_step not in valid_steps:
         errors['step'] = ['Invalid onboarding step.']
 
     if errors:
@@ -806,12 +940,43 @@ def skip_artist_onboarding_view(request):
         payload['errors'] = errors
         return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
-    # Update only the pointer for where to resume onboarding.
-    artist.onboarding_step = step
+    user = artist.user
+
+    # Reset completion flags when a user decides to revisit an earlier required step.
+    if normalized_step == 'profile':
+        artist.profile_completed = False
+    elif normalized_step == 'social-media':
+        artist.social_media_added = False
+    elif normalized_step == 'payment':
+        artist.payment_info_added = False
+    elif normalized_step == 'publisher':
+        artist.publisher_added = True
+        artist.is_self_published = True
+        artist.publisher = None
+        artist.publisher_preferences = {
+            'publisher_name': 'Self-published',
+            'relationship_notes': 'Marked as self-published during onboarding skip.',
+        }
+    elif normalized_step == 'kyc':
+        if user.verification_status in ['pending', 'incomplete']:
+            user.verification_status = 'skipped'
+            user.verification_skipped_at = timezone.now()
+            user.verification_reminder_sent = False
+            user.save(update_fields=['verification_status', 'verification_skipped_at', 'verification_reminder_sent'])
+        artist.onboarding_step = 'done'
+        artist.save()
+        payload['message'] = "Successful"
+        payload['data'] = serialize_artist_onboarding_state(artist)
+        return Response(payload, status=status.HTTP_200_OK)
+
+    if normalized_step == 'publisher':
+        artist.onboarding_step = artist.get_next_onboarding_step()
+    else:
+        artist.onboarding_step = normalized_step
+
     artist.save()
 
-    data["artist_id"] = artist.artist_id
-    data["next_step"] = artist.onboarding_step
+    data.update(serialize_artist_onboarding_state(artist))
 
     payload['message'] = "Successful"
     payload['data'] = data
@@ -1047,8 +1212,46 @@ def resume_verification_view(request):
     ip_address = get_client_ip(request)
     user = request.user
 
+    try:
+        artist = Artist.objects.get(user=user)
+    except Artist.DoesNotExist:
+        artist = None
+
+    serialized_state = serialize_artist_onboarding_state(artist) if artist else {}
+    current_status = user.verification_status
+
+    if current_status == 'pending':
+        data = {
+            **serialized_state,
+            "verification_status": current_status,
+            "kyc_status": user.kyc_status,
+            "already_in_progress": True,
+            "already_verified": False,
+            "can_resume_verification": current_status in ['skipped', 'incomplete'],
+            "can_skip_verification": current_status in ['pending', 'incomplete'],
+        }
+
+        payload['message'] = "Successful"
+        payload['data'] = data
+        return Response(payload, status=status.HTTP_200_OK)
+
+    if current_status == 'verified':
+        data = {
+            **serialized_state,
+            "verification_status": current_status,
+            "kyc_status": user.kyc_status,
+            "already_in_progress": False,
+            "already_verified": True,
+            "can_resume_verification": current_status in ['skipped', 'incomplete'],
+            "can_skip_verification": current_status in ['pending', 'incomplete'],
+        }
+
+        payload['message'] = "Successful"
+        payload['data'] = data
+        return Response(payload, status=status.HTTP_200_OK)
+
     # Enhanced verification resume validation with better error handling
-    if user.verification_status not in ['skipped', 'incomplete']:
+    if current_status not in ['skipped', 'incomplete']:
         error_messages = {
             'pending': {
                 'message': 'Verification is already in progress.',
@@ -1062,23 +1265,23 @@ def resume_verification_view(request):
             }
         }
         
-        error_info = error_messages.get(user.verification_status, {
-            'message': f'Verification cannot be resumed. Current status: {user.verification_status}',
+        error_info = error_messages.get(current_status, {
+            'message': f'Verification cannot be resumed. Current status: {current_status}',
             'help_text': 'Please check your verification status and contact support if needed.',
             'suggested_actions': ['Check verification status', 'Contact support']
         })
-        
+
         errors['verification'] = [error_info['message']]
         payload['message'] = "Errors"
         payload['errors'] = errors
         payload['error_details'] = {
-            'current_status': user.verification_status,
+            'current_status': current_status,
             'help_text': error_info['help_text'],
             'suggested_actions': error_info['suggested_actions'],
             'can_skip': False,
-            'already_completed': user.verification_status == 'verified'
+            'already_completed': current_status == 'verified'
         }
-        
+
         # Log the failed resume attempt with enhanced context
         AuditLog.objects.create(
             user=user,
@@ -1087,20 +1290,20 @@ def resume_verification_view(request):
             ip_address=ip_address,
             user_agent=request.META.get('HTTP_USER_AGENT', ''),
             request_data={
-                'current_status': user.verification_status,
+                'current_status': current_status,
                 'attempted_at': timezone.now().isoformat(),
                 'user_guidance_needed': True
             },
             response_data={
                 'error': 'invalid_status',
-                'current_status': user.verification_status,
+                'current_status': current_status,
                 'allowed_statuses': ['skipped', 'incomplete'],
                 'error_details': error_info,
                 'user_guidance_provided': True
             },
             status_code=400
         )
-        
+
         return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
     # Reset verification status to pending
@@ -1133,8 +1336,11 @@ def resume_verification_view(request):
     )
 
     data = {
+        **serialized_state,
         "verification_status": user.verification_status,
         "kyc_status": user.kyc_status,
+        "can_resume_verification": user.verification_status in ['skipped', 'incomplete'],
+        "can_skip_verification": user.verification_status in ['pending', 'incomplete'],
         "kyc_documents": user.kyc_documents,
         "verification_resumed_at": timezone.now().isoformat(),
         "next_steps": [
@@ -1178,7 +1384,8 @@ def resume_verification_view(request):
             "support_email": "support@zamio.com",
             "faq": "/help/verification-faq"
         },
-        "message": "Verification process resumed successfully. Please upload your identity documents to complete verification."
+        "message": "Verification process resumed successfully. Please upload your identity documents to complete verification.",
+        "already_resumed": True,
     }
 
     payload['message'] = "Successful"
@@ -1603,11 +1810,15 @@ def complete_artist_social_view(request):
     data = {}
     errors = {}
 
+    truthy = {True, 'true', 'True', '1', 1, 'on', 'yes', 'Yes'}
+
     artist_id = request.data.get('artist_id', "")
     facebook = request.data.get('facebook', "")
     twitter = request.data.get('twitter', "")
     instagram = request.data.get('instagram', "")
     youtube = request.data.get('youtube', "")
+    raw_accounts = request.data.get('accounts') or request.data.get('social_accounts')
+    skip_requested = request.data.get('skip') or request.data.get('skip_step')
 
     if not artist_id:
         errors['artist_id'] = ['Artist ID is required.']
@@ -1616,6 +1827,37 @@ def complete_artist_social_view(request):
         artist = Artist.objects.get(artist_id=artist_id)
     except Artist.DoesNotExist:
         errors['artist_id'] = ['Artist not found.']
+        artist = None
+
+    if skip_requested in truthy and artist:
+        social_metrics = dict(getattr(artist, 'social_metrics', {}) or {})
+        social_metrics['skipped'] = True
+        artist.social_metrics = social_metrics
+        artist.social_media_added = True
+        artist.onboarding_step = artist.get_next_onboarding_step()
+        artist.save()
+
+        data.update(serialize_artist_onboarding_state(artist))
+        payload['message'] = "Successful"
+        payload['data'] = data
+        return Response(payload, status=status.HTTP_200_OK)
+
+    accounts_data = []
+    if raw_accounts:
+        parsed_accounts = raw_accounts
+        if isinstance(raw_accounts, str):
+            try:
+                parsed_accounts = json.loads(raw_accounts)
+            except (TypeError, json.JSONDecodeError):
+                errors['accounts'] = ['Invalid social accounts payload.']
+                parsed_accounts = []
+
+        if isinstance(parsed_accounts, dict):
+            accounts_data = [parsed_accounts]
+        elif isinstance(parsed_accounts, list):
+            accounts_data = parsed_accounts
+        elif parsed_accounts:
+            errors['accounts'] = ['Social accounts payload must be a list or object.']
 
     if errors:
         payload['message'] = "Errors"
@@ -1632,7 +1874,26 @@ def complete_artist_social_view(request):
     if youtube:
         artist.youtube = youtube
 
+    if accounts_data:
+        artist.social_metrics = {
+            'accounts': accounts_data,
+        }
+
     # Mark this step as complete
+    has_linked_account = any([
+        facebook,
+        twitter,
+        instagram,
+        youtube,
+        bool(accounts_data),
+    ])
+    if not has_linked_account:
+        payload['message'] = "Errors"
+        payload['errors'] = {
+            'social_accounts': ['Provide at least one social media link or connection.']
+        }
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
     artist.social_media_added = True
 
     # Move to next onboarding step
@@ -1658,8 +1919,19 @@ def complete_artist_payment_view(request):
     errors = {}
 
     artist_id = request.data.get('artist_id', "")
-    momo = request.data.get('momo', "")
-    bankAccount = request.data.get('bankAccount', "")
+    preferred_method = request.data.get('preferred_method') or request.data.get('preferredMethod')
+    currency = request.data.get('currency', 'GHS')
+
+    mobile_provider = request.data.get('mobile_provider') or request.data.get('mobileProvider')
+    mobile_number = request.data.get('mobile_number') or request.data.get('mobileNumber')
+    mobile_account_name = request.data.get('mobile_account_name') or request.data.get('mobileAccountName')
+
+    bank_name = request.data.get('bank_name') or request.data.get('bankName')
+    account_number = request.data.get('account_number') or request.data.get('accountNumber')
+    account_holder_name = request.data.get('account_holder_name') or request.data.get('accountHolderName')
+    routing_number = request.data.get('routing_number') or request.data.get('routingNumber')
+
+    international_instructions = request.data.get('international_instructions') or request.data.get('internationalInstructions')
 
     if not artist_id:
         errors['artist_id'] = ['Artist ID is required.']
@@ -1668,19 +1940,62 @@ def complete_artist_payment_view(request):
         artist = Artist.objects.get(artist_id=artist_id)
     except Artist.DoesNotExist:
         errors['artist_id'] = ['Artist not found.']
+        artist = None
+
+    if artist and not preferred_method:
+        errors['preferred_method'] = ['Preferred payment method is required.']
+
+    method = (preferred_method or '').lower() if preferred_method else ''
+    if method == 'mobile-money':
+        if not mobile_provider:
+            errors['mobile_provider'] = ['Mobile money provider is required.']
+        if not mobile_number:
+            errors['mobile_number'] = ['Mobile money number is required.']
+    elif method == 'bank-transfer':
+        if not bank_name:
+            errors['bank_name'] = ['Bank name is required.']
+        if not account_number:
+            errors['account_number'] = ['Bank account number is required.']
+        if not account_holder_name:
+            errors['account_holder_name'] = ['Account holder name is required.']
+    elif method == 'international':
+        if not international_instructions:
+            errors['international_instructions'] = ['Provide instructions for international transfers.']
 
     if errors:
         payload['message'] = "Errors"
         payload['errors'] = errors
         return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
-    # Persist payment preferences on the user profile for reference
-    payment_snapshot = dict(getattr(artist.user, 'kyc_documents', {}) or {})
-    payment_snapshot['payment_preferences'] = {
-        'momo': momo or None,
-        'bank_account': bankAccount or None,
+    payment_preferences = {
+        'preferred_method': preferred_method,
+        'currency': currency,
     }
-    artist.user.kyc_documents = payment_snapshot
+
+    if method == 'mobile-money':
+        payment_preferences['mobile_money'] = {
+            'provider': mobile_provider,
+            'number': mobile_number,
+            'account_name': mobile_account_name,
+        }
+    elif method == 'bank-transfer':
+        payment_preferences['bank_transfer'] = {
+            'bank_name': bank_name,
+            'account_number': account_number,
+            'account_holder_name': account_holder_name,
+            'routing_number': routing_number,
+        }
+    elif method == 'international':
+        payment_preferences['international'] = {
+            'instructions': international_instructions,
+        }
+
+    # Persist payment preferences on both artist and user for compatibility
+    artist.payment_preferences = payment_preferences
+
+    user_documents = dict(getattr(artist.user, 'kyc_documents', {}) or {})
+    user_documents['payment_preferences'] = payment_preferences
+    artist.user.kyc_documents = user_documents
     artist.user.save(update_fields=['kyc_documents'])
 
     # Mark this step as complete
@@ -1710,10 +2025,32 @@ def complete_artist_publisher_view(request):
     artist_id = request.data.get('artist_id', "")
     publisher_id = request.data.get('publisher_id', "")
     self_publish_raw = request.data.get('self_publish', "")
-    # Coerce common truthy string forms to boolean
+    publisher_name = request.data.get('publisher_name') or request.data.get('publisherName')
+    publisher_type = request.data.get('publisher_type') or request.data.get('publisherType')
+    publisher_location = request.data.get('publisher_location') or request.data.get('publisherLocation')
+    publisher_specialties = request.data.get('publisher_specialties') or request.data.get('publisherSpecialties')
+    relationship_notes = request.data.get('relationship_notes') or request.data.get('relationshipNotes')
+    agreed_to_terms = request.data.get('agreed_to_terms') or request.data.get('agreedToTerms')
+    selected_publisher = request.data.get('publisher_details') or request.data.get('selected_publisher')
+
     truthy = {True, 'true', 'True', '1', 1, 'on', 'yes', 'Yes'}
     falsy = {False, 'false', 'False', '0', 0, 'off', 'no', 'No', None, ''}
     self_publish = True if self_publish_raw in truthy else False if self_publish_raw in falsy else bool(self_publish_raw)
+
+    parsed_selected = None
+    if selected_publisher:
+        parsed_selected = selected_publisher
+        if isinstance(selected_publisher, str):
+            try:
+                parsed_selected = json.loads(selected_publisher)
+            except (TypeError, json.JSONDecodeError):
+                errors['publisher_details'] = ['Invalid publisher details payload.']
+        if isinstance(parsed_selected, dict):
+            publisher_name = publisher_name or parsed_selected.get('name')
+            publisher_type = publisher_type or parsed_selected.get('type')
+            publisher_location = publisher_location or parsed_selected.get('location')
+            publisher_specialties = publisher_specialties or parsed_selected.get('specialties')
+            agreed_to_terms = agreed_to_terms or parsed_selected.get('agreed_to_terms')
 
     if not artist_id:
         errors['artist_id'] = ['Artist ID is required.']
@@ -1729,24 +2066,49 @@ def complete_artist_publisher_view(request):
         return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
     # Apply changes
+    preferences = {
+        'publisher_name': publisher_name,
+        'publisher_type': publisher_type,
+        'publisher_location': publisher_location,
+        'publisher_specialties': publisher_specialties,
+        'relationship_notes': relationship_notes,
+        'agreed_to_terms': bool(agreed_to_terms in truthy) if agreed_to_terms not in (None, '') else None,
+        'selected_publisher': parsed_selected if isinstance(parsed_selected, dict) else None,
+    }
+
     if self_publish is True:
         artist.is_self_published = True
         # Clear any previously set publisher if switching to self-publish
         artist.publisher = None
+        preferences['publisher_name'] = publisher_name or 'Self-published'
+        setattr(artist, 'publisher_relationship_status', 'independent')
+        setattr(artist, 'royalty_collection_method', 'direct')
     else:
         artist.is_self_published = False
         if publisher_id:
             try:
                 publisher = PublisherProfile.objects.get(publisher_id=publisher_id)
                 artist.publisher = publisher
+                preferences['publisher_name'] = preferences.get('publisher_name') or getattr(publisher, 'company_name', None)
+                preferences['publisher_type'] = preferences.get('publisher_type') or getattr(publisher, 'publisher_type', None)
+                preferences['publisher_location'] = preferences.get('publisher_location') or getattr(publisher, 'country', None)
             except PublisherProfile.DoesNotExist:
                 errors['publisher_id'] = ['Publisher not found.']
 
-        if errors:
-            payload['message'] = "Errors"
-            payload['errors'] = errors
-            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
-            
+        if not publisher_id and not publisher_name:
+            errors['publisher'] = ['Provide publisher details or choose self-published.']
+        setattr(artist, 'publisher_relationship_status', 'pending')
+        if not getattr(artist, 'royalty_collection_method', None):
+            setattr(artist, 'royalty_collection_method', 'publisher')
+
+    if errors:
+        payload['message'] = "Errors"
+        payload['errors'] = errors
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
+    # Persist publisher preferences snapshot for UI consumption
+    artist.publisher_preferences = {k: v for k, v in preferences.items() if v not in (None, '')}
+
     # Mark this step as complete
     artist.publisher_added = True
 
