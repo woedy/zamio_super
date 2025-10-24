@@ -149,14 +149,17 @@ class FileUploadService:
             user=user,
             document_type=document_type,
             file=file,
+            original_filename=file.name,
+            file_size=file.size,
             file_hash=file_hash,
+            content_type=validation_result['content_type'],
             status='uploaded',
             notes=notes or ''
         )
-        
+
         # Update user's KYC status
         cls._update_user_kyc_status(user)
-        
+
         return kyc_document
     
     @classmethod
@@ -164,6 +167,15 @@ class FileUploadService:
         """Update user's overall KYC status based on uploaded documents"""
         user_docs = KYCDocument.objects.filter(user=user)
         
+        documents_payload = {}
+        for doc in user_docs:
+            documents_payload[doc.document_type] = {
+                'document_id': doc.id,
+                'status': doc.status,
+                'uploaded_at': doc.uploaded_at.isoformat() if doc.uploaded_at else None,
+                'filename': doc.original_filename,
+            }
+
         if not user_docs.exists():
             user.kyc_status = 'pending'
         elif user_docs.filter(status='approved').count() >= 2:  # Require at least 2 approved docs
@@ -172,8 +184,9 @@ class FileUploadService:
             user.kyc_status = 'rejected'
         else:
             user.kyc_status = 'incomplete'
-        
-        user.save(update_fields=['kyc_status'])
+
+        user.kyc_documents = documents_payload
+        user.save(update_fields=['kyc_status', 'kyc_documents'])
     
     @classmethod
     def get_user_documents(cls, user: User) -> Dict[str, Any]:
