@@ -1,78 +1,104 @@
-import React, { useState } from 'react';
-import { Upload, FileText, Shield, AlertCircle, CheckCircle, SkipForward } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Upload, Shield, AlertCircle, CheckCircle } from 'lucide-react';
 import { OnboardingStepProps } from '../../../../components/onboarding/OnboardingWizard';
+import { useArtistOnboarding } from '../ArtistOnboardingContext';
 
-const KYCStep: React.FC<OnboardingStepProps> = ({ onNext, onPrevious, onSkip, canSkip }) => {
+const idTypes = ['Ghana Card', 'Passport', "Driver's License", 'Voter ID'];
+const nationalities = ['Ghana', 'Nigeria', 'Kenya', 'South Africa', 'United Kingdom', 'United States', 'Canada', 'Other'];
+
+const idDocumentTypeMap: Record<string, string> = {
+  'ghana card': 'id_card',
+  passport: 'passport',
+  "driver's license": 'drivers_license',
+  'voter id': 'id_card',
+};
+
+type DocumentKey = 'idDocument' | 'proofOfAddress' | 'selfie';
+
+type UploadState = 'pending' | 'uploaded' | 'verified';
+
+const KYCStep: React.FC<OnboardingStepProps> = ({ registerNextHandler, registerSkipHandler, canSkip }) => {
+  const {
+    finalizeOnboarding,
+    uploadIdentityDocument,
+    skipVerification,
+    resumeVerification,
+    kycDocuments,
+  } = useArtistOnboarding();
   const [formData, setFormData] = useState({
     fullName: '',
     idType: '',
     idNumber: '',
     dateOfBirth: '',
     nationality: 'Ghana',
-    address: ''
+    address: '',
   });
-
-  const [documents, setDocuments] = useState({
-    idDocument: null as File | null,
-    proofOfAddress: null as File | null,
-    selfie: null as File | null
+  const [documents, setDocuments] = useState<{ [key in DocumentKey]: File | null }>({
+    idDocument: null,
+    proofOfAddress: null,
+    selfie: null,
   });
-
-  const [uploadStatus, setUploadStatus] = useState({
+  const [uploadStatus, setUploadStatus] = useState<{ [key in DocumentKey]: UploadState }>({
     idDocument: 'pending',
     proofOfAddress: 'pending',
-    selfie: 'pending'
+    selfie: 'pending',
   });
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const existingDocuments = useMemo(() => {
+    if (!kycDocuments || kycDocuments.length === 0) {
+      return new Set<string>();
+    }
+    return new Set(kycDocuments.map(doc => doc.document_type));
+  }, [kycDocuments]);
+
+  useEffect(() => {
+    if (!kycDocuments || kycDocuments.length === 0) {
+      return;
+    }
+
+    setUploadStatus(prev => {
+      const nextState: { [key in DocumentKey]: UploadState } = { ...prev };
+      kycDocuments.forEach(doc => {
+        const normalized = doc.document_type;
+        const status = doc.status === 'approved' ? 'verified' : 'uploaded';
+        if (['id_card', 'drivers_license', 'passport'].includes(normalized)) {
+          nextState.idDocument = status;
+        } else if (['utility_bill', 'bank_statement', 'tax_certificate'].includes(normalized)) {
+          nextState.proofOfAddress = status;
+        } else if (normalized === 'selfie') {
+          nextState.selfie = status;
+        }
+      });
+      return nextState;
+    });
+  }, [kycDocuments]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: value
+      [name]: value,
     }));
   };
 
-  const handleFileUpload = (documentType: keyof typeof documents) => (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = (documentType: DocumentKey) => (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setDocuments(prev => ({
-        ...prev,
-        [documentType]: file
-      }));
-      setUploadStatus(prev => ({
-        ...prev,
-        [documentType]: 'uploaded'
-      }));
-
-      // Simulate processing delay
-      setTimeout(() => {
-        setUploadStatus(prev => ({
-          ...prev,
-          [documentType]: 'verified'
-        }));
-      }, 2000);
+    if (!file) {
+      return;
     }
+    setDocuments(prev => ({
+      ...prev,
+      [documentType]: file,
+    }));
+    setUploadStatus(prev => ({
+      ...prev,
+      [documentType]: 'uploaded',
+    }));
   };
 
-  const idTypes = [
-    'Ghana Card',
-    'Passport',
-    'Driver\'s License',
-    'Voter ID'
-  ];
-
-  const nationalities = [
-    'Ghana',
-    'Nigeria',
-    'Kenya',
-    'South Africa',
-    'United Kingdom',
-    'United States',
-    'Canada',
-    'Other'
-  ];
-
-  const getStatusIcon = (status: string) => {
+  const getStatusIcon = (status: UploadState) => {
     switch (status) {
       case 'verified':
         return <CheckCircle className="w-5 h-5 text-green-400" />;
@@ -83,10 +109,10 @@ const KYCStep: React.FC<OnboardingStepProps> = ({ onNext, onPrevious, onSkip, ca
     }
   };
 
-  const getStatusText = (status: string) => {
+  const getStatusText = (status: UploadState) => {
     switch (status) {
       case 'verified':
-        return 'Verified';
+        return 'Uploaded';
       case 'uploaded':
         return 'Processing...';
       default:
@@ -94,7 +120,7 @@ const KYCStep: React.FC<OnboardingStepProps> = ({ onNext, onPrevious, onSkip, ca
     }
   };
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: UploadState) => {
     switch (status) {
       case 'verified':
         return 'text-green-400';
@@ -105,6 +131,113 @@ const KYCStep: React.FC<OnboardingStepProps> = ({ onNext, onPrevious, onSkip, ca
     }
   };
 
+  const resolveIdDocumentType = () => {
+    if (!formData.idType) {
+      return 'id_card';
+    }
+    const key = formData.idType.toLowerCase();
+    return idDocumentTypeMap[key] || 'id_card';
+  };
+
+  const resolveDocumentTypeForKey = (key: DocumentKey) => {
+    if (key === 'idDocument') {
+      return resolveIdDocumentType();
+    }
+    if (key === 'proofOfAddress') {
+      return 'utility_bill';
+    }
+    return 'selfie';
+  };
+
+  const ensureDocumentSatisfied = (key: DocumentKey) => {
+    if (documents[key]) {
+      return true;
+    }
+    if (key === 'idDocument') {
+      return ['id_card', 'passport', 'drivers_license'].some(type => existingDocuments.has(type));
+    }
+    if (key === 'proofOfAddress') {
+      return ['utility_bill', 'bank_statement', 'tax_certificate'].some(type => existingDocuments.has(type));
+    }
+    return existingDocuments.has('selfie');
+  };
+
+  const uploadIfNeeded = useCallback(async (key: DocumentKey) => {
+    const file = documents[key];
+    if (!file) {
+      return;
+    }
+    setUploadStatus(prev => ({ ...prev, [key]: 'uploaded' }));
+    try {
+      await uploadIdentityDocument(resolveDocumentTypeForKey(key), file, 'Uploaded during onboarding');
+      setUploadStatus(prev => ({ ...prev, [key]: 'verified' }));
+    } catch (error) {
+      setUploadStatus(prev => ({ ...prev, [key]: 'pending' }));
+      throw error;
+    }
+  }, [documents, uploadIdentityDocument]);
+
+  const handleSubmit = useCallback(async () => {
+    setErrorMessage(null);
+
+    if (!formData.fullName.trim() || !formData.idType || !formData.idNumber.trim() || !formData.dateOfBirth) {
+      setErrorMessage('Please complete your personal information before continuing.');
+      return false;
+    }
+
+    if (!ensureDocumentSatisfied('idDocument') || !ensureDocumentSatisfied('proofOfAddress') || !ensureDocumentSatisfied('selfie')) {
+      setErrorMessage('Please upload the required verification documents.');
+      return false;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await uploadIfNeeded('idDocument');
+      await uploadIfNeeded('proofOfAddress');
+      await uploadIfNeeded('selfie');
+      await resumeVerification();
+      await finalizeOnboarding();
+      return true;
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'We could not complete your onboarding right now. Please try again.';
+      setErrorMessage(message);
+      return false;
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [finalizeOnboarding, ensureDocumentSatisfied, resumeVerification, uploadIfNeeded, formData.fullName, formData.idNumber, formData.idType, formData.dateOfBirth]);
+
+  const handleSkip = useCallback(async () => {
+    setErrorMessage(null);
+    setIsSubmitting(true);
+    try {
+      await skipVerification('Deferred during onboarding');
+      await finalizeOnboarding();
+      return true;
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'We could not complete your onboarding right now. Please try again.';
+      setErrorMessage(message);
+      return false;
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [finalizeOnboarding, skipVerification]);
+
+  useEffect(() => {
+    registerNextHandler?.(() => handleSubmit());
+    registerSkipHandler?.(() => handleSkip());
+    return () => {
+      registerNextHandler?.(null);
+      registerSkipHandler?.(null);
+    };
+  }, [handleSubmit, handleSkip, registerNextHandler, registerSkipHandler]);
+
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-8">
@@ -114,22 +247,26 @@ const KYCStep: React.FC<OnboardingStepProps> = ({ onNext, onPrevious, onSkip, ca
         </p>
       </div>
 
-      {/* Info Banner */}
+      {errorMessage && (
+        <div className="mb-6 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          {errorMessage}
+        </div>
+      )}
+
       <div className="mb-8 p-4 rounded-lg bg-blue-500/10 border border-blue-400/20">
         <div className="flex items-start space-x-3">
           <Shield className="w-5 h-5 text-blue-400 mt-0.5" />
           <div>
             <h3 className="text-sm font-semibold text-blue-300 mb-1">Why do we need this?</h3>
             <p className="text-sm text-blue-200">
-              Identity verification helps us comply with regulatory requirements and ensures secure royalty payments.
-              This step is recommended but optional for demo purposes.
+              Identity verification helps us comply with regulatory requirements and ensures secure royalty payments. This step is
+              recommended but optional for demo purposes.
             </p>
           </div>
         </div>
       </div>
 
       <div className="space-y-8">
-        {/* Personal Information */}
         <div className="bg-slate-800/50 rounded-lg p-6">
           <h3 className="text-lg font-medium text-white mb-4">Personal Information</h3>
           <div className="grid md:grid-cols-2 gap-6">
@@ -146,6 +283,7 @@ const KYCStep: React.FC<OnboardingStepProps> = ({ onNext, onPrevious, onSkip, ca
                 onChange={handleInputChange}
                 className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
                 placeholder="Enter your full legal name"
+                disabled={isSubmitting}
               />
             </div>
 
@@ -161,6 +299,7 @@ const KYCStep: React.FC<OnboardingStepProps> = ({ onNext, onPrevious, onSkip, ca
                 value={formData.dateOfBirth}
                 onChange={handleInputChange}
                 className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                disabled={isSubmitting}
               />
             </div>
 
@@ -174,9 +313,12 @@ const KYCStep: React.FC<OnboardingStepProps> = ({ onNext, onPrevious, onSkip, ca
                 value={formData.nationality}
                 onChange={handleInputChange}
                 className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                disabled={isSubmitting}
               >
                 {nationalities.map((nationality) => (
-                  <option key={nationality} value={nationality}>{nationality}</option>
+                  <option key={nationality} value={nationality}>
+                    {nationality}
+                  </option>
                 ))}
               </select>
             </div>
@@ -191,15 +333,18 @@ const KYCStep: React.FC<OnboardingStepProps> = ({ onNext, onPrevious, onSkip, ca
                 value={formData.idType}
                 onChange={handleInputChange}
                 className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                disabled={isSubmitting}
               >
                 <option value="">Select ID type</option>
                 {idTypes.map((type) => (
-                  <option key={type} value={type}>{type}</option>
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
                 ))}
               </select>
             </div>
 
-            <div className="md:col-span-2">
+            <div>
               <label htmlFor="idNumber" className="block text-sm font-medium text-slate-200 mb-2">
                 ID Number *
               </label>
@@ -207,221 +352,72 @@ const KYCStep: React.FC<OnboardingStepProps> = ({ onNext, onPrevious, onSkip, ca
                 id="idNumber"
                 name="idNumber"
                 type="text"
-                required
                 value={formData.idNumber}
                 onChange={handleInputChange}
                 className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
                 placeholder="Enter your ID number"
+                disabled={isSubmitting}
               />
             </div>
 
-            <div className="md:col-span-2">
+            <div>
               <label htmlFor="address" className="block text-sm font-medium text-slate-200 mb-2">
-                Residential Address *
+                Residential Address
               </label>
               <input
                 id="address"
                 name="address"
                 type="text"
-                required
                 value={formData.address}
                 onChange={handleInputChange}
                 className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                placeholder="Enter your full residential address"
+                placeholder="House number, street, city"
+                disabled={isSubmitting}
               />
             </div>
           </div>
         </div>
 
-        {/* Document Upload */}
         <div className="bg-slate-800/50 rounded-lg p-6">
-          <h3 className="text-lg font-medium text-white mb-4">Document Upload</h3>
-          <p className="text-sm text-slate-400 mb-6">
-            Upload clear photos of your identification documents. Files should be JPG, PNG, or PDF format (max 5MB each).
-          </p>
-
-          <div className="space-y-6">
-            {/* ID Document */}
-            <div className="border border-white/10 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center space-x-3">
-                  <FileText className="w-5 h-5 text-indigo-400" />
-                  <div>
-                    <h4 className="font-medium text-white">Government ID</h4>
-                    <p className="text-sm text-slate-400">Passport, Ghana Card, or Driver's License</p>
-                  </div>
-                </div>
-                <div className={`flex items-center space-x-2 ${getStatusColor(uploadStatus.idDocument)}`}>
-                  {getStatusIcon(uploadStatus.idDocument)}
-                  <span className="text-sm">{getStatusText(uploadStatus.idDocument)}</span>
-                </div>
+          <h3 className="text-lg font-medium text-white mb-4">Document Uploads</h3>
+          <div className="grid md:grid-cols-3 gap-6">
+            {([
+              { key: 'idDocument' as const, label: 'Government ID *', description: 'Upload your Ghana Card, passport, or driver’s license.' },
+              { key: 'proofOfAddress' as const, label: 'Proof of Address *', description: 'Utility bill or bank statement issued within the last 3 months.' },
+              { key: 'selfie' as const, label: 'Selfie Verification *', description: 'Take a selfie holding your ID to help us confirm identity.' },
+            ]).map(({ key, label, description }) => (
+              <div key={key} className="rounded-lg border border-white/10 bg-slate-900/40 p-4">
+                <p className="text-sm font-medium text-slate-200 mb-2">{label}</p>
+                <p className="text-xs text-slate-400 mb-4">{description}</p>
+                <label className="flex h-24 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-white/10 bg-slate-900/50 text-center text-sm text-slate-300 transition-colors hover:border-indigo-400/50 hover:text-white">
+                  <Upload className="mb-2 h-5 w-5" />
+                  <span>Click to upload</span>
+                  <input type="file" accept="image/*,application/pdf" className="hidden" onChange={handleFileUpload(key)} disabled={isSubmitting} />
+                </label>
+                <div className={`mt-2 text-xs ${getStatusColor(uploadStatus[key])}`}>{getStatusText(uploadStatus[key])}</div>
               </div>
+            ))}
+          </div>
+        </div>
 
-              {uploadStatus.idDocument === 'pending' && (
-                <div className="border-2 border-dashed border-slate-600 rounded-lg p-6 text-center">
-                  <Upload className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                  <p className="text-slate-400 mb-2">Drag and drop or click to upload</p>
-                  <p className="text-xs text-slate-500">JPG, PNG, PDF (max 5MB)</p>
-                  <input
-                    type="file"
-                    accept=".jpg,.jpeg,.png,.pdf"
-                    onChange={handleFileUpload('idDocument')}
-                    className="hidden"
-                    id="idDocument"
-                  />
-                  <label
-                    htmlFor="idDocument"
-                    className="mt-3 inline-flex items-center px-4 py-2 border border-white/20 rounded-lg text-sm text-slate-300 hover:border-indigo-400 hover:text-white cursor-pointer transition-colors"
-                  >
-                    Choose File
-                  </label>
-                </div>
-              )}
-
-              {uploadStatus.idDocument === 'uploaded' && (
-                <div className="bg-indigo-500/10 border border-indigo-400/20 rounded-lg p-4">
-                  <p className="text-sm text-indigo-300">Document uploaded successfully. Processing verification...</p>
-                </div>
-              )}
-
-              {uploadStatus.idDocument === 'verified' && (
-                <div className="bg-green-500/10 border border-green-400/20 rounded-lg p-4">
-                  <p className="text-sm text-green-300">Document verified successfully!</p>
-                </div>
-              )}
-            </div>
-
-            {/* Proof of Address */}
-            <div className="border border-white/10 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center space-x-3">
-                  <FileText className="w-5 h-5 text-indigo-400" />
-                  <div>
-                    <h4 className="font-medium text-white">Proof of Address</h4>
-                    <p className="text-sm text-slate-400">Utility bill, bank statement, or lease agreement (max 3 months old)</p>
-                  </div>
-                </div>
-                <div className={`flex items-center space-x-2 ${getStatusColor(uploadStatus.proofOfAddress)}`}>
-                  {getStatusIcon(uploadStatus.proofOfAddress)}
-                  <span className="text-sm">{getStatusText(uploadStatus.proofOfAddress)}</span>
-                </div>
-              </div>
-
-              {uploadStatus.proofOfAddress === 'pending' && (
-                <div className="border-2 border-dashed border-slate-600 rounded-lg p-6 text-center">
-                  <Upload className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                  <p className="text-slate-400 mb-2">Drag and drop or click to upload</p>
-                  <p className="text-xs text-slate-500">JPG, PNG, PDF (max 5MB)</p>
-                  <input
-                    type="file"
-                    accept=".jpg,.jpeg,.png,.pdf"
-                    onChange={handleFileUpload('proofOfAddress')}
-                    className="hidden"
-                    id="proofOfAddress"
-                  />
-                  <label
-                    htmlFor="proofOfAddress"
-                    className="mt-3 inline-flex items-center px-4 py-2 border border-white/20 rounded-lg text-sm text-slate-300 hover:border-indigo-400 hover:text-white cursor-pointer transition-colors"
-                  >
-                    Choose File
-                  </label>
-                </div>
-              )}
-
-              {uploadStatus.proofOfAddress === 'uploaded' && (
-                <div className="bg-indigo-500/10 border border-indigo-400/20 rounded-lg p-4">
-                  <p className="text-sm text-indigo-300">Document uploaded successfully. Processing verification...</p>
-                </div>
-              )}
-
-              {uploadStatus.proofOfAddress === 'verified' && (
-                <div className="bg-green-500/10 border border-green-400/20 rounded-lg p-4">
-                  <p className="text-sm text-green-300">Document verified successfully!</p>
-                </div>
-              )}
-            </div>
-
-            {/* Selfie with ID */}
-            <div className="border border-white/10 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center space-x-3">
-                  <FileText className="w-5 h-5 text-indigo-400" />
-                  <div>
-                    <h4 className="font-medium text-white">Selfie with ID</h4>
-                    <p className="text-sm text-slate-400">Photo of yourself holding your ID document</p>
-                  </div>
-                </div>
-                <div className={`flex items-center space-x-2 ${getStatusColor(uploadStatus.selfie)}`}>
-                  {getStatusIcon(uploadStatus.selfie)}
-                  <span className="text-sm">{getStatusText(uploadStatus.selfie)}</span>
-                </div>
-              </div>
-
-              {uploadStatus.selfie === 'pending' && (
-                <div className="border-2 border-dashed border-slate-600 rounded-lg p-6 text-center">
-                  <Upload className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                  <p className="text-slate-400 mb-2">Drag and drop or click to upload</p>
-                  <p className="text-xs text-slate-500">JPG, PNG (max 5MB)</p>
-                  <input
-                    type="file"
-                    accept=".jpg,.jpeg,.png"
-                    onChange={handleFileUpload('selfie')}
-                    className="hidden"
-                    id="selfie"
-                  />
-                  <label
-                    htmlFor="selfie"
-                    className="mt-3 inline-flex items-center px-4 py-2 border border-white/20 rounded-lg text-sm text-slate-300 hover:border-indigo-400 hover:text-white cursor-pointer transition-colors"
-                  >
-                    Choose File
-                  </label>
-                </div>
-              )}
-
-              {uploadStatus.selfie === 'uploaded' && (
-                <div className="bg-indigo-500/10 border border-indigo-400/20 rounded-lg p-4">
-                  <p className="text-sm text-indigo-300">Photo uploaded successfully. Processing verification...</p>
-                </div>
-              )}
-
-              {uploadStatus.selfie === 'verified' && (
-                <div className="bg-green-500/10 border border-green-400/20 rounded-lg p-4">
-                  <p className="text-sm text-green-300">Photo verified successfully!</p>
-                </div>
-              )}
+        <div className="rounded-lg border border-white/10 bg-slate-800/50 p-4">
+          <div className="flex items-start space-x-3">
+            <AlertCircle className="h-5 w-5 text-amber-300 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-white">Verification Timeline</p>
+              <p className="text-xs text-slate-400">
+                KYC review typically takes 1-2 business days. You can continue using the platform while verification is pending.
+              </p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Navigation */}
-      <div className="flex justify-between mt-8 pt-6 border-t border-white/10">
-        <button
-          onClick={onPrevious}
-          className="bg-slate-800/50 hover:bg-slate-800 text-white px-6 py-2 rounded-lg transition-colors"
-        >
-          Previous
-        </button>
+      {canSkip && (
+        <p className="mt-4 text-xs text-slate-400">You can skip this step for now and return later to complete verification.</p>
+      )}
 
-        <div className="flex space-x-3">
-          {canSkip && (
-            <button
-              onClick={onSkip}
-              className="inline-flex items-center space-x-2 border border-white/20 hover:border-indigo-400 text-slate-300 hover:text-white px-4 py-2 rounded-lg transition-colors"
-            >
-              <SkipForward className="h-4 w-4" />
-              <span>Skip</span>
-            </button>
-          )}
-
-          <button
-            onClick={onNext}
-            className="bg-indigo-500 hover:bg-indigo-400 text-white px-6 py-2 rounded-lg transition-colors"
-          >
-            Continue to Social Media
-          </button>
-        </div>
-      </div>
+      {isSubmitting && <div className="mt-6 text-sm text-indigo-200">Finalising your onboarding…</div>}
     </div>
   );
 };

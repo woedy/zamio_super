@@ -132,31 +132,82 @@ class FileUploadService:
         
         # Calculate file hash for duplicate detection
         file_hash = cls.calculate_file_hash(file)
-        
-        # Check for duplicate files
-        existing_doc = KYCDocument.objects.filter(file_hash=file_hash).first()
-        if existing_doc:
+
+        existing_doc_same_type = (
+            KYCDocument.objects
+            .filter(user=user, document_type=document_type)
+            .order_by('-uploaded_at')
+            .first()
+        )
+
+        # If the user is re-uploading the exact same file for the same document type,
+        # treat it as an idempotent success instead of raising a duplicate error.
+        if existing_doc_same_type and existing_doc_same_type.file_hash == file_hash:
+            if existing_doc_same_type.file:
+                existing_doc_same_type.file.delete(save=False)
+
+            existing_doc_same_type.file = file
+            existing_doc_same_type.original_filename = file.name
+            existing_doc_same_type.file_size = file.size
+            existing_doc_same_type.content_type = validation_result['content_type']
+            existing_doc_same_type.status = 'uploaded'
+            existing_doc_same_type.uploaded_at = timezone.now()
+            if notes is not None:
+                existing_doc_same_type.notes = notes or ''
+            existing_doc_same_type.save()
+
+            cls._update_user_kyc_status(user)
+            return existing_doc_same_type
+
+        # Check for duplicate files that belong to a different document slot or user
+        duplicate_for_other_context = (
+            KYCDocument.objects
+            .filter(file_hash=file_hash)
+            .exclude(id=getattr(existing_doc_same_type, 'id', None))
+            .exists()
+        )
+        if duplicate_for_other_context:
             raise ValidationError('This file has already been uploaded')
-        
+
         # Perform basic malware scan
         cls._scan_file_content(file)
-        
-        # Delete existing document of same type for this user
-        KYCDocument.objects.filter(user=user, document_type=document_type).delete()
-        
+
+        if existing_doc_same_type:
+            # Replace the existing document in place so the unique file hash constraint
+            # remains satisfied while refreshing metadata for the new upload.
+            if existing_doc_same_type.file:
+                existing_doc_same_type.file.delete(save=False)
+
+            existing_doc_same_type.file = file
+            existing_doc_same_type.file_hash = file_hash
+            existing_doc_same_type.original_filename = file.name
+            existing_doc_same_type.file_size = file.size
+            existing_doc_same_type.content_type = validation_result['content_type']
+            existing_doc_same_type.status = 'uploaded'
+            if notes is not None:
+                existing_doc_same_type.notes = notes or ''
+            existing_doc_same_type.uploaded_at = timezone.now()
+            existing_doc_same_type.save()
+
+            cls._update_user_kyc_status(user)
+            return existing_doc_same_type
+
         # Create new document record
         kyc_document = KYCDocument.objects.create(
             user=user,
             document_type=document_type,
             file=file,
+            original_filename=file.name,
+            file_size=file.size,
             file_hash=file_hash,
+            content_type=validation_result['content_type'],
             status='uploaded',
             notes=notes or ''
         )
-        
+
         # Update user's KYC status
         cls._update_user_kyc_status(user)
-        
+
         return kyc_document
     
     @classmethod
@@ -164,6 +215,15 @@ class FileUploadService:
         """Update user's overall KYC status based on uploaded documents"""
         user_docs = KYCDocument.objects.filter(user=user)
         
+        documents_payload = {}
+        for doc in user_docs:
+            documents_payload[doc.document_type] = {
+                'document_id': doc.id,
+                'status': doc.status,
+                'uploaded_at': doc.uploaded_at.isoformat() if doc.uploaded_at else None,
+                'filename': doc.original_filename,
+            }
+
         if not user_docs.exists():
             user.kyc_status = 'pending'
         elif user_docs.filter(status='approved').count() >= 2:  # Require at least 2 approved docs
@@ -172,8 +232,9 @@ class FileUploadService:
             user.kyc_status = 'rejected'
         else:
             user.kyc_status = 'incomplete'
-        
-        user.save(update_fields=['kyc_status'])
+
+        user.kyc_documents = documents_payload
+        user.save(update_fields=['kyc_status', 'kyc_documents'])
     
     @classmethod
     def get_user_documents(cls, user: User) -> Dict[str, Any]:
