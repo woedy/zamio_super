@@ -62,6 +62,10 @@ export interface ArtistOnboardingStatus {
   progress?: ArtistOnboardingProgress;
   completion_percentage?: number;
   required_fields?: Record<string, unknown>;
+  verification_status?: string;
+  kyc_status?: string;
+  can_resume_verification?: boolean;
+  can_skip_verification?: boolean;
   [key: string]: unknown;
 }
 
@@ -93,7 +97,6 @@ export const completeArtistProfile = async (formData: FormData) => {
   const { data } = await authApi.post<ApiEnvelope<ArtistOnboardingStatus>>(
     '/api/accounts/complete-artist-profile/',
     formData,
-    { headers: { 'Content-Type': 'multipart/form-data' } },
   );
   return data;
 };
@@ -126,6 +129,56 @@ export const completeArtistOnboarding = async (payload: Record<string, unknown>)
   const { data } = await authApi.post<ApiEnvelope<ArtistOnboardingStatus>>(
     '/api/accounts/complete-artist-onboarding/',
     payload,
+  );
+  return data;
+};
+
+export const skipArtistOnboardingStep = async (payload: Record<string, unknown>) => {
+  const { data } = await authApi.post<ApiEnvelope<ArtistOnboardingStatus>>(
+    '/api/accounts/skip-artist-onboarding/',
+    payload,
+  );
+  return data;
+};
+
+export interface KycDocumentSummary {
+  id: number;
+  document_type: string;
+  document_type_display?: string;
+  status?: string;
+  status_display?: string;
+  original_filename?: string;
+  file_size?: number;
+  uploaded_at?: string;
+}
+
+export const uploadKycDocument = async (formData: FormData) => {
+  const { data } = await authApi.post<ApiEnvelope<{ document_id: number }>>(
+    '/api/accounts/upload-kyc-documents/',
+    formData,
+  );
+  return data;
+};
+
+export const fetchKycDocuments = async () => {
+  const { data } = await authApi.get<ApiEnvelope<{ documents?: KycDocumentSummary[] }>>(
+    '/api/accounts/get-kyc-documents/',
+  );
+  return data;
+};
+
+export const skipArtistVerification = async (payload: Record<string, unknown>) => {
+  const { data } = await authApi.post<ApiEnvelope<ArtistOnboardingStatus | Record<string, unknown>>>(
+    '/api/accounts/skip-verification/',
+    payload,
+  );
+  return data;
+};
+
+export const resumeArtistVerification = async () => {
+  const { data } = await authApi.post<ApiEnvelope<Record<string, unknown>>>(
+    '/api/accounts/resume-verification/',
+    {},
   );
   return data;
 };

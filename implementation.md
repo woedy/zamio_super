@@ -4,6 +4,8 @@
 - **Backend sequence** B1 Authentication → B2 Onboarding → B3 Dashboards → B4 In-App Activities.
 - **Frontend sequence** F1 `zamio_frontend` → F2 `zamio_stations` → F3 `zamio_publisher` → F4 `zamio_admin`.
 - **Dependencies** Backend endpoints must stabilize before SPA integrations in the corresponding phase. Capture provisioning (B2) feeds `zamio_app` and later station flows (F2). Async pipelines (Celery/Redis/Channels) underpin dashboards and activities.
+- **Verification → Onboarding Hand-off** Treat successful email verification as the immediate hand-off point to onboarding flows. All clients should redirect or surface onboarding steps directly after verification without additional gating.
+- **Static UI as Contract** All SPA UIs (front, station, publisher, admin) currently live as static builds and define the data contract we must honor. Backend models, serializers, and business logic may evolve to match UI requirements, while UI layout/structure changes must be explicitly requested before implementation.
 
 ## Backend Roadmap
 
@@ -38,7 +40,10 @@
   - B2.4 Publisher Linkage: As a publisher/PRO partner, I can connect my account to partner profiles for reciprocal reporting.
 - **Acceptance Criteria**
   - AB2.1 Existing onboarding APIs (`/api/artists/profile/`, `/api/stations/setup/`) are verified for schema accuracy, validation, and error messaging.
+  - AB2.1a Artist onboarding captures profile metadata required by the static UI (primary genre, music style, social links, website, regional context) and returns a structured `profile` + `social_links` payload for the frontend wizard.
   - AB2.2 Upload endpoints accept station schedule CSV/JSON, persist records, and emit processing tasks as currently implemented.
+  - AB2.2a Payment preferences persist structured `preferred_method` snapshots (MoMo, bank, international) for reuse across artist profile, payouts, and frontend state rehydration.
+  - AB2.2b Publisher onboarding records self-publish decisions and optional publisher metadata so the UI can resume exactly where the artist left off.
   - AB2.3 Station capture provisioning endpoint continues returning tokenized config consumed by `OfflineCaptureService` in `zamio_app` (chunk duration, retry policy, base URL).
   - AB2.4 Frontend forms persist step-by-step, resume progress, and display backend validation messages.
   - AB2.5 Successful onboarding toggles status flags (`is_onboarded`) so dashboards unlock and marks station capture app as ready.
@@ -46,8 +51,14 @@
 - **Task Checklist**
   - [x] Backend QA: Review serializers/views in `artists/` and `stations/` apps; adjust only if data contract gaps emerge.
   - [x] Backend QA: Execute Postman/pytest flows for artist onboarding, station setup, and provisioning.
+  - [x] Backend: Ensure onboarding step tracking always resumes the earliest incomplete stage (payment, publisher, KYC) after login, treat publisher skips as explicit self-publish selections, and expose KYC uploads via `/api/accounts/upload-kyc-documents/`.
+  - [x] Backend: Surface the serialized onboarding state (next step, progress, stage name) in verify-email and legacy login responses so every client can resume the wizard and hydrate dashboard chrome immediately after authentication.
+  - [x] Backend: Make `/api/accounts/resume-verification/` idempotent and include `verification_status`/`kyc_status` flags in onboarding payloads so the frontend only resumes KYC when the backend indicates it is necessary.
   - [x] Frontend: Build multi-step onboarding UI with progress saving against existing endpoints.
-  - [ ] Frontend: Implement file upload + validation messaging mapped to backend error structure.
+  - [x] Frontend: Wire the artist onboarding wizard to the live APIs (profile, social skip, payment, publisher, finalization) with sanitized payloads and refresh the auth snapshot so dashboard chrome reflects the saved stage name immediately after completion.
+  - [x] Frontend: Persist onboarding progress across sessions, redirect artists back to any skipped step on re-authentication, wire the identity verification step to the KYC upload/skip endpoints, and refresh dashboard chrome with the stored stage name.
+  - [x] Frontend: Apply client-side validation for required onboarding inputs (profile essentials, payment method details, publisher consent) before submitting requests to keep the wizard frictionless.
+  - [x] Frontend: Implement file upload + validation messaging mapped to backend error structure.
   - [ ] Flutter (`zamio_app`): Confirm provisioning payload compatibility, persist station credentials, and regression-test chunk upload loop against staging backend.
   - [ ] QA: Expand seed data + collections covering onboarding and capture provisioning scenarios.
   - [ ] Tests: Validate onboarding acceptance criteria end-to-end across web + Flutter clients (Cypress, pytest, manual UAT).
@@ -188,3 +199,4 @@
 - **Testing** Maintain backend pytest coverage, frontend unit/integration tests, and integration smoke tests via Postman/Cypress.
 - **Deployment** Keep Docker compose files current; each phase should be deployable independently with feature flags if needed.
 - **Demo Readiness** At the end of every phase, ensure there is a scripted demo scenario with test data, accessible credentials, and instructions.
+- **Frontend Contract Discipline** Treat the existing static SPA screens as non-negotiable guides for data structure, copy, and flow unless explicit approval is given to revise them. Any backend/domain changes should be driven by aligning responses with these UI expectations.
