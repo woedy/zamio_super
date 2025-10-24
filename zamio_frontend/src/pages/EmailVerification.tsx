@@ -133,7 +133,7 @@ const EmailVerification = () => {
       const dataRecord = (response?.data ?? {}) as Record<string, unknown>;
       const nextStep = (dataRecord['next_step'] || dataRecord['onboarding_step']) as string | undefined;
       const destination = nextStep && typeof nextStep === 'string' && nextStep && nextStep !== 'done'
-        ? `/onboarding/${nextStep}`
+        ? '/onboarding/welcome'
         : '/dashboard';
 
       setTimeout(() => {
