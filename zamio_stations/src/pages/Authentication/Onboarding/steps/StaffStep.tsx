@@ -1,16 +1,15 @@
-import React, { useState } from 'react';
-import { Users, Plus, Trash2, Shield, Edit, Mail, Phone, UserCheck, UserX, Crown, FileText, Settings } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import axios from 'axios';
+import { Users, Plus, Trash2, Shield, Edit, Mail, Phone, UserCheck, UserX, Crown, FileText } from 'lucide-react';
+import { useStationOnboarding } from '../StationOnboardingContext';
 
-interface StaffMember {
-  id: string;
+interface StaffMemberForm {
   firstName: string;
   lastName: string;
   email: string;
   phone: string;
   role: 'admin' | 'manager' | 'reporter';
   permissions: string[];
-  isActive: boolean;
-  joinDate: string;
 }
 
 interface StaffStepProps {
@@ -19,82 +18,104 @@ interface StaffStepProps {
   onSkip?: () => void;
 }
 
+const availableRoles = [
+  {
+    id: 'admin',
+    name: 'Administrator',
+    icon: Crown,
+    description: 'Full access to all station features and settings',
+    color: 'text-yellow-400',
+    bgColor: 'bg-yellow-500/20',
+  },
+  {
+    id: 'manager',
+    name: 'Manager',
+    icon: Shield,
+    description: 'Manage reports, monitoring, and staff oversight',
+    color: 'text-blue-400',
+    bgColor: 'bg-blue-500/20',
+  },
+  {
+    id: 'reporter',
+    name: 'Reporter',
+    icon: FileText,
+    description: 'Access to reports and basic monitoring features',
+    color: 'text-green-400',
+    bgColor: 'bg-green-500/20',
+  },
+];
+
+const availablePermissions = [
+  { id: 'reports', label: 'View Reports', description: 'Access to airplay and royalty reports' },
+  { id: 'monitoring', label: 'Monitor Streams', description: 'Real-time stream monitoring access' },
+  { id: 'staff', label: 'Manage Staff', description: 'Add/remove staff members and roles' },
+  { id: 'settings', label: 'System Settings', description: 'Modify station configuration' },
+  { id: 'payments', label: 'Payment Management', description: 'Access to payment and billing features' },
+  { id: 'compliance', label: 'Compliance Tools', description: 'Access to regulatory compliance features' },
+];
+
+const defaultForm: StaffMemberForm = {
+  firstName: '',
+  lastName: '',
+  email: '',
+  phone: '',
+  role: 'reporter',
+  permissions: ['reports'],
+};
+
+const mapSummaryToForm = (summary: Record<string, unknown>): StaffMemberForm => {
+  const name = typeof summary.name === 'string' ? summary.name : '';
+  const [firstName, ...rest] = name.split(' ');
+  const lastName = rest.join(' ');
+  const role = typeof summary.role === 'string' && (['admin', 'manager', 'reporter'] as const).includes(summary.role as any)
+    ? (summary.role as 'admin' | 'manager' | 'reporter')
+    : 'reporter';
+
+  return {
+    firstName: firstName ?? '',
+    lastName: lastName ?? '',
+    email: typeof summary.email === 'string' ? summary.email ?? '' : '',
+    phone: typeof summary.phone === 'string' ? summary.phone ?? '' : '',
+    role,
+    permissions: Array.isArray(summary.permissions) ? (summary.permissions as string[]) : ['reports'],
+  };
+};
+
 const StaffStep: React.FC<StaffStepProps> = ({ onNext, onPrevious, onSkip }) => {
-  const [staffMembers, setStaffMembers] = useState<StaffMember[]>([
-    {
-      id: '1',
-      firstName: 'Sarah',
-      lastName: 'Johnson',
-      email: 'sarah@radiostation.com',
-      phone: '+233 24 123 4567',
-      role: 'manager',
-      permissions: ['reports', 'monitoring', 'staff'],
-      isActive: true,
-      joinDate: '2024-01-15'
-    }
-  ]);
-
+  const { status, submitStaff, skipStep } = useStationOnboarding();
+  const [staffMembers, setStaffMembers] = useState<StaffMemberForm[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [editingMember, setEditingMember] = useState<string | null>(null);
-  const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
-    email: '',
-    phone: '',
-    role: 'reporter' as 'admin' | 'manager' | 'reporter',
-    permissions: [] as string[]
-  });
-
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [formData, setFormData] = useState<StaffMemberForm>(defaultForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [skipping, setSkipping] = useState(false);
 
-  const availableRoles = [
-    {
-      id: 'admin',
-      name: 'Administrator',
-      icon: Crown,
-      description: 'Full access to all station features and settings',
-      color: 'text-yellow-400',
-      bgColor: 'bg-yellow-500/20'
-    },
-    {
-      id: 'manager',
-      name: 'Manager',
-      icon: Shield,
-      description: 'Manage reports, monitoring, and staff oversight',
-      color: 'text-blue-400',
-      bgColor: 'bg-blue-500/20'
-    },
-    {
-      id: 'reporter',
-      name: 'Reporter',
-      icon: FileText,
-      description: 'Access to reports and basic monitoring features',
-      color: 'text-green-400',
-      bgColor: 'bg-green-500/20'
+  const staffSummary = useMemo(() => (status as any)?.staff_members ?? [], [status]);
+
+  useEffect(() => {
+    if (Array.isArray(staffSummary) && staffSummary.length > 0) {
+      const mapped = staffSummary
+        .filter(item => item && typeof item === 'object')
+        .map(item => mapSummaryToForm(item as Record<string, unknown>));
+      setStaffMembers(mapped);
     }
-  ];
+  }, [staffSummary]);
 
-  const availablePermissions = [
-    { id: 'reports', label: 'View Reports', description: 'Access to airplay and royalty reports' },
-    { id: 'monitoring', label: 'Monitor Streams', description: 'Real-time stream monitoring access' },
-    { id: 'staff', label: 'Manage Staff', description: 'Add/remove staff members and roles' },
-    { id: 'settings', label: 'System Settings', description: 'Modify station configuration' },
-    { id: 'payments', label: 'Payment Management', description: 'Access to payment and billing features' },
-    { id: 'compliance', label: 'Compliance Tools', description: 'Access to regulatory compliance features' }
-  ];
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
+  ) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: value
+      [name]: value,
     }));
 
-    // Clear error when user starts typing
     if (errors[name]) {
       setErrors(prev => ({
         ...prev,
-        [name]: ''
+        [name]: '',
       }));
     }
   };
@@ -104,7 +125,7 @@ const StaffStep: React.FC<StaffStepProps> = ({ onNext, onPrevious, onSkip }) => 
       ...prev,
       permissions: prev.permissions.includes(permissionId)
         ? prev.permissions.filter(p => p !== permissionId)
-        : [...prev.permissions, permissionId]
+        : [...prev.permissions, permissionId],
     }));
   };
 
@@ -125,465 +146,407 @@ const StaffStep: React.FC<StaffStepProps> = ({ onNext, onPrevious, onSkip }) => 
       newErrors.email = 'Please enter a valid email address';
     }
 
-    if (!formData.phone.trim()) {
-      newErrors.phone = 'Phone number is required';
-    }
-
-    if (formData.permissions.length === 0) {
-      newErrors.permissions = 'At least one permission must be selected';
-    }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
+  };
+
+  const resetForm = () => {
+    setFormData(defaultForm);
+    setErrors({});
+    setShowAddForm(false);
+    setEditingIndex(null);
   };
 
   const handleAddStaff = () => {
     if (!validateForm()) return;
 
-    const newMember: StaffMember = {
-      id: Date.now().toString(),
-      ...formData,
-      isActive: true,
-      joinDate: new Date().toISOString().split('T')[0]
-    };
-
-    setStaffMembers(prev => [...prev, newMember]);
-    setFormData({
-      firstName: '',
-      lastName: '',
-      email: '',
-      phone: '',
-      role: 'reporter',
-      permissions: []
-    });
-    setShowAddForm(false);
-    setErrors({});
+    setStaffMembers(prev => [...prev, formData]);
+    resetForm();
   };
 
-  const handleEditStaff = (memberId: string) => {
-    const member = staffMembers.find(m => m.id === memberId);
-    if (member) {
-      setFormData({
-        firstName: member.firstName,
-        lastName: member.lastName,
-        email: member.email,
-        phone: member.phone,
-        role: member.role,
-        permissions: member.permissions
-      });
-      setEditingMember(memberId);
-      setShowAddForm(true);
-    }
+  const handleEditStaff = (index: number) => {
+    const target = staffMembers[index];
+    if (!target) return;
+    setFormData(target);
+    setEditingIndex(index);
+    setShowAddForm(true);
   };
 
   const handleUpdateStaff = () => {
-    if (!validateForm() || !editingMember) return;
-
-    setStaffMembers(prev => prev.map(member =>
-      member.id === editingMember
-        ? { ...member, ...formData }
-        : member
-    ));
-
-    setFormData({
-      firstName: '',
-      lastName: '',
-      email: '',
-      phone: '',
-      role: 'reporter',
-      permissions: []
-    });
-    setEditingMember(null);
-    setShowAddForm(false);
-    setErrors({});
+    if (!validateForm() || editingIndex === null) return;
+    setStaffMembers(prev => prev.map((member, idx) => (idx === editingIndex ? formData : member)));
+    resetForm();
   };
 
-  const handleRemoveStaff = (memberId: string) => {
-    setStaffMembers(prev => prev.filter(member => member.id !== memberId));
+  const handleRemoveStaff = (index: number) => {
+    setStaffMembers(prev => prev.filter((_, idx) => idx !== index));
   };
 
-  const toggleStaffStatus = (memberId: string) => {
-    setStaffMembers(prev => prev.map(member =>
-      member.id === memberId
-        ? { ...member, isActive: !member.isActive }
-        : member
-    ));
-  };
+  const handleSubmit = async () => {
+    setSubmitting(true);
+    setApiError(null);
 
-  const getRoleInfo = (roleId: string) => {
-    return availableRoles.find(role => role.id === roleId);
-  };
+    const payload = staffMembers.map(member => ({
+      name: `${member.firstName.trim()} ${member.lastName.trim()}`.trim(),
+      email: member.email.trim(),
+      role: member.role,
+    }));
 
-  const getDefaultPermissions = (roleId: string) => {
-    switch (roleId) {
-      case 'admin':
-        return ['reports', 'monitoring', 'staff', 'settings', 'payments', 'compliance'];
-      case 'manager':
-        return ['reports', 'monitoring', 'staff'];
-      case 'reporter':
-        return ['reports'];
-      default:
-        return [];
+    try {
+      await submitStaff(payload);
+      onNext();
+    } catch (err) {
+      const message = resolveApiError(err, setApiError);
+      setApiError(message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const handleRoleChange = (roleId: string) => {
-    setFormData(prev => ({
-      ...prev,
-      role: roleId as 'admin' | 'manager' | 'reporter',
-      permissions: getDefaultPermissions(roleId)
-    }));
+  const handleSkip = async () => {
+    if (!onSkip) {
+      setSkipping(true);
+      try {
+        await skipStep('staff');
+        onNext();
+      } catch (err) {
+        const message = resolveApiError(err, setApiError);
+        setApiError(message);
+      } finally {
+        setSkipping(false);
+      }
+      return;
+    }
+    onSkip();
   };
 
   return (
     <div className="py-8">
-      {/* Header */}
       <div className="text-center mb-8">
-        <h3 className="text-3xl font-semibold text-white mb-4">
-          Staff Management
-        </h3>
+        <h3 className="text-3xl font-semibold text-white mb-4">Staff Management</h3>
         <p className="text-slate-300 text-lg max-w-2xl mx-auto">
           Add team members and assign roles for efficient station operations. Control access levels and permissions for different team functions.
         </p>
       </div>
 
-      {/* Staff Members List */}
-      <div className="bg-slate-900/60 rounded-2xl border border-white/10 p-8 mb-8">
-        <div className="flex items-center justify-between mb-6">
-          <h4 className="text-xl font-semibold text-white">Team Members</h4>
-          <button
-            onClick={() => setShowAddForm(true)}
-            className="inline-flex items-center space-x-2 bg-indigo-500 hover:bg-indigo-400 text-white px-4 py-2 rounded-lg transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Staff Member</span>
-          </button>
-        </div>
+      <div className="space-y-8">
+        {apiError && (
+          <div className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+            {apiError}
+          </div>
+        )}
 
-        {staffMembers.length === 0 ? (
-          <div className="text-center py-12">
-            <Users className="w-12 h-12 text-slate-400 mx-auto mb-4" />
-            <p className="text-slate-400 mb-4">No staff members added yet</p>
+        <div className="bg-slate-900/60 rounded-2xl border border-white/10 p-8">
+          <div className="flex items-center justify-between mb-6">
+            <h4 className="text-xl font-semibold text-white">Team Members</h4>
             <button
-              onClick={() => setShowAddForm(true)}
-              className="inline-flex items-center space-x-2 bg-indigo-500 hover:bg-indigo-400 text-white px-6 py-3 rounded-lg transition-colors"
+              type="button"
+              onClick={() => {
+                setShowAddForm(true);
+                setEditingIndex(null);
+                setFormData(defaultForm);
+              }}
+              className="inline-flex items-center space-x-2 bg-indigo-500 hover:bg-indigo-400 text-white px-4 py-2 rounded-lg transition-colors"
             >
-              <Plus className="w-5 h-5" />
-              <span>Add Your First Team Member</span>
+              <Plus className="w-4 h-4" />
+              <span>Add Staff Member</span>
             </button>
           </div>
-        ) : (
+
           <div className="space-y-4">
-            {staffMembers.map((member) => {
-              const roleInfo = getRoleInfo(member.role);
-              return (
-                <div key={member.id} className={`border rounded-lg p-4 transition-colors ${
-                  member.isActive ? 'border-white/10 bg-slate-800/50' : 'border-slate-700 bg-slate-800/30 opacity-60'
-                }`}>
-                  <div className="flex items-center justify-between">
+            {staffMembers.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-white/10 bg-slate-800/40 p-6 text-center text-slate-300">
+                <p>No staff members added yet. Use the button above to invite your team.</p>
+              </div>
+            ) : (
+              staffMembers.map((member, index) => {
+                const roleInfo = availableRoles.find(role => role.id === member.role);
+                return (
+                  <div
+                    key={`${member.email}-${index}`}
+                    className="flex flex-col md:flex-row md:items-center justify-between rounded-xl border border-white/10 bg-slate-800/40 p-4"
+                  >
                     <div className="flex items-center space-x-4">
-                      <div className={`w-12 h-12 rounded-full flex items-center justify-center ${roleInfo?.bgColor}`}>
-                        <roleInfo.icon className={`w-6 h-6 ${roleInfo?.color}`} />
+                      <div className={`rounded-lg px-3 py-1 text-sm font-medium ${roleInfo?.bgColor ?? 'bg-slate-700/40'} ${roleInfo?.color ?? 'text-slate-300'}`}>
+                        {roleInfo?.name ?? member.role}
                       </div>
                       <div>
-                        <div className="flex items-center space-x-2">
-                          <h5 className="font-medium text-white">
-                            {member.firstName} {member.lastName}
-                          </h5>
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            member.isActive ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-                          }`}>
-                            {member.isActive ? 'Active' : 'Inactive'}
-                          </span>
-                        </div>
-                        <p className="text-sm text-slate-400">{member.email}</p>
-                        <p className="text-xs text-slate-500">
-                          Joined {new Date(member.joinDate).toLocaleDateString()}
+                        <p className="text-white font-medium">{member.firstName} {member.lastName}</p>
+                        <p className="text-sm text-slate-400 flex items-center space-x-2">
+                          <Mail className="w-4 h-4" />
+                          <span>{member.email}</span>
                         </p>
                       </div>
                     </div>
 
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-3 mt-4 md:mt-0">
                       <button
-                        onClick={() => handleEditStaff(member.id)}
-                        className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
-                        title="Edit staff member"
+                        type="button"
+                        onClick={() => handleEditStaff(index)}
+                        className="inline-flex items-center space-x-1 rounded-lg border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800/60 transition"
                       >
                         <Edit className="w-4 h-4" />
+                        <span>Edit</span>
                       </button>
                       <button
-                        onClick={() => toggleStaffStatus(member.id)}
-                        className={`p-2 rounded-lg transition-colors ${
-                          member.isActive
-                            ? 'text-red-400 hover:text-red-300 hover:bg-red-500/20'
-                            : 'text-green-400 hover:text-green-300 hover:bg-green-500/20'
-                        }`}
-                        title={member.isActive ? 'Deactivate' : 'Activate'}
-                      >
-                        {member.isActive ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
-                      </button>
-                      <button
-                        onClick={() => handleRemoveStaff(member.id)}
-                        className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/20 rounded-lg transition-colors"
-                        title="Remove staff member"
+                        type="button"
+                        onClick={() => handleRemoveStaff(index)}
+                        className="inline-flex items-center space-x-1 rounded-lg border border-red-400/40 px-3 py-2 text-sm text-red-300 hover:bg-red-500/10 transition"
                       >
                         <Trash2 className="w-4 h-4" />
+                        <span>Remove</span>
                       </button>
                     </div>
                   </div>
-
-                  <div className="mt-4 pt-4 border-t border-white/10">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-slate-200 mb-1">Role: {roleInfo?.name}</p>
-                        <p className="text-xs text-slate-400">{roleInfo?.description}</p>
-                      </div>
-                      <div className="flex flex-wrap gap-1">
-                        {member.permissions.map((permission) => {
-                          const permInfo = availablePermissions.find(p => p.id === permission);
-                          return (
-                            <span key={permission} className="px-2 py-1 bg-indigo-500/20 text-indigo-300 text-xs rounded-full">
-                              {permInfo?.label || permission}
-                            </span>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
-        )}
-      </div>
+        </div>
 
-      {/* Add/Edit Staff Form */}
-      {showAddForm && (
-        <div className="bg-slate-900/60 rounded-2xl border border-white/10 p-8 mb-8">
-          <h4 className="text-xl font-semibold text-white mb-6">
-            {editingMember ? 'Edit Staff Member' : 'Add New Staff Member'}
-          </h4>
+        {showAddForm && (
+          <div className="bg-slate-900/60 rounded-2xl border border-white/10 p-8">
+            <h4 className="text-xl font-semibold text-white mb-6">
+              {editingIndex !== null ? 'Update Team Member' : 'Add New Team Member'}
+            </h4>
 
-          <div className="grid md:grid-cols-2 gap-6 mb-6">
-            <div>
-              <label htmlFor="firstName" className="block text-sm font-medium text-slate-200 mb-2">
-                First Name *
-              </label>
-              <input
-                type="text"
-                id="firstName"
-                name="firstName"
-                value={formData.firstName}
-                onChange={handleInputChange}
-                className={`w-full rounded-lg border px-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 ${
-                  errors.firstName
-                    ? 'border-red-400 bg-slate-800/50 focus:border-red-400 focus:ring-red-400'
-                    : 'border-white/20 bg-slate-800/50 focus:border-indigo-400 focus:ring-indigo-400'
-                }`}
-                placeholder="Enter first name"
-              />
-              {errors.firstName && <p className="text-red-400 text-sm mt-1">{errors.firstName}</p>}
-            </div>
+            <div className="grid md:grid-cols-2 gap-6">
+              <div>
+                <label htmlFor="firstName" className="block text-sm font-medium text-slate-200 mb-2">
+                  First Name
+                </label>
+                <input
+                  type="text"
+                  id="firstName"
+                  name="firstName"
+                  value={formData.firstName}
+                  onChange={handleInputChange}
+                  className={`w-full rounded-lg border px-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 ${
+                    errors.firstName
+                      ? 'border-red-400 bg-slate-800/50 focus:border-red-400 focus:ring-red-400'
+                      : 'border-white/20 bg-slate-800/50 focus:border-indigo-400 focus:ring-indigo-400'
+                  }`}
+                  placeholder="Sarah"
+                />
+                {errors.firstName && <p className="text-red-400 text-sm mt-1">{errors.firstName}</p>}
+              </div>
 
-            <div>
-              <label htmlFor="lastName" className="block text-sm font-medium text-slate-200 mb-2">
-                Last Name *
-              </label>
-              <input
-                type="text"
-                id="lastName"
-                name="lastName"
-                value={formData.lastName}
-                onChange={handleInputChange}
-                className={`w-full rounded-lg border px-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 ${
-                  errors.lastName
-                    ? 'border-red-400 bg-slate-800/50 focus:border-red-400 focus:ring-red-400'
-                    : 'border-white/20 bg-slate-800/50 focus:border-indigo-400 focus:ring-indigo-400'
-                }`}
-                placeholder="Enter last name"
-              />
-              {errors.lastName && <p className="text-red-400 text-sm mt-1">{errors.lastName}</p>}
-            </div>
+              <div>
+                <label htmlFor="lastName" className="block text-sm font-medium text-slate-200 mb-2">
+                  Last Name
+                </label>
+                <input
+                  type="text"
+                  id="lastName"
+                  name="lastName"
+                  value={formData.lastName}
+                  onChange={handleInputChange}
+                  className={`w-full rounded-lg border px-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 ${
+                    errors.lastName
+                      ? 'border-red-400 bg-slate-800/50 focus:border-red-400 focus:ring-red-400'
+                      : 'border-white/20 bg-slate-800/50 focus:border-indigo-400 focus:ring-indigo-400'
+                  }`}
+                  placeholder="Johnson"
+                />
+                {errors.lastName && <p className="text-red-400 text-sm mt-1">{errors.lastName}</p>}
+              </div>
 
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-slate-200 mb-2">
-                Email Address *
-              </label>
-              <div className="relative">
+              <div>
+                <label htmlFor="email" className="block text-sm font-medium text-slate-200 mb-2">
+                  Email
+                </label>
                 <input
                   type="email"
                   id="email"
                   name="email"
                   value={formData.email}
                   onChange={handleInputChange}
-                  className={`w-full rounded-lg border pl-10 pr-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 ${
+                  className={`w-full rounded-lg border px-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 ${
                     errors.email
                       ? 'border-red-400 bg-slate-800/50 focus:border-red-400 focus:ring-red-400'
                       : 'border-white/20 bg-slate-800/50 focus:border-indigo-400 focus:ring-indigo-400'
                   }`}
-                  placeholder="staff@radiostation.com"
+                  placeholder="sarah@radiostation.com"
                 />
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                {errors.email && <p className="text-red-400 text-sm mt-1">{errors.email}</p>}
               </div>
-              {errors.email && <p className="text-red-400 text-sm mt-1">{errors.email}</p>}
-            </div>
 
-            <div>
-              <label htmlFor="phone" className="block text-sm font-medium text-slate-200 mb-2">
-                Phone Number *
-              </label>
-              <div className="relative">
+              <div>
+                <label htmlFor="phone" className="block text-sm font-medium text-slate-200 mb-2">
+                  Phone
+                </label>
                 <input
                   type="tel"
                   id="phone"
                   name="phone"
                   value={formData.phone}
                   onChange={handleInputChange}
-                  className={`w-full rounded-lg border pl-10 pr-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 ${
-                    errors.phone
-                      ? 'border-red-400 bg-slate-800/50 focus:border-red-400 focus:ring-red-400'
-                      : 'border-white/20 bg-slate-800/50 focus:border-indigo-400 focus:ring-indigo-400'
-                  }`}
-                  placeholder="+233 XX XXX XXXX"
+                  className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  placeholder="+233 24 123 4567"
                 />
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               </div>
-              {errors.phone && <p className="text-red-400 text-sm mt-1">{errors.phone}</p>}
+
+              <div className="md:col-span-2">
+                <p className="text-sm font-medium text-slate-200 mb-3">Role</p>
+                <div className="grid md:grid-cols-3 gap-3">
+                  {availableRoles.map(role => {
+                    const Icon = role.icon;
+                    const isActive = formData.role === role.id;
+                    return (
+                      <button
+                        type="button"
+                        key={role.id}
+                        onClick={() => setFormData(prev => ({ ...prev, role: role.id as 'admin' | 'manager' | 'reporter', permissions: getDefaultPermissions(role.id) }))}
+                        className={`flex items-start space-x-3 rounded-xl border px-4 py-3 text-left transition ${
+                          isActive ? 'border-indigo-400 bg-indigo-500/20' : 'border-white/10 bg-slate-800/50 hover:border-white/20'
+                        }`}
+                      >
+                        <Icon className={`w-5 h-5 ${role.color}`} />
+                        <div>
+                          <p className="text-sm font-semibold text-white">{role.name}</p>
+                          <p className="text-xs text-slate-400">{role.description}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="md:col-span-2">
+                <p className="text-sm font-medium text-slate-200 mb-3">Permissions</p>
+                <div className="grid md:grid-cols-2 gap-3">
+                  {availablePermissions.map(permission => (
+                    <label
+                      key={permission.id}
+                      className={`flex items-start space-x-3 rounded-lg border px-4 py-3 text-sm transition ${
+                        formData.permissions.includes(permission.id)
+                          ? 'border-indigo-400 bg-indigo-500/20'
+                          : 'border-white/10 bg-slate-800/50 hover:border-white/20'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={formData.permissions.includes(permission.id)}
+                        onChange={() => handlePermissionToggle(permission.id)}
+                        className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-800 text-indigo-500 focus:ring-indigo-400"
+                      />
+                      <span>
+                        <span className="block text-white font-medium">{permission.label}</span>
+                        <span className="text-xs text-slate-400">{permission.description}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={resetForm}
+                className="inline-flex items-center space-x-2 rounded-lg border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800/60 transition"
+              >
+                <UserX className="w-4 h-4" />
+                <span>Cancel</span>
+              </button>
+
+              <div className="flex items-center space-x-3">
+                {editingIndex !== null ? (
+                  <button
+                    type="button"
+                    onClick={handleUpdateStaff}
+                    className="inline-flex items-center space-x-2 rounded-lg bg-indigo-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-400"
+                  >
+                    <UserCheck className="w-4 h-4" />
+                    <span>Update Member</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleAddStaff}
+                    className="inline-flex items-center space-x-2 rounded-lg bg-indigo-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-400"
+                  >
+                    <UserCheck className="w-4 h-4" />
+                    <span>Add Member</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
+        )}
 
-          {/* Role Selection */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-slate-200 mb-3">Select Role *</label>
-            <div className="grid md:grid-cols-3 gap-4">
-              {availableRoles.map((role) => (
-                <button
-                  key={role.id}
-                  type="button"
-                  onClick={() => handleRoleChange(role.id)}
-                  className={`p-4 rounded-lg border-2 text-left transition-colors ${
-                    formData.role === role.id
-                      ? 'border-indigo-400 bg-indigo-500/20'
-                      : 'border-white/10 bg-slate-800/50 hover:border-white/20'
-                  }`}
-                >
-                  <div className="flex items-center space-x-3 mb-2">
-                    <role.icon className={`w-5 h-5 ${role.color}`} />
-                    <span className="font-medium text-white">{role.name}</span>
-                  </div>
-                  <p className="text-xs text-slate-400">{role.description}</p>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Permissions */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-slate-200 mb-3">
-              Permissions {formData.role !== 'admin' && '(Based on selected role)'}
-            </label>
-            {formData.role === 'admin' ? (
-              <div className="bg-slate-800/50 rounded-lg p-4 border border-indigo-400/30">
-                <p className="text-sm text-indigo-300">
-                  Administrators have access to all features and permissions
-                </p>
-              </div>
-            ) : (
-              <div className="grid md:grid-cols-2 gap-3">
-                {availablePermissions.map((permission) => (
-                  <label key={permission.id} className="flex items-start space-x-3 p-3 rounded-lg border border-white/10 bg-slate-800/50 hover:bg-slate-800">
-                    <input
-                      type="checkbox"
-                      checked={formData.permissions.includes(permission.id)}
-                      onChange={() => handlePermissionToggle(permission.id)}
-                      className="mt-0.5 rounded border-white/20 bg-slate-800 text-indigo-500 focus:ring-indigo-400"
-                    />
-                    <div>
-                      <span className="text-sm font-medium text-slate-200">{permission.label}</span>
-                      <p className="text-xs text-slate-400">{permission.description}</p>
-                    </div>
-                  </label>
-                ))}
-              </div>
-            )}
-            {errors.permissions && <p className="text-red-400 text-sm mt-2">{errors.permissions}</p>}
-          </div>
-
-          {/* Form Actions */}
-          <div className="flex justify-end space-x-3">
-            <button
-              type="button"
-              onClick={() => {
-                setShowAddForm(false);
-                setEditingMember(null);
-                setFormData({
-                  firstName: '',
-                  lastName: '',
-                  email: '',
-                  phone: '',
-                  role: 'reporter',
-                  permissions: []
-                });
-                setErrors({});
-              }}
-              className="px-6 py-2 border border-white/20 text-slate-300 hover:border-indigo-400 hover:text-white rounded-lg transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={editingMember ? handleUpdateStaff : handleAddStaff}
-              className="px-6 py-2 bg-indigo-500 hover:bg-indigo-400 text-white rounded-lg transition-colors"
-            >
-              {editingMember ? 'Update Member' : 'Add Member'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Role Information */}
-      <div className="bg-slate-900/60 rounded-2xl border border-white/10 p-8 mb-8">
-        <h4 className="text-xl font-semibold text-white mb-6">Role Information</h4>
-        <div className="grid md:grid-cols-3 gap-6">
-          {availableRoles.map((role) => (
-            <div key={role.id} className="text-center">
-              <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${role.bgColor}`}>
-                <role.icon className={`w-8 h-8 ${role.color}`} />
-              </div>
-              <h5 className="font-medium text-white mb-2">{role.name}</h5>
-              <p className="text-sm text-slate-400">{role.description}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Navigation */}
-      <div className="flex justify-between pt-6">
-        <button
-          onClick={onPrevious}
-          className="bg-slate-800/50 hover:bg-slate-800 text-white px-6 py-3 rounded-lg transition-colors"
-        >
-          Previous
-        </button>
-        <div className="flex space-x-3">
-          {onSkip && (
-            <button
-              onClick={onSkip}
-              className="border border-white/20 hover:border-indigo-400 text-slate-300 hover:text-white px-6 py-3 rounded-lg transition-colors"
-            >
-              Skip
-            </button>
-          )}
+        <div className="flex items-center justify-between pt-6 border-t border-white/10">
           <button
-            onClick={onNext}
-            className="bg-indigo-500 hover:bg-indigo-400 text-white px-8 py-3 rounded-lg font-semibold transition-colors"
+            type="button"
+            onClick={onPrevious}
+            className="inline-flex items-center space-x-2 rounded-lg bg-slate-800/50 px-6 py-3 text-white transition hover:bg-slate-800"
           >
-            Continue to Compliance
+            <Radio className="w-5 h-5" />
+            <span>Back</span>
           </button>
+
+          <div className="flex items-center space-x-3">
+            <button
+              type="button"
+              onClick={handleSkip}
+              disabled={skipping}
+              className="inline-flex items-center space-x-2 rounded-lg border border-white/20 px-6 py-3 text-white transition hover:bg-slate-800/60 disabled:opacity-60"
+            >
+              <span>{skipping ? 'Skipping…' : 'Skip'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={submitting}
+              className="inline-flex items-center space-x-2 rounded-lg bg-indigo-500 px-6 py-3 font-semibold text-white transition hover:bg-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2 disabled:opacity-60"
+            >
+              <span>{submitting ? 'Saving…' : 'Continue'}</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
   );
 };
 
+const getDefaultPermissions = (roleId: string): string[] => {
+  switch (roleId) {
+    case 'admin':
+      return ['reports', 'monitoring', 'staff', 'settings', 'payments', 'compliance'];
+    case 'manager':
+      return ['reports', 'monitoring', 'staff'];
+    default:
+      return ['reports'];
+  }
+};
+
+const resolveApiError = (error: unknown, setMessage: React.Dispatch<React.SetStateAction<string | null>>): string => {
+  if (axios.isAxiosError(error)) {
+    const responseData = error.response?.data as { errors?: Record<string, string[] | string>; message?: string } | undefined;
+    if (responseData?.message) {
+      setMessage(responseData.message);
+      return responseData.message;
+    }
+    if (responseData?.errors) {
+      const first = Object.values(responseData.errors)[0];
+      if (Array.isArray(first) && typeof first[0] === 'string') {
+        setMessage(first[0]);
+        return first[0];
+      }
+    }
+    const message = error.message || 'Unable to save staff members.';
+    setMessage(message);
+    return message;
+  }
+  if (error instanceof Error && error.message) {
+    setMessage(error.message);
+    return error.message;
+  }
+  const fallback = 'Unable to save staff members.';
+  setMessage(fallback);
+  return fallback;
+};
+
 export default StaffStep;
+
