@@ -7,6 +7,7 @@ import ZamIOLandingPage from '../pages/Landing';
 import SignIn from '../pages/SignIn';
 import SignUp from '../pages/SignUp';
 import EmailVerification from '../pages/EmailVerification';
+import ForgotPassword from '../pages/ForgotPassword';
 import Dashboard from '../pages/Dashboard';
 import NotFound from '../pages/NotFound';
 import Layout from '../components/Layout';
@@ -121,6 +122,14 @@ const Router = () => (
         element={(
           <PublicRoute>
             <EmailVerification />
+          </PublicRoute>
+        )}
+      />
+      <Route
+        path="/forgot-password"
+        element={(
+          <PublicRoute>
+            <ForgotPassword />
           </PublicRoute>
         )}
       />

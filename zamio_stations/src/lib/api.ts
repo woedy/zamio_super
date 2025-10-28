@@ -19,6 +19,34 @@ export {
 
 export default authApi;
 
+export interface RegisterStationPayload {
+  first_name: string;
+  last_name: string;
+  station_name: string;
+  email: string;
+  phone: string;
+  country?: string;
+  password: string;
+  password2: string;
+}
+
+export interface VerifyStationEmailCodePayload {
+  email: string;
+  code: string;
+}
+
+export interface PasswordResetRequestPayload {
+  email: string;
+  method?: 'code' | 'link';
+}
+
+export interface PasswordResetVerificationPayload {
+  email: string;
+  code: string;
+  new_password: string;
+  new_password2: string;
+}
+
 export interface ApiErrorMap {
   [field: string]: string[] | string | undefined;
 }
@@ -126,6 +154,60 @@ export interface StationOnboardingStatus {
 export const fetchStationOnboardingStatus = async (stationId: string) => {
   const { data } = await authApi.get<ApiEnvelope<StationOnboardingStatus>>(
     `/api/accounts/enhanced-station-onboarding-status/${stationId}/`,
+  );
+  return data;
+};
+
+export const registerStation = async <T = Record<string, unknown>>(
+  payload: RegisterStationPayload,
+) => {
+  const { data } = await authApi.post<ApiEnvelope<T>>('/api/accounts/register-station/', payload);
+  return data;
+};
+
+export const verifyStationEmailCode = async <T = Record<string, unknown>>(
+  payload: VerifyStationEmailCodePayload,
+) => {
+  const { data } = await authApi.post<ApiEnvelope<T>>('/api/accounts/verify-station-email-code/', payload);
+  return data;
+};
+
+export const resendStationVerification = async (
+  payload: { email: string; method?: 'code' | 'link' },
+) => {
+  const { data } = await authApi.post<ApiEnvelope>(
+    '/api/accounts/email/resend-verification-by-email/',
+    payload,
+  );
+  return data;
+};
+
+export const requestPasswordReset = async (
+  payload: PasswordResetRequestPayload,
+) => {
+  const { data } = await authApi.post<ApiEnvelope>(
+    '/api/accounts/email/request-password-reset/',
+    payload,
+  );
+  return data;
+};
+
+export const resendPasswordResetRequest = async (
+  payload: PasswordResetRequestPayload,
+) => {
+  const { data } = await authApi.post<ApiEnvelope>(
+    '/api/accounts/email/resend-password-reset/',
+    payload,
+  );
+  return data;
+};
+
+export const verifyPasswordResetCode = async (
+  payload: PasswordResetVerificationPayload,
+) => {
+  const { data } = await authApi.post<ApiEnvelope>(
+    '/api/accounts/verify-password-reset-code/',
+    payload,
   );
   return data;
 };

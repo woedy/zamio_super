@@ -117,6 +117,10 @@ def serialize_station_onboarding_state(station):
         }
     }
 
+
+def check_email_exist(email: str) -> bool:
+    return User.objects.filter(email=email).exists()
+
 @api_view(['POST', ])
 @permission_classes([])
 @authentication_classes([])
@@ -176,65 +180,81 @@ def register_station_view(request):
         serializer = UserRegistrationSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
-            data["user_id"] = str(user.user_id)
-            data["email"] = user.email
-            data["first_name"] = user.first_name
-            data["last_name"] = user.last_name
-            data["photo"] = user.photo
-
-            if country:
-                data["country"] = user.country
-
             user.user_type = "Station"
             user.phone = phone
-
+            if country:
+                user.country = country
+            if photo:
+                user.photo = photo
             user.save()
 
             station_profile = Station.objects.create(
                 user=user,
-                name=station_name
-
-            )
-            station_profile.save()
-
-            account = BankAccount.objects.get_or_create(
-                user=user, 
-                balance=Decimal('0.00'),
-                currency="Ghc"
+                name=station_name,
+                phone=phone,
+                country=country or None,
             )
 
-            data['phone'] = user.phone
-            data['country'] = user.country
-            data['photo'] = user.photo.url
+            BankAccount.objects.get_or_create(
+                user=user,
+                defaults={
+                    'balance': Decimal('0.00'),
+                    'currency': "Ghc",
+                }
+            )
 
-        token = Token.objects.get(user=user)
-        jwt_tokens = get_jwt_tokens_for_user(user)
-        data['token'] = token.key
-        data['access_token'] = jwt_tokens['access']
-        data['refresh_token'] = jwt_tokens['refresh']
+            data["user_id"] = str(user.user_id)
+            data["email"] = user.email
+            data["first_name"] = user.first_name
+            data["last_name"] = user.last_name
+            data["phone"] = user.phone
+            data["country"] = user.country
+            data["station_id"] = station_profile.station_id
 
-        try:
-            # Use the new Celery email task system for email verification
-            from accounts.email_utils import send_verification_email
-            task_id = send_verification_email(user)
-            data['email_task_id'] = task_id
-            
-        except Exception as e:
-            # Log the error but don't fail registration
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.error(f"Failed to send verification email during station registration: {str(e)}")
-            # Continue with registration even if email fails
+            if user.photo:
+                try:
+                    data["photo"] = user.photo.url
+                except Exception:
+                    data["photo"] = None
+            else:
+                data["photo"] = None
 
-        new_activity = AllActivity.objects.create(
-            user=user,
-            subject="User Registration",
-            body=user.email + " Just created an account."
-        )
-        new_activity.save()
+            token, _ = Token.objects.get_or_create(user=user)
+            jwt_tokens = get_jwt_tokens_for_user(user)
+            onboarding_snapshot = serialize_station_onboarding_state(station_profile)
 
-        payload['message'] = "Successful"
-        payload['data'] = data
+            data['token'] = token.key
+            data['access_token'] = jwt_tokens['access']
+            data['refresh_token'] = jwt_tokens['refresh']
+            data.update(onboarding_snapshot)
+
+            try:
+                # Use the new Celery email task system for email verification
+                from accounts.email_utils import send_verification_email
+                task_id = send_verification_email(user)
+                data['email_task_id'] = task_id
+
+            except Exception as e:
+                # Log the error but don't fail registration
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to send verification email during station registration: {str(e)}")
+                # Continue with registration even if email fails
+
+            AllActivity.objects.create(
+                user=user,
+                subject="User Registration",
+                body=f"{user.email} just created a station account.",
+            )
+
+            payload['message'] = "Successful"
+            payload['data'] = data
+
+            return Response(payload, status=status.HTTP_201_CREATED)
+
+        payload['message'] = "Errors"
+        payload['errors'] = serializer.errors
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
     return Response(payload)
 
