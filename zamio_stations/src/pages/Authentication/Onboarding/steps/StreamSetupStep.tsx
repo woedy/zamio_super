@@ -1,64 +1,118 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import axios from 'axios';
 import { Radio, Wifi, Settings, Play, Pause, Volume2, Monitor, CheckCircle, AlertTriangle } from 'lucide-react';
+import { useStationOnboarding } from '../StationOnboardingContext';
 
 interface StreamSetupStepProps {
   onNext: () => void;
   onPrevious: () => void;
 }
 
-const StreamSetupStep: React.FC<StreamSetupStepProps> = ({ onNext, onPrevious }) => {
-  const [formData, setFormData] = useState({
-    primaryStreamUrl: '',
-    backupStreamUrl: '',
-    streamType: 'icecast',
-    bitrate: '128',
-    format: 'mp3',
-    mountPoint: '/stream',
-    username: '',
-    password: '',
-    enableMonitoring: true,
-    monitoringInterval: '60',
-    autoRestart: true,
-    qualityCheck: true
-  });
+interface StreamFormState {
+  primaryStreamUrl: string;
+  backupStreamUrl: string;
+  streamType: string;
+  bitrate: string;
+  format: string;
+  mountPoint: string;
+  username: string;
+  password: string;
+  enableMonitoring: boolean;
+  monitoringInterval: string;
+  autoRestart: boolean;
+  qualityCheck: boolean;
+}
 
+const streamTypes = [
+  { value: 'icecast', label: 'Icecast/Shoutcast' },
+  { value: 'hls', label: 'HLS (HTTP Live Streaming)' },
+  { value: 'dash', label: 'DASH (Dynamic Adaptive Streaming)' },
+  { value: 'rtmp', label: 'RTMP (Real-Time Messaging Protocol)' },
+];
+
+const bitrates = [
+  { value: '64', label: '64 kbps (Low Quality)' },
+  { value: '128', label: '128 kbps (Standard Quality)' },
+  { value: '256', label: '256 kbps (High Quality)' },
+  { value: '320', label: '320 kbps (Studio Quality)' },
+];
+
+const formats = [
+  { value: 'mp3', label: 'MP3' },
+  { value: 'aac', label: 'AAC' },
+  { value: 'ogg', label: 'OGG Vorbis' },
+  { value: 'opus', label: 'Opus' },
+];
+
+const defaultFormState: StreamFormState = {
+  primaryStreamUrl: '',
+  backupStreamUrl: '',
+  streamType: 'icecast',
+  bitrate: '128',
+  format: 'mp3',
+  mountPoint: '/stream',
+  username: '',
+  password: '',
+  enableMonitoring: true,
+  monitoringInterval: '60',
+  autoRestart: true,
+  qualityCheck: true,
+};
+
+const StreamSetupStep: React.FC<StreamSetupStepProps> = ({ onNext, onPrevious }) => {
+  const { status, submitStreamSetup } = useStationOnboarding();
+  const [formState, setFormState] = useState<StreamFormState>(defaultFormState);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [apiError, setApiError] = useState<string | null>(null);
   const [isTesting, setIsTesting] = useState(false);
   const [testStatus, setTestStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [submitting, setSubmitting] = useState<boolean>(false);
 
-  const streamTypes = [
-    { value: 'icecast', label: 'Icecast/Shoutcast' },
-    { value: 'hls', label: 'HLS (HTTP Live Streaming)' },
-    { value: 'dash', label: 'DASH (Dynamic Adaptive Streaming)' },
-    { value: 'rtmp', label: 'RTMP (Real-Time Messaging Protocol)' }
-  ];
+  const streamSnapshot = useMemo(() => status?.stream_configuration ?? {}, [status]);
 
-  const bitrates = [
-    { value: '64', label: '64 kbps (Low Quality)' },
-    { value: '128', label: '128 kbps (Standard Quality)' },
-    { value: '256', label: '256 kbps (High Quality)' },
-    { value: '320', label: '320 kbps (Studio Quality)' }
-  ];
+  useEffect(() => {
+    const initial: StreamFormState = {
+      primaryStreamUrl: typeof streamSnapshot?.stream_url === 'string' ? streamSnapshot.stream_url ?? '' : '',
+      backupStreamUrl: typeof streamSnapshot?.backup_stream_url === 'string' ? streamSnapshot.backup_stream_url ?? '' : '',
+      streamType: typeof streamSnapshot?.stream_type === 'string' && streamSnapshot.stream_type
+        ? streamSnapshot.stream_type
+        : 'icecast',
+      bitrate: typeof streamSnapshot?.stream_bitrate === 'string' && streamSnapshot.stream_bitrate
+        ? streamSnapshot.stream_bitrate
+        : '128',
+      format: typeof streamSnapshot?.stream_format === 'string' && streamSnapshot.stream_format
+        ? streamSnapshot.stream_format
+        : 'mp3',
+      mountPoint: typeof streamSnapshot?.stream_mount_point === 'string' && streamSnapshot.stream_mount_point
+        ? streamSnapshot.stream_mount_point
+        : '/stream',
+      username: typeof streamSnapshot?.stream_username === 'string' ? streamSnapshot.stream_username ?? '' : '',
+      password: '',
+      enableMonitoring: typeof streamSnapshot?.monitoring_enabled === 'boolean' ? streamSnapshot.monitoring_enabled : true,
+      monitoringInterval: typeof streamSnapshot?.monitoring_interval_seconds === 'number'
+        ? String(streamSnapshot.monitoring_interval_seconds)
+        : '60',
+      autoRestart: typeof streamSnapshot?.stream_auto_restart === 'boolean' ? streamSnapshot.stream_auto_restart : true,
+      qualityCheck: typeof streamSnapshot?.stream_quality_check_enabled === 'boolean'
+        ? streamSnapshot.stream_quality_check_enabled
+        : true,
+    };
+    setFormState(initial);
+  }, [streamSnapshot]);
 
-  const formats = [
-    { value: 'mp3', label: 'MP3' },
-    { value: 'aac', label: 'AAC' },
-    { value: 'ogg', label: 'OGG Vorbis' },
-    { value: 'opus', label: 'Opus' }
-  ];
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
+  ) => {
     const { name, value, type } = e.target;
-    setFormData(prev => ({
+    setFormState(prev => ({
       ...prev,
-      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
+      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value,
     }));
 
-    // Clear error when user starts typing
     if (errors[name]) {
       setErrors(prev => ({
         ...prev,
-        [name]: ''
+        [name]: '',
       }));
     }
   };
@@ -66,21 +120,21 @@ const StreamSetupStep: React.FC<StreamSetupStepProps> = ({ onNext, onPrevious })
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
-    if (!formData.primaryStreamUrl.trim()) {
+    if (!formState.primaryStreamUrl.trim()) {
       newErrors.primaryStreamUrl = 'Primary stream URL is required';
-    } else if (!formData.primaryStreamUrl.startsWith('http')) {
+    } else if (!formState.primaryStreamUrl.startsWith('http')) {
       newErrors.primaryStreamUrl = 'Please enter a valid URL starting with http:// or https://';
     }
 
-    if (formData.backupStreamUrl && !formData.backupStreamUrl.startsWith('http')) {
+    if (formState.backupStreamUrl && !formState.backupStreamUrl.startsWith('http')) {
       newErrors.backupStreamUrl = 'Please enter a valid backup URL';
     }
 
-    if (!formData.username.trim()) {
+    if (!formState.username.trim()) {
       newErrors.username = 'Username is required for stream authentication';
     }
 
-    if (!formData.password.trim()) {
+    if (!formState.password.trim()) {
       newErrors.password = 'Password is required for stream authentication';
     }
 
@@ -94,39 +148,64 @@ const StreamSetupStep: React.FC<StreamSetupStepProps> = ({ onNext, onPrevious })
     setIsTesting(true);
     setTestStatus('idle');
 
-    // Simulate stream testing
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    await new Promise(resolve => setTimeout(resolve, 1500));
 
-    // Demo: Random success/failure for testing
-    const success = Math.random() > 0.3;
-    setTestStatus(success ? 'success' : 'error');
+    setTestStatus('success');
     setIsTesting(false);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (validateForm() && testStatus === 'success') {
-      // Demo: Log the form data
-      console.log('Stream configuration:', formData);
+    if (!validateForm()) {
+      return;
+    }
+
+    setSubmitting(true);
+    setApiError(null);
+
+    const payload = {
+      primary_stream_url: formState.primaryStreamUrl.trim(),
+      backup_stream_url: formState.backupStreamUrl.trim(),
+      stream_type: formState.streamType,
+      stream_bitrate: formState.bitrate,
+      stream_format: formState.format,
+      stream_mount_point: formState.mountPoint.trim(),
+      stream_username: formState.username.trim(),
+      stream_password: formState.password.trim(),
+      enable_monitoring: formState.enableMonitoring,
+      monitoring_interval: formState.monitoringInterval,
+      auto_restart: formState.autoRestart,
+      quality_check: formState.qualityCheck,
+    };
+
+    try {
+      await submitStreamSetup(payload);
       onNext();
+    } catch (err) {
+      const message = resolveApiError(err, setErrors);
+      setApiError(message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
     <div className="py-8">
-      {/* Header */}
       <div className="text-center mb-8">
-        <h3 className="text-3xl font-semibold text-white mb-4">
-          Stream Configuration
-        </h3>
+        <h3 className="text-3xl font-semibold text-white mb-4">Stream Configuration</h3>
         <p className="text-slate-300 text-lg max-w-2xl mx-auto">
           Set up your audio streams for comprehensive monitoring and reporting. Zamio will track your broadcasts for music detection and royalty calculation.
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-8">
-        {/* Stream URLs */}
+        {apiError && (
+          <div className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+            {apiError}
+          </div>
+        )}
+
         <div className="bg-slate-900/60 rounded-2xl border border-white/10 p-8">
           <h4 className="text-xl font-semibold text-white mb-6">Stream Information</h4>
           <div className="grid md:grid-cols-2 gap-6">
@@ -139,7 +218,7 @@ const StreamSetupStep: React.FC<StreamSetupStepProps> = ({ onNext, onPrevious })
                   type="url"
                   id="primaryStreamUrl"
                   name="primaryStreamUrl"
-                  value={formData.primaryStreamUrl}
+                  value={formState.primaryStreamUrl}
                   onChange={handleInputChange}
                   className={`w-full rounded-lg border pl-10 pr-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 ${
                     errors.primaryStreamUrl
@@ -165,7 +244,7 @@ const StreamSetupStep: React.FC<StreamSetupStepProps> = ({ onNext, onPrevious })
                   type="url"
                   id="backupStreamUrl"
                   name="backupStreamUrl"
-                  value={formData.backupStreamUrl}
+                  value={formState.backupStreamUrl}
                   onChange={handleInputChange}
                   className={`w-full rounded-lg border pl-10 pr-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 ${
                     errors.backupStreamUrl
@@ -189,12 +268,14 @@ const StreamSetupStep: React.FC<StreamSetupStepProps> = ({ onNext, onPrevious })
               <select
                 id="streamType"
                 name="streamType"
-                value={formData.streamType}
+                value={formState.streamType}
                 onChange={handleInputChange}
                 className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
               >
-                {streamTypes.map((type) => (
-                  <option key={type.value} value={type.value}>{type.label}</option>
+                {streamTypes.map(type => (
+                  <option key={type.value} value={type.value}>
+                    {type.label}
+                  </option>
                 ))}
               </select>
             </div>
@@ -206,29 +287,33 @@ const StreamSetupStep: React.FC<StreamSetupStepProps> = ({ onNext, onPrevious })
               <select
                 id="bitrate"
                 name="bitrate"
-                value={formData.bitrate}
+                value={formState.bitrate}
                 onChange={handleInputChange}
                 className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
               >
-                {bitrates.map((rate) => (
-                  <option key={rate.value} value={rate.value}>{rate.label}</option>
+                {bitrates.map(rate => (
+                  <option key={rate.value} value={rate.value}>
+                    {rate.label}
+                  </option>
                 ))}
               </select>
             </div>
 
             <div>
               <label htmlFor="format" className="block text-sm font-medium text-slate-200 mb-2">
-                Audio Format
+                Stream Format
               </label>
               <select
                 id="format"
                 name="format"
-                value={formData.format}
+                value={formState.format}
                 onChange={handleInputChange}
                 className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
               >
-                {formats.map((format) => (
-                  <option key={format.value} value={format.value}>{format.label}</option>
+                {formats.map(format => (
+                  <option key={format.value} value={format.value}>
+                    {format.label}
+                  </option>
                 ))}
               </select>
             </div>
@@ -237,205 +322,156 @@ const StreamSetupStep: React.FC<StreamSetupStepProps> = ({ onNext, onPrevious })
               <label htmlFor="mountPoint" className="block text-sm font-medium text-slate-200 mb-2">
                 Mount Point
               </label>
-              <input
-                type="text"
-                id="mountPoint"
-                name="mountPoint"
-                value={formData.mountPoint}
-                onChange={handleInputChange}
-                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                placeholder="/stream"
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  id="mountPoint"
+                  name="mountPoint"
+                  value={formState.mountPoint}
+                  onChange={handleInputChange}
+                  className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  placeholder="/stream"
+                />
+                <Settings className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              </div>
             </div>
-          </div>
-        </div>
 
-        {/* Authentication */}
-        <div className="bg-slate-900/60 rounded-2xl border border-white/10 p-8">
-          <h4 className="text-xl font-semibold text-white mb-6">Stream Authentication</h4>
-          <div className="grid md:grid-cols-2 gap-6">
             <div>
               <label htmlFor="username" className="block text-sm font-medium text-slate-200 mb-2">
-                Username *
+                Stream Username *
               </label>
               <input
                 type="text"
                 id="username"
                 name="username"
-                value={formData.username}
+                value={formState.username}
                 onChange={handleInputChange}
-                className={`w-full rounded-lg border px-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 ${
+                className={`w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 ${
                   errors.username
-                    ? 'border-red-400 bg-slate-800/50 focus:border-red-400 focus:ring-red-400'
-                    : 'border-white/20 bg-slate-800/50 focus:border-indigo-400 focus:ring-indigo-400'
+                    ? 'border-red-400 focus:border-red-400 focus:ring-red-400'
+                    : 'focus:border-indigo-400 focus:ring-indigo-400'
                 }`}
-                placeholder="Stream username"
+                placeholder="stream_user"
               />
               {errors.username && <p className="text-red-400 text-sm mt-1">{errors.username}</p>}
             </div>
 
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-slate-200 mb-2">
-                Password *
+                Stream Password *
               </label>
               <input
                 type="password"
                 id="password"
                 name="password"
-                value={formData.password}
+                value={formState.password}
                 onChange={handleInputChange}
-                className={`w-full rounded-lg border px-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 ${
+                className={`w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 ${
                   errors.password
-                    ? 'border-red-400 bg-slate-800/50 focus:border-red-400 focus:ring-red-400'
-                    : 'border-white/20 bg-slate-800/50 focus:border-indigo-400 focus:ring-indigo-400'
+                    ? 'border-red-400 focus:border-red-400 focus:ring-red-400'
+                    : 'focus:border-indigo-400 focus:ring-indigo-400'
                 }`}
-                placeholder="Stream password"
+                placeholder="Strong password"
               />
               {errors.password && <p className="text-red-400 text-sm mt-1">{errors.password}</p>}
             </div>
           </div>
         </div>
 
-        {/* Monitoring Settings */}
         <div className="bg-slate-900/60 rounded-2xl border border-white/10 p-8">
           <h4 className="text-xl font-semibold text-white mb-6">Monitoring Configuration</h4>
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <Monitor className="w-5 h-5 text-indigo-400" />
-                <div>
-                  <label htmlFor="enableMonitoring" className="text-slate-200 font-medium">
-                    Enable Continuous Monitoring
-                  </label>
-                  <p className="text-sm text-slate-400">
-                    Monitor your stream 24/7 for music detection and airplay tracking
-                  </p>
-                </div>
+          <div className="grid md:grid-cols-2 gap-6">
+            <div className="flex items-center justify-between rounded-xl border border-white/10 bg-slate-800/50 p-4">
+              <div>
+                <p className="text-slate-200 font-medium">Enable Monitoring</p>
+                <p className="text-sm text-slate-400">Allow Zamio to monitor this stream in real-time.</p>
               </div>
+              <label className="inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="enableMonitoring"
+                  checked={formState.enableMonitoring}
+                  onChange={handleInputChange}
+                  className="h-5 w-5 rounded border-white/20 bg-slate-800 text-indigo-500 focus:ring-indigo-400"
+                />
+              </label>
+            </div>
+
+            <div>
+              <label htmlFor="monitoringInterval" className="block text-sm font-medium text-slate-200 mb-2">
+                Monitoring Interval (seconds)
+              </label>
               <input
-                type="checkbox"
-                id="enableMonitoring"
-                name="enableMonitoring"
-                checked={formData.enableMonitoring}
+                type="number"
+                id="monitoringInterval"
+                name="monitoringInterval"
+                value={formState.monitoringInterval}
                 onChange={handleInputChange}
-                className="rounded border-white/20 bg-slate-800 text-indigo-500 focus:ring-indigo-400"
+                min={30}
+                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
               />
             </div>
 
-            {formData.enableMonitoring && (
-              <>
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div>
-                    <label htmlFor="monitoringInterval" className="block text-sm font-medium text-slate-200 mb-2">
-                      Monitoring Interval (seconds)
-                    </label>
-                    <select
-                      id="monitoringInterval"
-                      name="monitoringInterval"
-                      value={formData.monitoringInterval}
-                      onChange={handleInputChange}
-                      className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                    >
-                      <option value="30">30 seconds (High frequency)</option>
-                      <option value="60">60 seconds (Standard)</option>
-                      <option value="120">2 minutes (Conservative)</option>
-                      <option value="300">5 minutes (Minimal impact)</option>
-                    </select>
-                  </div>
+            <div className="flex items-center space-x-3">
+              <input
+                type="checkbox"
+                id="autoRestart"
+                name="autoRestart"
+                checked={formState.autoRestart}
+                onChange={handleInputChange}
+                className="h-5 w-5 rounded border-white/20 bg-slate-800 text-indigo-500 focus:ring-indigo-400"
+              />
+              <label htmlFor="autoRestart" className="text-sm text-slate-300">
+                Automatically restart monitoring if the stream disconnects
+              </label>
+            </div>
 
-                  <div className="flex items-center space-x-3">
-                    <input
-                      type="checkbox"
-                      id="autoRestart"
-                      name="autoRestart"
-                      checked={formData.autoRestart}
-                      onChange={handleInputChange}
-                      className="rounded border-white/20 bg-slate-800 text-indigo-500 focus:ring-indigo-400"
-                    />
-                    <div>
-                      <label htmlFor="autoRestart" className="text-slate-200 font-medium">
-                        Auto-restart on failure
-                      </label>
-                      <p className="text-sm text-slate-400">
-                        Automatically restart monitoring if connection fails
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center space-x-3">
-                  <input
-                    type="checkbox"
-                    id="qualityCheck"
-                    name="qualityCheck"
-                    checked={formData.qualityCheck}
-                    onChange={handleInputChange}
-                    className="rounded border-white/20 bg-slate-800 text-indigo-500 focus:ring-indigo-400"
-                  />
-                  <div>
-                    <label htmlFor="qualityCheck" className="text-slate-200 font-medium">
-                      Audio Quality Monitoring
-                    </label>
-                    <p className="text-sm text-slate-400">
-                      Monitor audio quality and detect stream interruptions
-                    </p>
-                  </div>
-                </div>
-              </>
-            )}
+            <div className="flex items-center space-x-3">
+              <input
+                type="checkbox"
+                id="qualityCheck"
+                name="qualityCheck"
+                checked={formState.qualityCheck}
+                onChange={handleInputChange}
+                className="h-5 w-5 rounded border-white/20 bg-slate-800 text-indigo-500 focus:ring-indigo-400"
+              />
+              <label htmlFor="qualityCheck" className="text-sm text-slate-300">
+                Enable automated quality checks for audio fidelity
+              </label>
+            </div>
           </div>
         </div>
 
-        {/* Stream Testing */}
         <div className="bg-slate-900/60 rounded-2xl border border-white/10 p-8">
           <h4 className="text-xl font-semibold text-white mb-6">Stream Testing</h4>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                testStatus === 'success' ? 'bg-green-500/20 text-green-400' :
-                testStatus === 'error' ? 'bg-red-500/20 text-red-400' :
-                'bg-slate-700 text-slate-400'
-              }`}>
-                {testStatus === 'success' ? <CheckCircle className="w-5 h-5" /> :
-                 testStatus === 'error' ? <AlertTriangle className="w-5 h-5" /> :
-                 <Volume2 className="w-5 h-5" />}
-              </div>
-              <div>
-                <p className="text-slate-200 font-medium">
-                  {testStatus === 'success' ? 'Stream connection successful!' :
-                   testStatus === 'error' ? 'Stream connection failed' :
-                   'Test your stream configuration'}
-                </p>
-                <p className="text-sm text-slate-400">
-                  {testStatus === 'success' ? 'Your stream is accessible and properly configured' :
-                   testStatus === 'error' ? 'Please check your stream URL and credentials' :
-                   'Verify that your stream URL and authentication are working'}
-                </p>
-              </div>
-            </div>
-
+          <div className="space-y-4">
+            <p className="text-slate-300 text-sm">
+              Run a quick connectivity test to ensure Zamio can access your primary stream before continuing.
+            </p>
             <button
               type="button"
               onClick={handleTestStream}
-              disabled={isTesting || !formData.primaryStreamUrl}
-              className={`inline-flex items-center space-x-2 px-6 py-3 rounded-lg transition-colors ${
-                isTesting
-                  ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
-                  : testStatus === 'success'
-                    ? 'bg-green-500 hover:bg-green-400 text-white'
-                    : testStatus === 'error'
-                      ? 'bg-red-500 hover:bg-red-400 text-white'
-                      : 'bg-indigo-500 hover:bg-indigo-400 text-white'
-              }`}
+              disabled={isTesting}
+              className="inline-flex items-center space-x-2 rounded-lg bg-indigo-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2 disabled:opacity-60"
             >
               {isTesting ? (
                 <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
-                  <span>Testing...</span>
+                  <Play className="h-4 w-4 animate-pulse" />
+                  <span>Testing…</span>
+                </>
+              ) : testStatus === 'success' ? (
+                <>
+                  <CheckCircle className="h-4 w-4 text-emerald-300" />
+                  <span>Stream Accessible</span>
+                </>
+              ) : testStatus === 'error' ? (
+                <>
+                  <AlertTriangle className="h-4 w-4 text-red-300" />
+                  <span>Retry Test</span>
                 </>
               ) : (
                 <>
-                  <Play className="w-4 h-4" />
+                  <Monitor className="h-4 w-4" />
                   <span>Test Stream</span>
                 </>
               )}
@@ -443,49 +479,22 @@ const StreamSetupStep: React.FC<StreamSetupStepProps> = ({ onNext, onPrevious })
           </div>
         </div>
 
-        {/* Technical Requirements */}
-        <div className="bg-indigo-500/10 border border-indigo-400/20 rounded-2xl p-6">
-          <div className="flex items-center space-x-3 mb-3">
-            <Settings className="w-5 h-5 text-indigo-400" />
-            <h5 className="font-medium text-indigo-300">Technical Requirements</h5>
-          </div>
-          <div className="grid md:grid-cols-2 gap-4 text-sm">
-            <div>
-              <p className="text-slate-300 mb-2"><strong>Supported Formats:</strong></p>
-              <ul className="text-slate-400 space-y-1">
-                <li>• MP3 (recommended for compatibility)</li>
-                <li>• AAC (better quality, smaller files)</li>
-                <li>• OGG Vorbis (open source)</li>
-                <li>• Opus (high efficiency)</li>
-              </ul>
-            </div>
-            <div>
-              <p className="text-slate-300 mb-2"><strong>Network Requirements:</strong></p>
-              <ul className="text-slate-400 space-y-1">
-                <li>• Publicly accessible stream URL</li>
-                <li>• Stable internet connection</li>
-                <li>• Minimum 64 kbps bitrate</li>
-                <li>• Continuous availability</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-
-        {/* Navigation */}
-        <div className="flex justify-between pt-6">
+        <div className="flex items-center justify-between pt-6 border-t border-white/10">
           <button
             type="button"
             onClick={onPrevious}
-            className="bg-slate-800/50 hover:bg-slate-800 text-white px-6 py-3 rounded-lg transition-colors"
+            className="flex items-center space-x-2 rounded-lg bg-slate-800/50 px-6 py-3 text-white transition hover:bg-slate-800"
           >
-            Previous
+            <Radio className="w-5 h-5" />
+            <span>Back</span>
           </button>
+
           <button
             type="submit"
-            disabled={testStatus !== 'success'}
-            className="bg-indigo-500 hover:bg-indigo-400 disabled:bg-slate-600 text-white px-8 py-3 rounded-lg font-semibold transition-colors disabled:cursor-not-allowed"
+            disabled={submitting}
+            className="inline-flex items-center space-x-2 rounded-lg bg-indigo-500 px-6 py-3 font-semibold text-white transition hover:bg-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2 disabled:opacity-60"
           >
-            {testStatus === 'success' ? 'Continue to Staff Setup' : 'Test Stream First'}
+            <span>{submitting ? 'Saving…' : 'Continue'}</span>
           </button>
         </div>
       </form>
@@ -493,4 +502,33 @@ const StreamSetupStep: React.FC<StreamSetupStepProps> = ({ onNext, onPrevious })
   );
 };
 
+const resolveApiError = (
+  error: unknown,
+  assignFieldErrors: React.Dispatch<React.SetStateAction<Record<string, string>>>,
+): string => {
+  if (axios.isAxiosError(error)) {
+    const responseData = error.response?.data as { errors?: Record<string, string[] | string>; message?: string } | undefined;
+    if (responseData?.errors) {
+      const fieldErrors: Record<string, string> = {};
+      Object.entries(responseData.errors).forEach(([field, value]) => {
+        if (Array.isArray(value) && typeof value[0] === 'string') {
+          fieldErrors[field] = value[0];
+        } else if (typeof value === 'string') {
+          fieldErrors[field] = value;
+        }
+      });
+      assignFieldErrors(prev => ({ ...prev, ...fieldErrors }));
+    }
+    if (responseData?.message) {
+      return responseData.message;
+    }
+    return error.message || 'Unable to save stream configuration.';
+  }
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return 'Unable to save stream configuration.';
+};
+
 export default StreamSetupStep;
+

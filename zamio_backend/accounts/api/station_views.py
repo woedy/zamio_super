@@ -38,19 +38,88 @@ User = get_user_model()
 
 def serialize_station_onboarding_state(station):
     """Serialize station onboarding progress for consistent responses."""
+    next_step = station.get_next_onboarding_step()
     return {
         "station_id": station.station_id,
+        "station_name": station.name,
         "onboarding_step": station.onboarding_step,
-        "next_step": station.onboarding_step,
+        "next_step": next_step,
         "progress": {
             "profile_completed": bool(getattr(station, 'profile_completed', False)),
+            "stream_setup_completed": bool(getattr(station, 'stream_setup_completed', False)),
             "staff_completed": bool(getattr(station, 'staff_completed', False)),
-            "report_completed": bool(getattr(station, 'report_completed', False)),
+            "compliance_completed": bool(getattr(station, 'compliance_completed', False)),
             "payment_info_added": bool(getattr(station, 'payment_info_added', False)),
         },
         "stream_status": getattr(station, 'stream_status', None),
         "stream_validation_errors": getattr(station, 'stream_validation_errors', None),
+        "profile": {
+            "name": station.name,
+            "phone": station.phone,
+            "country": station.country,
+            "region": station.region,
+            "city": station.city,
+            "coverage_area": station.coverage_area,
+            "estimated_listeners": station.estimated_listeners,
+            "license_number": station.license_number,
+            "license_expiry_date": station.license_expiry_date,
+            "website_url": station.website_url,
+            "about": station.about,
+            "station_type": station.station_type,
+            "station_class": station.station_class,
+            "station_category": station.station_category,
+            "location_name": station.location_name,
+        },
+        "stream_configuration": {
+            "stream_url": station.stream_url,
+            "backup_stream_url": station.backup_stream_url,
+            "stream_type": station.stream_type,
+            "stream_bitrate": station.stream_bitrate,
+            "stream_format": station.stream_format,
+            "stream_mount_point": station.stream_mount_point,
+            "stream_username": station.stream_username,
+            "monitoring_enabled": station.monitoring_enabled,
+            "monitoring_interval_seconds": station.monitoring_interval_seconds,
+            "stream_auto_restart": station.stream_auto_restart,
+            "stream_quality_check_enabled": station.stream_quality_check_enabled,
+        },
+        "compliance": {
+            "license_number": station.license_number,
+            "license_issuing_authority": station.license_issuing_authority,
+            "license_issue_date": station.license_issue_date,
+            "license_expiry_date": station.license_expiry_date,
+            "broadcast_frequency": station.broadcast_frequency,
+            "transmission_power": station.transmission_power,
+            "regulatory_body": station.regulatory_body,
+            "coverage_area": station.coverage_area,
+            "estimated_listeners": station.estimated_listeners,
+            "compliance_contact_name": station.compliance_contact_name,
+            "compliance_contact_email": station.compliance_contact_email,
+            "compliance_contact_phone": station.compliance_contact_phone,
+            "emergency_contact_phone": station.emergency_contact_phone,
+        },
+        "payment_preferences": {
+            "preferred_payout_method": station.preferred_payout_method,
+            "preferred_currency": station.preferred_currency,
+            "payout_frequency": station.payout_frequency,
+            "minimum_payout_amount": station.minimum_payout_amount,
+            "tax_identification_number": station.tax_identification_number,
+            "business_registration_number": station.business_registration_number,
+            "momo_account": station.momo_account,
+            "momo_provider": station.momo_provider,
+            "momo_account_name": station.momo_account_name,
+            "bank_account": station.bank_account,
+            "bank_name": station.bank_name,
+            "bank_account_number": station.bank_account_number,
+            "bank_account_name": station.bank_account_name,
+            "bank_branch_code": station.bank_branch_code,
+            "bank_swift_code": station.bank_swift_code,
+        }
     }
+
+
+def check_email_exist(email: str) -> bool:
+    return User.objects.filter(email=email).exists()
 
 @api_view(['POST', ])
 @permission_classes([])
@@ -111,65 +180,81 @@ def register_station_view(request):
         serializer = UserRegistrationSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
-            data["user_id"] = str(user.user_id)
-            data["email"] = user.email
-            data["first_name"] = user.first_name
-            data["last_name"] = user.last_name
-            data["photo"] = user.photo
-
-            if country:
-                data["country"] = user.country
-
             user.user_type = "Station"
             user.phone = phone
-
+            if country:
+                user.country = country
+            if photo:
+                user.photo = photo
             user.save()
 
             station_profile = Station.objects.create(
                 user=user,
-                name=station_name
-
-            )
-            station_profile.save()
-
-            account = BankAccount.objects.get_or_create(
-                user=user, 
-                balance=Decimal('0.00'),
-                currency="Ghc"
+                name=station_name,
+                phone=phone,
+                country=country or None,
             )
 
-            data['phone'] = user.phone
-            data['country'] = user.country
-            data['photo'] = user.photo.url
+            BankAccount.objects.get_or_create(
+                user=user,
+                defaults={
+                    'balance': Decimal('0.00'),
+                    'currency': "Ghc",
+                }
+            )
 
-        token = Token.objects.get(user=user)
-        jwt_tokens = get_jwt_tokens_for_user(user)
-        data['token'] = token.key
-        data['access_token'] = jwt_tokens['access']
-        data['refresh_token'] = jwt_tokens['refresh']
+            data["user_id"] = str(user.user_id)
+            data["email"] = user.email
+            data["first_name"] = user.first_name
+            data["last_name"] = user.last_name
+            data["phone"] = user.phone
+            data["country"] = user.country
+            data["station_id"] = station_profile.station_id
 
-        try:
-            # Use the new Celery email task system for email verification
-            from accounts.email_utils import send_verification_email
-            task_id = send_verification_email(user)
-            data['email_task_id'] = task_id
-            
-        except Exception as e:
-            # Log the error but don't fail registration
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.error(f"Failed to send verification email during station registration: {str(e)}")
-            # Continue with registration even if email fails
+            if user.photo:
+                try:
+                    data["photo"] = user.photo.url
+                except Exception:
+                    data["photo"] = None
+            else:
+                data["photo"] = None
 
-        new_activity = AllActivity.objects.create(
-            user=user,
-            subject="User Registration",
-            body=user.email + " Just created an account."
-        )
-        new_activity.save()
+            token, _ = Token.objects.get_or_create(user=user)
+            jwt_tokens = get_jwt_tokens_for_user(user)
+            onboarding_snapshot = serialize_station_onboarding_state(station_profile)
 
-        payload['message'] = "Successful"
-        payload['data'] = data
+            data['token'] = token.key
+            data['access_token'] = jwt_tokens['access']
+            data['refresh_token'] = jwt_tokens['refresh']
+            data.update(onboarding_snapshot)
+
+            try:
+                # Use the new Celery email task system for email verification
+                from accounts.email_utils import send_verification_email
+                task_id = send_verification_email(user)
+                data['email_task_id'] = task_id
+
+            except Exception as e:
+                # Log the error but don't fail registration
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to send verification email during station registration: {str(e)}")
+                # Continue with registration even if email fails
+
+            AllActivity.objects.create(
+                user=user,
+                subject="User Registration",
+                body=f"{user.email} just created a station account.",
+            )
+
+            payload['message'] = "Successful"
+            payload['data'] = data
+
+            return Response(payload, status=status.HTTP_201_CREATED)
+
+        payload['message'] = "Errors"
+        payload['errors'] = serializer.errors
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
     return Response(payload)
 
@@ -485,7 +570,7 @@ class StationLogin(APIView):
 
         # Align stored onboarding_step with computed next step, but never regress.
         try:
-            step_order = ['profile', 'staff', 'report', 'payment', 'done']
+            step_order = ['profile', 'stream', 'staff', 'compliance', 'payment', 'report', 'done']
             computed = station.get_next_onboarding_step()
             cur_idx = step_order.index(station.onboarding_step) if station.onboarding_step in step_order else 0
             cmp_idx = step_order.index(computed) if computed in step_order else 0
@@ -496,20 +581,22 @@ class StationLogin(APIView):
         except Exception:
             station.save()
 
+        onboarding_snapshot = serialize_station_onboarding_state(station)
         data = {
             "user_id": str(user.user_id),
             "station_id": station.station_id,
+            "station_name": station.name,
             "email": user.email,
             "first_name": user.first_name,
             "last_name": user.last_name,
-            "photo": user.photo.url if user.photo else None,
+            "photo": station.photo.url if station.photo else (user.photo.url if user.photo else None),
             "country": user.country,
             "phone": user.phone,
             "token": token.key,
             "access_token": jwt_tokens['access'],
             "refresh_token": jwt_tokens['refresh'],
-            "onboarding_step": station.onboarding_step,
         }
+        data.update(onboarding_snapshot)
 
         # Create activity log
         AllActivity.objects.create(user=user, subject="Station Login", body=f"{user.email} just logged in.")
@@ -552,13 +639,26 @@ def complete_station_profile_view(request):
 
     station_id = request.data.get('station_id', "")
     bio = request.data.get('bio', "")
+    about = request.data.get('about', "")
     country = request.data.get('country', "")
     region = request.data.get('region', "")
-    location_name = request.data.get('location_name', "")
+    city = request.data.get('city', "") or request.data.get('location', "")
+    location_name = request.data.get('location_name', "") or request.data.get('locationName', "")
+    coverage_area = request.data.get('coverage_area', "") or request.data.get('coverageArea', "")
+    license_number = request.data.get('license_number', "") or request.data.get('licenseNumber', "")
+    license_expiry = request.data.get('license_expiry_date', "") or request.data.get('licenseExpiry', "")
+    station_type_display = request.data.get('station_type', "") or request.data.get('stationType', "")
+    station_category = request.data.get('station_category', "") or request.data.get('stationCategory', "")
+    contact_name = request.data.get('contact_name', "") or request.data.get('contactName', "")
+    contact_email = request.data.get('contact_email', "") or request.data.get('contactEmail', "")
+    contact_phone = request.data.get('contact_phone', "") or request.data.get('contactPhone', "")
+    phone = request.data.get('phone', "") or request.data.get('station_phone', "")
+    website_url = request.data.get('website_url', "") or request.data.get('website', "")
+    station_name = request.data.get('station_name', "") or request.data.get('stationName', "")
     lat = request.data.get('lat', None)
     lng = request.data.get('lng', None)
-    photo = request.data.get('photo', "")
-    stream_url = request.data.get('stream_url', "").strip()
+    photo = request.FILES.get('photo') or request.data.get('photo')
+    stream_url = request.data.get('stream_url', "").strip() or request.data.get('primaryStreamUrl', "").strip()
 
     if not station_id:
         errors['station_id'] = ['Station ID is required.']
@@ -574,18 +674,55 @@ def complete_station_profile_view(request):
         return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
     # Apply changes if provided
+    if station_name:
+        station.name = station_name
+    if phone:
+        station.phone = phone
+        station.user.phone = phone
+        station.user.save(update_fields=['phone'])
     if bio:
         station.bio = bio
+    if about:
+        station.about = about
     if country:
         station.country = country
     if region:
         station.region = region
+    if city:
+        station.city = city
     if location_name:
         station.location_name = location_name
     if lat is not None:
         station.lat = lat
     if lng is not None:
         station.lng = lng
+    if coverage_area:
+        station.coverage_area = coverage_area
+    if license_number:
+        station.license_number = license_number
+    if license_expiry:
+        try:
+            station.license_expiry_date = timezone.datetime.fromisoformat(str(license_expiry)).date()
+        except Exception:
+            pass
+    if station_category:
+        station.station_category = station_category
+    if station_type_display:
+        normalized_type = station_type_display.lower().replace(' ', '_')
+        valid_types = {choice[0] for choice in Station.STATION_TYPES}
+        if normalized_type in valid_types:
+            station.station_type = normalized_type
+        else:
+            # Fallback to category storage if not a valid choice
+            station.station_category = station_type_display
+    if website_url:
+        station.website_url = website_url
+    if contact_name:
+        station.compliance_contact_name = contact_name
+    if contact_email:
+        station.compliance_contact_email = contact_email
+    if contact_phone:
+        station.compliance_contact_phone = contact_phone
     
     # Handle stream URL with validation
     if stream_url:
@@ -632,24 +769,121 @@ def complete_station_profile_view(request):
     # Handle photo upload
     photo_url = None
     if photo:
-        # Delete old photo if it exists and is not the default
-        if station.user.photo and 'default' not in station.user.photo.name:
-            station.user.photo.delete(save=False)
-        # Save new photo
-        station.user.photo = photo
-        station.user.save()
-        photo_url = station.user.photo.url if station.user.photo else None
+        if station.photo and station.photo.name and 'default' not in station.photo.name:
+            station.photo.delete(save=False)
+        station.photo = photo
+        station.save(update_fields=['photo'])
+        photo_url = station.photo.url if station.photo else None
     
     # Mark this step as complete (profile)
     station.profile_completed = True
-
-    # Move to next onboarding step
     station.onboarding_step = station.get_next_onboarding_step()
     station.save()
 
     data.update(serialize_station_onboarding_state(station))
     if photo_url:
         data["photo"] = photo_url
+
+    payload['message'] = "Successful"
+    payload['data'] = data
+    return Response(payload, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def complete_station_stream_setup_view(request):
+    payload = {}
+    data = {}
+    errors = {}
+
+    station_id = request.data.get('station_id', "")
+    primary_stream_url = (request.data.get('primary_stream_url') or request.data.get('primaryStreamUrl') or "").strip()
+    backup_stream_url = (request.data.get('backup_stream_url') or request.data.get('backupStreamUrl') or "").strip()
+    stream_type = request.data.get('stream_type') or request.data.get('streamType')
+    stream_bitrate = request.data.get('stream_bitrate') or request.data.get('bitrate')
+    stream_format = request.data.get('stream_format') or request.data.get('format')
+    stream_mount_point = request.data.get('stream_mount_point') or request.data.get('mountPoint')
+    stream_username = request.data.get('stream_username') or request.data.get('username')
+    stream_password = request.data.get('stream_password') or request.data.get('password')
+    enable_monitoring = request.data.get('enable_monitoring', request.data.get('enableMonitoring', True))
+    monitoring_interval = request.data.get('monitoring_interval', request.data.get('monitoringInterval'))
+    auto_restart = request.data.get('auto_restart', request.data.get('autoRestart', True))
+    quality_check = request.data.get('quality_check', request.data.get('qualityCheck', True))
+
+    if not station_id:
+        errors['station_id'] = ['Station ID is required.']
+
+    try:
+        station = Station.objects.get(station_id=station_id)
+    except Station.DoesNotExist:
+        station = None
+        errors['station_id'] = ['Station not found.']
+
+    if station is None:
+        payload['message'] = "Errors"
+        payload['errors'] = errors
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
+    if not primary_stream_url:
+        errors['primary_stream_url'] = ['Primary stream URL is required.']
+
+    if errors:
+        payload['message'] = "Errors"
+        payload['errors'] = errors
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
+    # Validate and assign stream urls
+    stream_test_result = None
+    if primary_stream_url:
+        try:
+            from stations.models import validate_stream_url
+            validate_stream_url(primary_stream_url)
+            station.stream_url = primary_stream_url
+            station.stream_status = 'testing'
+            accessible, message = station.test_stream_url()
+            stream_test_result = {
+                "accessible": accessible,
+                "message": message,
+                "status": station.stream_status,
+            }
+        except Exception as exc:
+            payload['message'] = "Errors"
+            payload['errors'] = {'primary_stream_url': [str(exc)]}
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
+    if backup_stream_url:
+        station.backup_stream_url = backup_stream_url
+
+    if stream_type:
+        station.stream_type = stream_type
+    if stream_bitrate:
+        station.stream_bitrate = stream_bitrate
+    if stream_format:
+        station.stream_format = stream_format
+    if stream_mount_point:
+        station.stream_mount_point = stream_mount_point
+    if stream_username:
+        station.stream_username = stream_username
+    if stream_password:
+        station.stream_password = stream_password
+
+    station.monitoring_enabled = bool(str(enable_monitoring).lower() in ['1', 'true', 'yes', 'on'])
+    if monitoring_interval:
+        try:
+            station.monitoring_interval_seconds = int(monitoring_interval)
+        except (ValueError, TypeError):
+            pass
+    station.stream_auto_restart = bool(str(auto_restart).lower() in ['1', 'true', 'yes', 'on'])
+    station.stream_quality_check_enabled = bool(str(quality_check).lower() in ['1', 'true', 'yes', 'on'])
+
+    station.stream_setup_completed = True
+    station.onboarding_step = station.get_next_onboarding_step()
+    station.save()
+
+    data.update(serialize_station_onboarding_state(station))
+    if stream_test_result:
+        data['stream_test_result'] = stream_test_result
 
     payload['message'] = "Successful"
     payload['data'] = data
@@ -691,7 +925,7 @@ def complete_add_staff_view(request):
         staff_payload = []
 
     # Validate and collect staff entries
-    valid_roles = [c[0] for c in ROLE_CHOICES]
+    valid_roles = [c[0] for c in StationStaff.STAFF_ROLES]
     to_create = []
     for item in staff_payload:
         try:
@@ -832,8 +1066,20 @@ def complete_station_payment_view(request):
     errors = {}
 
     station_id = request.data.get('station_id', "")
-    momo = request.data.get('momo', "")
-    bankAccount = request.data.get('bankAccount', "")
+    momo = request.data.get('momo', "") or request.data.get('momoNumber', "")
+    momo_provider = request.data.get('momo_provider', "") or request.data.get('momoProvider', "")
+    momo_name = request.data.get('momo_name', "") or request.data.get('momoName', "")
+    bank_account_number = request.data.get('bank_account_number', "") or request.data.get('accountNumber', "")
+    bank_account_name = request.data.get('bank_account_name', "") or request.data.get('accountName', "")
+    bank_name = request.data.get('bank_name', "") or request.data.get('bankName', "")
+    bank_branch_code = request.data.get('bank_branch_code', "") or request.data.get('branchCode', "")
+    bank_swift_code = request.data.get('bank_swift_code', "") or request.data.get('swiftCode', "")
+    currency = request.data.get('currency', "") or request.data.get('preferredCurrency', "")
+    payout_frequency = request.data.get('payout_frequency', "") or request.data.get('payoutFrequency', "")
+    minimum_payout = request.data.get('minimum_payout', "") or request.data.get('minimumPayout', "")
+    tax_id = request.data.get('tax_id', "") or request.data.get('taxId', "")
+    business_registration = request.data.get('business_registration', "") or request.data.get('businessRegistration', "")
+    preferred_method = request.data.get('preferred_method', "") or request.data.get('paymentMethod', "")
 
     if not station_id:
         errors['station_id'] = ['Station ID is required.']
@@ -851,8 +1097,36 @@ def complete_station_payment_view(request):
     # Apply changes if provided
     if momo:
         station.momo_account = momo
-    if bankAccount:
-        station.bank_account = bankAccount
+    if momo_provider:
+        station.momo_provider = momo_provider
+    if momo_name:
+        station.momo_account_name = momo_name
+    if bank_account_number:
+        station.bank_account = bank_account_number
+        station.bank_account_number = bank_account_number
+    if bank_account_name:
+        station.bank_account_name = bank_account_name
+    if bank_name:
+        station.bank_name = bank_name
+    if bank_branch_code:
+        station.bank_branch_code = bank_branch_code
+    if bank_swift_code:
+        station.bank_swift_code = bank_swift_code
+    if currency:
+        station.preferred_currency = currency
+    if payout_frequency:
+        station.payout_frequency = payout_frequency
+    if minimum_payout:
+        try:
+            station.minimum_payout_amount = Decimal(str(minimum_payout))
+        except Exception:
+            pass
+    if tax_id:
+        station.tax_identification_number = tax_id
+    if business_registration:
+        station.business_registration_number = business_registration
+    if preferred_method:
+        station.preferred_payout_method = preferred_method
 
     # Mark this step as complete
     station.payment_info_added = True
@@ -972,7 +1246,12 @@ def skip_station_onboarding_view(request):
         errors['station_id'] = ['Station not found.']
         station = None
 
-    if station and step not in dict(Station.ONBOARDING_STEPS).keys():
+    normalized_step = step.replace('-', '_') if isinstance(step, str) else step
+    if normalized_step == 'stream_setup':
+        normalized_step = 'stream'
+
+    valid_steps = {choice[0] for choice in Station.ONBOARDING_STEPS}
+    if station and normalized_step not in valid_steps:
         errors['step'] = ['Invalid onboarding step.']
 
     if errors:
@@ -980,7 +1259,18 @@ def skip_station_onboarding_view(request):
         payload['errors'] = errors
         return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
-    station.onboarding_step = step
+    if normalized_step == 'profile':
+        station.profile_completed = False
+    elif normalized_step == 'stream':
+        station.stream_setup_completed = False
+    elif normalized_step == 'staff':
+        station.staff_completed = False
+    elif normalized_step == 'compliance':
+        station.compliance_completed = False
+    elif normalized_step == 'payment':
+        station.payment_info_added = False
+
+    station.onboarding_step = normalized_step
     station.save()
 
     data.update(serialize_station_onboarding_state(station))
@@ -1044,7 +1334,9 @@ def enhanced_station_onboarding_status_view(request, station_id):
     data = {
         **onboarding_state,
         "profile_completed": onboarding_state["progress"].get("profile_completed", False),
+        "stream_setup_completed": onboarding_state["progress"].get("stream_setup_completed", False),
         "staff_completed": onboarding_state["progress"].get("staff_completed", False),
+        "compliance_completed": onboarding_state["progress"].get("compliance_completed", False),
         "payment_info_added": onboarding_state["progress"].get("payment_info_added", False),
         "kyc_status": user.kyc_status,
         "kyc_documents": user.kyc_documents,
@@ -1100,18 +1392,24 @@ def update_station_onboarding_status_view(request):
     # Update the specific step status
     step_mapping = {
         'profile': 'profile_completed',
+        'stream': 'stream_setup_completed',
         'staff': 'staff_completed',
+        'compliance': 'compliance_completed',
         'payment': 'payment_info_added',
     }
 
-    if step in step_mapping:
-        setattr(station, step_mapping[step], completed)
+    normalized_step = step.replace('-', '_') if isinstance(step, str) else step
+    if normalized_step == 'stream_setup':
+        normalized_step = 'stream'
+
+    if normalized_step in step_mapping:
+        setattr(station, step_mapping[normalized_step], completed)
         if completed:
             station.onboarding_step = station.get_next_onboarding_step()
         station.save()
 
     data = {
-        "step": step,
+        "step": normalized_step,
         "completed": completed,
         **serialize_station_onboarding_state(station),
     }
@@ -1262,12 +1560,19 @@ def update_station_compliance_setup_view(request):
     errors = {}
 
     station_id = request.data.get('station_id', "")
-    license_number = request.data.get('license_number', "")
-    station_class = request.data.get('station_class', "")
-    station_type = request.data.get('station_type', "")
-    coverage_area = request.data.get('coverage_area', "")
+    license_number = request.data.get('license_number', "") or request.data.get('licenseNumber', "")
+    license_authority = request.data.get('license_authority', "") or request.data.get('licenseAuthority', "")
+    license_issue_date = request.data.get('license_issue_date', "") or request.data.get('licenseIssueDate', "")
+    license_expiry_date = request.data.get('license_expiry_date', "") or request.data.get('licenseExpiryDate', "")
+    station_class = request.data.get('station_class', "") or request.data.get('stationClass', "")
+    station_type = request.data.get('station_type', "") or request.data.get('stationType', "")
+    coverage_area = request.data.get('coverage_area', "") or request.data.get('coverageArea', "")
     estimated_listeners = request.data.get('estimated_listeners', None)
-    regulatory_bodies = request.data.get('regulatory_bodies', [])
+    compliance_officer = request.data.get('compliance_officer', "") or request.data.get('complianceOfficer', "")
+    officer_email = request.data.get('officer_email', "") or request.data.get('officerEmail', "")
+    officer_phone = request.data.get('officer_phone', "") or request.data.get('officerPhone', "")
+    emergency_contact = request.data.get('emergency_contact', "") or request.data.get('emergencyContact', "")
+    regulatory_body = request.data.get('regulatory_body', "") or request.data.get('regulatoryBody', "")
 
     if not station_id:
         errors['station_id'] = ['Station ID is required.']
@@ -1295,6 +1600,18 @@ def update_station_compliance_setup_view(request):
     # Update station fields
     if license_number:
         station.license_number = license_number
+    if license_authority:
+        station.license_issuing_authority = license_authority
+    if license_issue_date:
+        try:
+            station.license_issue_date = timezone.datetime.fromisoformat(str(license_issue_date)).date()
+        except Exception:
+            pass
+    if license_expiry_date:
+        try:
+            station.license_expiry_date = timezone.datetime.fromisoformat(str(license_expiry_date)).date()
+        except Exception:
+            pass
     if station_class:
         station.station_class = station_class
     if station_type:
@@ -1306,17 +1623,22 @@ def update_station_compliance_setup_view(request):
             station.estimated_listeners = int(estimated_listeners)
         except (ValueError, TypeError):
             pass
+    if compliance_officer:
+        station.compliance_contact_name = compliance_officer
+    if officer_email:
+        station.compliance_contact_email = officer_email
+    if officer_phone:
+        station.compliance_contact_phone = officer_phone
+    if emergency_contact:
+        station.emergency_contact_phone = emergency_contact
+    if regulatory_body:
+        station.regulatory_body = regulatory_body
 
+    station.compliance_completed = True
+    station.onboarding_step = station.get_next_onboarding_step()
     station.save()
 
-    data = {
-        "station_id": station.station_id,
-        "license_number": station.license_number,
-        "station_class": station.station_class,
-        "station_type": station.station_type,
-        "coverage_area": station.coverage_area,
-        "estimated_listeners": station.estimated_listeners,
-    }
+    data.update(serialize_station_onboarding_state(station))
 
     payload['message'] = "Successful"
     payload['data'] = data
@@ -1325,12 +1647,16 @@ def update_station_compliance_setup_view(request):
 
 def calculate_station_completion_percentage(station):
     """Calculate station profile completion percentage"""
-    total_fields = 3  # profile, staff, payment
+    total_fields = 5  # profile, stream, staff, compliance, payment
     completed_fields = 0
 
     if station.profile_completed:
         completed_fields += 1
+    if station.stream_setup_completed:
+        completed_fields += 1
     if station.staff_completed:
+        completed_fields += 1
+    if station.compliance_completed:
         completed_fields += 1
     if station.payment_info_added:
         completed_fields += 1
@@ -1359,20 +1685,33 @@ def get_station_required_fields_status(station):
             'fields': ['first_name', 'last_name', 'station_name']
         },
         'station_details': {
-            'completed': bool(station.country and station.region and user.photo),
+            'completed': bool(station.country and station.region and station.photo),
             'fields': ['country', 'region', 'photo']
         },
         'contact_info': {
             'completed': bool(user.email and user.phone),
             'fields': ['email', 'phone']
         },
+        'stream_setup': {
+            'completed': bool(station.stream_url and station.stream_username),
+            'fields': ['stream_url', 'stream_username']
+        },
         'compliance_info': {
-            'completed': bool(station.license_number and station.station_class and station.station_type),
-            'fields': ['license_number', 'station_class', 'station_type']
+            'completed': bool(
+                station.license_number and
+                station.license_issuing_authority and
+                station.license_expiry_date and
+                station.compliance_contact_name
+            ),
+            'fields': ['license_number', 'license_issuing_authority', 'license_expiry_date', 'compliance_contact_name']
         },
         'payment_info': {
-            'completed': bool(station.momo_account or station.bank_account),
-            'fields': ['momo_account', 'bank_account']
+            'completed': bool(
+                station.momo_account or
+                station.bank_account or
+                station.bank_account_number
+            ),
+            'fields': ['momo_account', 'bank_account', 'bank_account_number']
         }
     }
 
@@ -1381,14 +1720,21 @@ def get_station_compliance_status(station):
     """Get station compliance setup status"""
     return {
         'license_number': station.license_number,
+        'license_issuing_authority': station.license_issuing_authority,
+        'license_issue_date': station.license_issue_date,
+        'license_expiry_date': station.license_expiry_date,
         'station_class': station.station_class,
         'station_type': station.station_type,
         'coverage_area': station.coverage_area,
         'estimated_listeners': station.estimated_listeners,
+        'compliance_contact_name': station.compliance_contact_name,
+        'compliance_contact_email': station.compliance_contact_email,
+        'compliance_contact_phone': station.compliance_contact_phone,
+        'emergency_contact_phone': station.emergency_contact_phone,
         'compliance_complete': bool(
-            station.license_number and 
-            station.station_class and 
-            station.station_type
+            station.license_number and
+            station.license_issuing_authority and
+            station.compliance_contact_name
         )
     }
 
