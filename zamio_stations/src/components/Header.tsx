@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, Bell, Settings, User, LogOut, Menu, ChevronLeft, ChevronRight, Radio, Activity } from 'lucide-react';
+import { Search, Bell, Settings, User, LogOut, Menu, ChevronLeft, ChevronRight, RadioTower, Activity } from 'lucide-react';
 import { ThemeToggle } from '@zamio/ui';
 
 interface HeaderProps {
@@ -234,7 +234,7 @@ const Header: React.FC<HeaderProps> = ({
                 className="flex items-center space-x-2 p-2.5 rounded-xl text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-slate-800 transition-all duration-200"
               >
                 <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
-                  <Radio className="w-4 h-4 text-white" />
+                  <RadioTower className="w-4 h-4 text-white" />
                 </div>
                 <span className="hidden sm:block text-sm font-medium text-gray-700 dark:text-gray-200">
                   Station Manager
