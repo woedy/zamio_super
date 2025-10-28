@@ -100,26 +100,56 @@ class FileUploadServiceTestCase(TestCase):
         self.assertEqual(kyc_doc.notes, 'Test upload')
         self.assertTrue(kyc_doc.file_hash)
     
-    def test_duplicate_file_rejection(self):
-        """Test that duplicate files are rejected"""
+    def test_duplicate_file_allowed_for_same_user(self):
+        """Uploading the same file for a different slot on the same account succeeds"""
         pdf_content = b'%PDF-1.4\n1 0 obj\n<<\n/Type /Catalog\n/Pages 2 0 R\n>>\nendobj\n'
         test_file1 = SimpleUploadedFile("passport1.pdf", pdf_content, content_type="application/pdf")
         test_file2 = SimpleUploadedFile("passport2.pdf", pdf_content, content_type="application/pdf")
-        
+
         # First upload should succeed
         FileUploadService.upload_kyc_document(
             user=self.user,
             document_type='passport',
             file=test_file1
         )
-        
-        # Second upload of same content should fail
-        with self.assertRaises(ValidationError):
-            FileUploadService.upload_kyc_document(
-                user=self.user,
-                document_type='id_card',
-                file=test_file2
-            )
+
+        # Second upload of same content for a different slot on the same user should
+        # now be treated as a separate document.
+        second_doc = FileUploadService.upload_kyc_document(
+            user=self.user,
+            document_type='id_card',
+            file=test_file2
+        )
+        self.assertEqual(second_doc.document_type, 'id_card')
+        self.assertEqual(KYCDocument.objects.filter(user=self.user).count(), 2)
+
+    def test_duplicate_file_allowed_for_other_users(self):
+        """The same file hash can be reused by a different account without errors."""
+        pdf_content = b'%PDF-1.4\n1 0 obj\n<<\n/Type /Catalog\n/Pages 2 0 R\n>>\nendobj\n'
+        test_file1 = SimpleUploadedFile("passport1.pdf", pdf_content, content_type="application/pdf")
+        test_file2 = SimpleUploadedFile("passport2.pdf", pdf_content, content_type="application/pdf")
+
+        other_user = User.objects.create_user(
+            email="duplicate@example.com",
+            first_name="Dupe",
+            last_name="User",
+            password="duplicatepass123"
+        )
+
+        FileUploadService.upload_kyc_document(
+            user=self.user,
+            document_type='passport',
+            file=test_file1
+        )
+
+        second_doc = FileUploadService.upload_kyc_document(
+            user=other_user,
+            document_type='passport',
+            file=test_file2
+        )
+
+        self.assertEqual(second_doc.user, other_user)
+        self.assertEqual(KYCDocument.objects.filter(file_hash=second_doc.file_hash).count(), 2)
 
 
 class FileAccessServiceTestCase(TestCase):

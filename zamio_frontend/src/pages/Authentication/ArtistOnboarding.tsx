@@ -36,6 +36,7 @@ const onboardingSequence: Array<{ id: string; title: string; description: string
       id: 'payment',
       title: 'Payment Info',
       description: 'Add your payment information for royalty collection',
+      required: true,
     },
     {
       id: 'publisher',
@@ -138,7 +139,7 @@ const ArtistOnboardingInner = () => {
       title="Artist Onboarding"
       subtitle="Let's get you set up to start earning from your music"
       initialStepId="welcome"
-      currentStepId={currentStep || 'profile'}
+      currentStepId={currentStep || 'welcome'}
       onStepChange={handleStepChange}
     />
   );
@@ -152,7 +153,7 @@ export default function ArtistOnboarding() {
       ? (user['artist_id'] as string | undefined)
       : undefined;
 
-  const initialStep = params.stepId ?? 'profile';
+  const initialStep = params.stepId ?? 'welcome';
 
   if (!artistId) {
     return (

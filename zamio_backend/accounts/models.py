@@ -403,6 +403,7 @@ class KYCDocument(models.Model):
         ('bank_statement', 'Bank Statement'),
         ('business_registration', 'Business Registration'),
         ('tax_certificate', 'Tax Certificate'),
+        ('selfie', 'Selfie Verification'),
     )
     
     STATUS_CHOICES = (
@@ -421,7 +422,7 @@ class KYCDocument(models.Model):
     )
     original_filename = models.CharField(max_length=255)
     file_size = models.PositiveIntegerField()
-    file_hash = models.CharField(max_length=64, unique=True)  # SHA-256 hash for integrity
+    file_hash = models.CharField(max_length=64)  # SHA-256 hash for integrity
     content_type = models.CharField(max_length=100)
     
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='uploaded')
