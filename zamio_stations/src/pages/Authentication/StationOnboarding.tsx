@@ -8,6 +8,7 @@ import StaffStep from './Onboarding/steps/StaffStep';
 import ComplianceStep from './Onboarding/steps/ComplianceStep';
 import PaymentStep from './Onboarding/steps/PaymentStep';
 import { useAuth } from '../../lib/auth';
+import { normalizeStationOnboardingStepParam } from '../../lib/onboarding';
 import {
   StationOnboardingProvider,
   useStationOnboarding,
@@ -57,9 +58,15 @@ const StationOnboardingInner = () => {
   const { status, loading, error, currentStep, setCurrentStep, finalizeOnboarding } = useStationOnboarding();
 
   useEffect(() => {
-    const target = params.stepId;
-    if (target && target !== currentStep) {
-      setCurrentStep(target);
+    const normalizedParam = normalizeStationOnboardingStepParam(params.stepId ?? null);
+    if (!params.stepId) {
+      if (currentStep !== 'welcome') {
+        setCurrentStep('welcome');
+      }
+      return;
+    }
+    if (normalizedParam && normalizedParam !== currentStep) {
+      setCurrentStep(normalizedParam);
     }
   }, [params.stepId, currentStep, setCurrentStep]);
 
@@ -149,16 +156,6 @@ const StationOnboardingInner = () => {
   );
 };
 
-const normalizeInitialStep = (stepId?: string): string => {
-  if (!stepId) {
-    return 'welcome';
-  }
-  if (stepId === 'stream') {
-    return 'stream-setup';
-  }
-  return stepId;
-};
-
 export default function StationOnboarding() {
   const params = useParams<{ stepId?: string }>();
   const { user } = useAuth();
@@ -168,7 +165,7 @@ export default function StationOnboarding() {
       ? (user['station_id'] as string | undefined)
       : undefined;
 
-  const initialStep = normalizeInitialStep(params.stepId);
+  const initialStep = normalizeStationOnboardingStepParam(params.stepId ?? null) ?? 'welcome';
 
   if (!stationId) {
     return (

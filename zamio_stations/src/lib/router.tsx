@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ReactNode } from 'react';
 import { useAuth } from './auth';
+import { resolveStationOnboardingRedirect } from './onboarding';
 
 import StationOnboarding from '../pages/Authentication/StationOnboarding';
 import ZamIOLandingPage from '../pages/Landing';
@@ -61,8 +62,9 @@ const PrivateRoute = ({ children }: { children: ReactNode }) => {
   }
 
   const nextStep = resolveNextStep(user);
-  if (nextStep && nextStep !== 'done' && !location.pathname.startsWith('/onboarding')) {
-    return <Navigate to={`/onboarding/${nextStep}`} replace />;
+  const redirectPath = resolveStationOnboardingRedirect(nextStep);
+  if (redirectPath && !location.pathname.startsWith('/onboarding')) {
+    return <Navigate to={redirectPath} replace />;
   }
 
   return <>{children}</>;
@@ -81,8 +83,9 @@ const PublicRoute = ({ children }: { children: ReactNode }) => {
   }
 
   const nextStep = resolveNextStep(user);
-  if (nextStep && nextStep !== 'done') {
-    return <Navigate to={`/onboarding/${nextStep}`} replace />;
+  const redirectPath = resolveStationOnboardingRedirect(nextStep);
+  if (redirectPath) {
+    return <Navigate to={redirectPath} replace />;
   }
 
   const fromState = (location.state as { from?: string } | null)?.from;

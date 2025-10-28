@@ -12,6 +12,7 @@ from rest_framework.authtoken.models import Token
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.response import Response
 from rest_framework.authentication import TokenAuthentication
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework.permissions import IsAuthenticated
 
 from accounts.api.serializers import UserRegistrationSerializer
@@ -34,6 +35,8 @@ from core.utils import generate_email_token, is_valid_email, is_valid_password
 logger = logging.getLogger(__name__)
 
 User = get_user_model()
+
+AUTHENTICATION_CLASSES = [JWTAuthentication, TokenAuthentication]
 
 
 def serialize_station_onboarding_state(station):
@@ -623,15 +626,9 @@ def check_password(email, password):
         return False
 
 
-
-
-
-from rest_framework.authentication import TokenAuthentication
-from rest_framework.permissions import IsAuthenticated
-
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes(AUTHENTICATION_CLASSES)
 def complete_station_profile_view(request):
     payload = {}
     data = {}
@@ -791,7 +788,7 @@ def complete_station_profile_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes(AUTHENTICATION_CLASSES)
 def complete_station_stream_setup_view(request):
     payload = {}
     data = {}
@@ -891,7 +888,7 @@ def complete_station_stream_setup_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes(AUTHENTICATION_CLASSES)
 def complete_add_staff_view(request):
     payload = {}
     data = {}
@@ -957,7 +954,7 @@ def complete_add_staff_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes(AUTHENTICATION_CLASSES)
 def complete_report_method_view(request):
     payload = {}
     data = {}
@@ -1009,7 +1006,7 @@ def complete_report_method_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes(AUTHENTICATION_CLASSES)
 def onboard_station_view(request):
     payload = {}
     data = {}
@@ -1059,7 +1056,7 @@ def onboard_station_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes(AUTHENTICATION_CLASSES)
 def complete_station_payment_view(request):
     payload = {}
     data = {}
@@ -1143,7 +1140,7 @@ def complete_station_payment_view(request):
 @api_view(['POST'])
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes(AUTHENTICATION_CLASSES)
 @csrf_exempt
 def logout_station_view(request):
     payload = {}
@@ -1226,7 +1223,7 @@ def logout_station_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes(AUTHENTICATION_CLASSES)
 def skip_station_onboarding_view(request):
     payload = {}
     data = {}
@@ -1282,7 +1279,7 @@ def skip_station_onboarding_view(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes(AUTHENTICATION_CLASSES)
 def station_onboarding_status_view(request):
     payload = {}
     data = {}
@@ -1312,7 +1309,7 @@ def station_onboarding_status_view(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes(AUTHENTICATION_CLASSES)
 def enhanced_station_onboarding_status_view(request, station_id):
     """Get enhanced onboarding status for a station"""
     payload = {}
@@ -1363,7 +1360,7 @@ def enhanced_station_onboarding_status_view(request, station_id):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes(AUTHENTICATION_CLASSES)
 def update_station_onboarding_status_view(request):
     """Update specific station onboarding step status"""
     payload = {}
@@ -1421,7 +1418,7 @@ def update_station_onboarding_status_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes(AUTHENTICATION_CLASSES)
 def complete_station_onboarding_view(request):
     """Mark station onboarding as complete"""
     payload = {}
@@ -1473,7 +1470,7 @@ def complete_station_onboarding_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes(AUTHENTICATION_CLASSES)
 def update_station_stream_links_view(request):
     """Update station stream links with validation"""
     from stations.models import StationStreamLink
@@ -1552,7 +1549,7 @@ def update_station_stream_links_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes(AUTHENTICATION_CLASSES)
 def update_station_compliance_setup_view(request):
     """Update station compliance and regulatory setup"""
     payload = {}

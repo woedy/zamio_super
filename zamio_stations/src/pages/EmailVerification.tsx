@@ -7,6 +7,7 @@ import { persistLegacyLoginResponse, type LegacyLoginResponse, type StoredUserPa
 
 import { resendStationVerification, verifyStationEmailCode, type ApiErrorMap } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { resolveStationOnboardingRedirect } from '../lib/onboarding';
 
 const VALID_CODE_REGEX = /^\d{4}$/;
 
@@ -128,13 +129,10 @@ const EmailVerification = () => {
 
       setVerificationStatus('success');
       setTimeout(() => {
-        const nextStep = typeof response?.data?.next_step === 'string' ? response.data.next_step : null;
-        const onboardingStep = typeof response?.data?.onboarding_step === 'string' ? response.data.onboarding_step : null;
-        const destination = nextStep && nextStep !== 'done'
-          ? `/onboarding/${nextStep}`
-          : onboardingStep && onboardingStep !== 'done'
-            ? `/onboarding/${onboardingStep}`
-            : '/dashboard';
+        const rawNextStep = typeof response?.data?.next_step === 'string' ? response.data.next_step : null;
+        const rawOnboardingStep =
+          typeof response?.data?.onboarding_step === 'string' ? response.data.onboarding_step : null;
+        const destination = resolveStationOnboardingRedirect(rawNextStep ?? rawOnboardingStep) ?? '/dashboard';
         navigate(destination, { replace: true });
       }, 1200);
     } catch (error) {

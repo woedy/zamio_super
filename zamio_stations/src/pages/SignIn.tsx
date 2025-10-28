@@ -5,6 +5,7 @@ import { legacyRoleLogin, persistLegacyLoginResponse } from '@zamio/ui';
 
 import type { LegacyLoginResponse } from '@zamio/ui';
 import { useAuth } from '../lib/auth';
+import { resolveStationOnboardingRedirect } from '../lib/onboarding';
 
 export default function SignIn() {
   const navigate = useNavigate();
@@ -65,12 +66,11 @@ export default function SignIn() {
 
       hydrateAuth(loginSnapshot);
 
-      const nextStep = response?.data?.next_step ?? response?.data?.onboarding_step;
-      if (typeof nextStep === 'string' && nextStep && nextStep !== 'done') {
-        navigate(`/onboarding/${nextStep}`);
-      } else {
-        navigate('/dashboard');
-      }
+      const rawNextStep = typeof response?.data?.next_step === 'string' ? response.data.next_step : null;
+      const rawOnboardingStep =
+        typeof response?.data?.onboarding_step === 'string' ? response.data.onboarding_step : null;
+      const redirectPath = resolveStationOnboardingRedirect(rawNextStep ?? rawOnboardingStep);
+      navigate(redirectPath ?? '/dashboard');
     } catch (err) {
       const maybeResponse = (err as { response?: { data?: { message?: string; errors?: Record<string, unknown>; }; }; }).response;
       const message = maybeResponse?.data?.message;
