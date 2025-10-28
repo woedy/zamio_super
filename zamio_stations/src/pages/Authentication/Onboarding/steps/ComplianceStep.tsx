@@ -5,8 +5,6 @@ import {
   Upload,
   CheckCircle,
   AlertCircle,
-  Shield,
-  FileCheck,
   Download,
   Eye,
   Trash2,
@@ -584,7 +582,7 @@ const ComplianceStep: React.FC<ComplianceStepProps> = ({ onNext, onPrevious }) =
           <button
             type="button"
             onClick={onPrevious}
-            className="inline-flex items-center space-x-2 rounded-lg bg-slate-800/50 px-6 py-3 text-white transition hover:bg-slate-800"
+            className="inline-flex items-center rounded-lg bg-slate-800/50 px-6 py-3 text-white transition hover:bg-slate-800"
           >
             <Shield className="w-5 h-5" />
             <span>Back</span>
@@ -595,18 +593,17 @@ const ComplianceStep: React.FC<ComplianceStepProps> = ({ onNext, onPrevious }) =
               type="button"
               onClick={handleSkip}
               disabled={skipping}
-              className="inline-flex items-center space-x-2 rounded-lg border border-white/20 px-6 py-3 text-white transition hover:bg-slate-800/60 disabled:opacity-60"
+              className="inline-flex items-center rounded-lg border border-white/20 px-6 py-3 text-white transition hover:bg-slate-800/60 disabled:opacity-60"
             >
-              <span>{skipping ? 'Skipping…' : 'Skip'}</span>
+              {skipping ? 'Skipping…' : 'Skip'}
             </button>
 
             <button
               type="submit"
               disabled={submitting}
-              className="inline-flex items-center space-x-2 rounded-lg bg-indigo-500 px-6 py-3 font-semibold text-white transition hover:bg-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2 disabled:opacity-60"
+              className="inline-flex items-center rounded-lg bg-indigo-500 px-6 py-3 font-semibold text-white transition hover:bg-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2 disabled:opacity-60"
             >
-              <FileCheck className="w-5 h-5" />
-              <span>{submitting ? 'Saving…' : 'Save & Continue'}</span>
+              <span>{submitting ? 'Saving…' : 'Next'}</span>
             </button>
           </div>
         </div>

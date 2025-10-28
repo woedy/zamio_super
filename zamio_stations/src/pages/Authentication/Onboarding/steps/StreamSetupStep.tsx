@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { Radio, Wifi, Settings, Play, Pause, Volume2, Monitor, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Wifi, Settings, Play, Pause, Volume2, Monitor, CheckCircle, AlertTriangle } from 'lucide-react';
 import { useStationOnboarding } from '../StationOnboardingContext';
 
 interface StreamSetupStepProps {
@@ -483,7 +483,7 @@ const StreamSetupStep: React.FC<StreamSetupStepProps> = ({ onNext, onPrevious })
           <button
             type="button"
             onClick={onPrevious}
-            className="flex items-center space-x-2 rounded-lg bg-slate-800/50 px-6 py-3 text-white transition hover:bg-slate-800"
+            className="inline-flex items-center rounded-lg bg-slate-800/50 px-6 py-3 text-white transition hover:bg-slate-800"
           >
             <Radio className="w-5 h-5" />
             <span>Back</span>
@@ -492,9 +492,9 @@ const StreamSetupStep: React.FC<StreamSetupStepProps> = ({ onNext, onPrevious })
           <button
             type="submit"
             disabled={submitting}
-            className="inline-flex items-center space-x-2 rounded-lg bg-indigo-500 px-6 py-3 font-semibold text-white transition hover:bg-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2 disabled:opacity-60"
+            className="inline-flex items-center rounded-lg bg-indigo-500 px-6 py-3 font-semibold text-white transition hover:bg-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2 disabled:opacity-60"
           >
-            <span>{submitting ? 'Saving…' : 'Continue'}</span>
+            <span>{submitting ? 'Saving…' : 'Next'}</span>
           </button>
         </div>
       </form>

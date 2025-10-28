@@ -152,6 +152,7 @@ const StationOnboardingInner = () => {
       initialStepId="welcome"
       currentStepId={currentStep || 'welcome'}
       onStepChange={handleStepChange}
+      showFooterNavigation={false}
     />
   );
 };
