@@ -1,5 +1,7 @@
 import React from 'react';
-import { Radio as RadioIcon, CheckCircle, TrendingUp, Users, Settings, ArrowRight } from 'lucide-react';
+import { RadioTower, CheckCircle, TrendingUp, Users, Settings, ArrowRight } from 'lucide-react';
+
+const RadioIcon = RadioTower;
 
 interface WelcomeStepProps {
   onNext: () => void;
