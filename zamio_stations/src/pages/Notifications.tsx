@@ -8,7 +8,7 @@ import {
   FileSearch,
   Bell,
   HelpCircle,
-  Radio as RadioIcon,
+  RadioTower as RadioIcon,
   Headphones,
   MapPin,
   Calendar,
@@ -36,7 +36,7 @@ import {
   FileCheck,
   Download,
   Eye,
-  Radio,
+  RadioTower,
   Music,
   DollarSign,
   CheckCircle2,
@@ -191,7 +191,7 @@ const Notifications: React.FC = () => {
 
     switch (type) {
       case 'system':
-        return <Radio className={`${iconProps.className} text-red-600`} />;
+        return <RadioTower className={`${iconProps.className} text-red-600`} />;
       case 'performance':
         return <TrendingUp className={`${iconProps.className} text-blue-600`} />;
       case 'content':
@@ -573,7 +573,7 @@ const Notifications: React.FC = () => {
                 </p>
               </div>
               <div className="w-12 h-12 bg-gradient-to-br from-amber-100 to-orange-100 dark:from-amber-900/60 dark:to-orange-900/60 rounded-lg flex items-center justify-center">
-                <Radio className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+                <RadioTower className="w-6 h-6 text-amber-600 dark:text-amber-400" />
               </div>
             </div>
           </div>

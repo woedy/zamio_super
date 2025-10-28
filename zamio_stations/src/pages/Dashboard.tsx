@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Card, Button } from '@zamio/ui';
-import { TrendingUp, Eye, ChevronUp, ChevronDown, Download, Share2, Settings, BarChart3, Radio, DollarSign, Globe, Target, Music, MapPin, PieChart, Award } from 'lucide-react';
+import { TrendingUp, Eye, ChevronUp, ChevronDown, Download, Share2, Settings, BarChart3, DollarSign, Globe, Target, Music, MapPin, PieChart, Award } from 'lucide-react';
 import HoverCard from '../components/HoverCard';
 
 export default function Dashboard() {
