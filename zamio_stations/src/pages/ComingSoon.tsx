@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, Clock, Wrench, Radio } from 'lucide-react';
+import { ArrowLeft, Clock, Wrench, RadioTower } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 interface ComingSoonPageProps {
@@ -11,7 +11,7 @@ interface ComingSoonPageProps {
 const ComingSoonPage: React.FC<ComingSoonPageProps> = ({
   title,
   description = "This feature is currently under development and will be available soon.",
-  icon = <Radio className="w-8 h-8" />
+  icon = <RadioTower className="w-8 h-8" />
 }) => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-zinc-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 flex items-center justify-center p-4">
