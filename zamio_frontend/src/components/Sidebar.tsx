@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   Home,
@@ -21,6 +21,7 @@ import {
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
+import { useAuth } from '../lib/auth';
 
 interface SidebarProps {
   isOpen?: boolean;
@@ -36,6 +37,35 @@ const Sidebar: React.FC<SidebarProps> = ({
   onToggleCollapse
 }) => {
   const location = useLocation();
+  const { user } = useAuth();
+
+  const artistName = useMemo(() => {
+    if (!user || typeof user !== 'object') {
+      return '';
+    }
+    const record = user as Record<string, unknown>;
+    return (
+      (typeof record['stage_name'] === 'string' && record['stage_name']) ||
+      (typeof record['artist_name'] === 'string' && record['artist_name']) ||
+      (typeof record['name'] === 'string' && record['name']) ||
+      ''
+    );
+  }, [user]);
+
+  const artistInitials = useMemo(() => {
+    const normalized = artistName.trim();
+    if (!normalized) {
+      return 'AN';
+    }
+    const parts = normalized.split(/\s+/).filter(Boolean);
+    if (parts.length === 0) {
+      return normalized.slice(0, 2).toUpperCase();
+    }
+    return parts
+      .slice(0, 2)
+      .map(part => part[0]?.toUpperCase() ?? '')
+      .join('') || 'AN';
+  }, [artistName]);
 
   const navigationItems = [
     {
@@ -174,6 +204,9 @@ const Sidebar: React.FC<SidebarProps> = ({
               <div>
                 <h2 className="text-lg font-bold text-gray-900 dark:text-white tracking-tight">Zamio</h2>
                 <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Royalty Platform</p>
+                <p className="text-xs font-semibold text-gray-700 dark:text-slate-200 mt-1 truncate">
+                  {artistName || 'Artist'}
+                </p>
               </div>
             )}
           </div>
@@ -299,12 +332,12 @@ const Sidebar: React.FC<SidebarProps> = ({
         <div className="p-4 border-t border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800">
           <div className={`flex items-center space-x-3 ${isCollapsed ? 'justify-center' : ''}`}>
             <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0">
-              <span className="text-white text-sm font-semibold">AN</span>
+              <span className="text-white text-sm font-semibold">{artistInitials}</span>
             </div>
             {!isCollapsed && (
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
-                  Artist Name
+                  {artistName || '—'}
                 </p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
                   Premium Artist

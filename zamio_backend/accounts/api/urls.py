@@ -14,7 +14,7 @@ from accounts.api.artist_views import (
     complete_artist_publisher_view, complete_artist_social_view, logout_artist_view, 
     register_artist_view, verify_artist_email, verify_artist_email_code, onboard_artist_view, skip_artist_onboarding_view,
     artist_onboarding_status_view, update_onboarding_status_view, complete_artist_onboarding_view,
-    set_self_published_status_view, upload_kyc_documents_view, get_kyc_documents_view,
+    set_self_published_status_view, update_identity_profile_view, upload_kyc_documents_view, get_kyc_documents_view,
     delete_kyc_document_view, download_kyc_document_view, get_secure_download_url_view,
     secure_download_view, skip_verification_view, resume_verification_view, verification_status_view,
     send_verification_reminder_view, verification_requirements_view
@@ -123,6 +123,7 @@ urlpatterns = [
     path('update-onboarding-status/', update_onboarding_status_view, name="update_onboarding_status_view"),
     path('complete-artist-onboarding/', complete_artist_onboarding_view, name="complete_artist_onboarding_view"),
     path('set-self-published-status/', set_self_published_status_view, name="set_self_published_status_view"),
+    path('update-identity-profile/', update_identity_profile_view, name="update_identity_profile_view"),
     path('upload-kyc-documents/', upload_kyc_documents_view, name="upload_kyc_documents_view"),
     path('get-kyc-documents/', get_kyc_documents_view, name="get_kyc_documents_view"),
     path('delete-kyc-document/<int:document_id>/', delete_kyc_document_view, name="delete_kyc_document_view"),

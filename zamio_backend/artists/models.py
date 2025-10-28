@@ -1,6 +1,4 @@
-"""
-Enhanced models for artists with comprehensive media file processing and contributor management
-"""
+"""Enhanced models for artists with comprehensive media file processing and contributor management"""
 import os
 import hashlib
 from decimal import Decimal
@@ -244,6 +242,7 @@ class Artist(models.Model):
         ('social-media', 'Social Media'),
         ('payment', 'Payment'),
         ('publisher', 'Publisher'),
+        ('kyc', 'Identity Verification'),
         ('done', 'Done'),
     ]
     
@@ -252,7 +251,11 @@ class Artist(models.Model):
     stage_name = models.CharField(max_length=255)
     bio = models.TextField(blank=True, null=True)
     location = models.CharField(max_length=255, blank=True, null=True)
-    
+    country = models.CharField(max_length=100, blank=True, null=True)
+    region = models.CharField(max_length=100, blank=True, null=True)
+    primary_genre = models.CharField(max_length=100, blank=True, null=True)
+    music_style = models.CharField(max_length=100, blank=True, null=True)
+
     # Social media links
     website = models.URLField(blank=True, null=True)
     instagram = models.URLField(blank=True, null=True)
@@ -260,15 +263,16 @@ class Artist(models.Model):
     facebook = models.URLField(blank=True, null=True)
     youtube = models.URLField(blank=True, null=True)
     spotify = models.URLField(blank=True, null=True)
-    
+    social_metrics = models.JSONField(default=dict, blank=True)
+
     # Verification status
     verification_status = models.CharField(
-        max_length=20, 
-        choices=VERIFICATION_STATUS_CHOICES, 
+        max_length=20,
+        choices=VERIFICATION_STATUS_CHOICES,
         default='pending'
     )
     verification_documents = models.JSONField(default=list, blank=True)
-    
+
     # Publishing relationship
     is_self_published = models.BooleanField(default=True)
     publisher = models.ForeignKey(
@@ -285,6 +289,8 @@ class Artist(models.Model):
     social_media_added = models.BooleanField(default=False)
     payment_info_added = models.BooleanField(default=False)
     publisher_added = models.BooleanField(default=False)
+    payment_preferences = models.JSONField(default=dict, blank=True)
+    publisher_preferences = models.JSONField(default=dict, blank=True)
     
     is_archived = models.BooleanField(default=False)
     active = models.BooleanField(default=True)
@@ -311,8 +317,62 @@ class Artist(models.Model):
         for step, completed in steps:
             if not completed:
                 return step
+
+        user = getattr(self, 'user', None)
+        if user and getattr(user, 'verification_status', None) == 'pending':
+            # Surface the identity verification step when no supporting documents have been uploaded yet.
+            try:
+                if not user.uploaded_kyc_documents.exists():
+                    return 'kyc'
+            except Exception:
+                return 'kyc'
+
         return 'done'
 
+
+class ArtistIdentityProfile(models.Model):
+    """Capture identity information submitted during the onboarding KYC step."""
+
+    ID_TYPE_CHOICES = [
+        ('ghana_card', 'Ghana Card'),
+        ('passport', 'Passport'),
+        ('drivers_license', "Driver's License"),
+        ('voter_id', 'Voter ID'),
+    ]
+
+    artist = models.OneToOneField(
+        Artist,
+        on_delete=models.CASCADE,
+        related_name='identity_profile'
+    )
+    full_legal_name = models.CharField(max_length=255)
+    date_of_birth = models.DateField(null=True, blank=True)
+    nationality = models.CharField(max_length=120, blank=True)
+    id_type = models.CharField(max_length=40, choices=ID_TYPE_CHOICES)
+    id_number = models.CharField(max_length=120)
+    residential_address = models.TextField()
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['artist']),
+            models.Index(fields=['id_type']),
+        ]
+
+    def __str__(self):
+        return f"Identity profile for {self.artist.stage_name}"
+
+    def as_payload(self) -> dict:
+        return {
+            'full_name': self.full_legal_name,
+            'date_of_birth': self.date_of_birth.isoformat() if self.date_of_birth else '',
+            'nationality': self.nationality or '',
+            'id_type': self.id_type,
+            'id_number': self.id_number,
+            'residential_address': self.residential_address,
+        }
 
 class Album(models.Model):
     STATUS_CHOICES = [
