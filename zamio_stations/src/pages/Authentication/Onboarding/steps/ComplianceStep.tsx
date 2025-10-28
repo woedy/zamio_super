@@ -8,6 +8,7 @@ import {
   Download,
   Eye,
   Trash2,
+  Shield,
 } from 'lucide-react';
 import { useStationOnboarding } from '../StationOnboardingContext';
 
