@@ -78,26 +78,65 @@ class PublisherProfile(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='publisher')
     
     company_name = models.CharField(max_length=255, null=True, blank=True)
-    # Bank account can be optional during onboarding; allow blank
-    bank_account = models.CharField(max_length=100, blank=True)
-    # Mobile money account (optional)
-    momo_account = models.CharField(max_length=100, blank=True)
+    company_type = models.CharField(max_length=100, blank=True)
+    industry = models.CharField(max_length=100, blank=True)
+    founded_year = models.PositiveIntegerField(null=True, blank=True)
+    employee_count = models.PositiveIntegerField(null=True, blank=True)
+
+    # Contact & compliance details
+    primary_contact_name = models.CharField(max_length=255, blank=True)
+    primary_contact_email = models.EmailField(blank=True)
+    primary_contact_phone = models.CharField(max_length=50, blank=True)
+    compliance_officer_name = models.CharField(max_length=255, blank=True)
+    compliance_officer_email = models.EmailField(blank=True)
+    compliance_officer_phone = models.CharField(max_length=50, blank=True)
+    compliance_officer_title = models.CharField(max_length=255, blank=True)
+
+    # Business registration & licensing
     tax_id = models.CharField(max_length=50, blank=True)
+    business_registration_number = models.CharField(max_length=100, blank=True)
+    license_number = models.CharField(max_length=100, blank=True)
 
-    verified = models.BooleanField(default=False)
-
-    
+    # Location & profile
     region = models.CharField(max_length=255, null=True, blank=True)
     city = models.CharField(max_length=255, null=True, blank=True)
     country = models.CharField(max_length=255, null=True, blank=True)
-
-    
+    address = models.CharField(max_length=255, blank=True)
+    postal_code = models.CharField(max_length=20, blank=True)
     location_name = models.CharField(max_length=900, null=True, blank=True)
     lat = models.DecimalField(default=0.0, max_digits=50, decimal_places=20, null=True, blank=True)
     lng = models.DecimalField(default=0.0, max_digits=50, decimal_places=20, null=True, blank=True)
-    
+    website_url = models.URLField(blank=True)
+    description = models.TextField(blank=True)
+
+    # Bank account can be optional during onboarding; allow blank
+    bank_name = models.CharField(max_length=150, blank=True)
+    bank_account = models.CharField(max_length=100, blank=True)
+    bank_account_name = models.CharField(max_length=150, blank=True)
+    bank_branch_code = models.CharField(max_length=50, blank=True)
+    bank_swift_code = models.CharField(max_length=50, blank=True)
+
+    # Mobile money account (optional)
+    momo_account = models.CharField(max_length=100, blank=True)
+    momo_account_name = models.CharField(max_length=150, blank=True)
+    momo_provider = models.CharField(max_length=100, blank=True)
+
+    preferred_payment_method = models.CharField(max_length=20, blank=True)
+    payout_currency = models.CharField(max_length=10, blank=True)
+    payout_frequency = models.CharField(max_length=20, blank=True)
+    minimum_payout_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    withholding_tax_rate = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    vat_registration_number = models.CharField(max_length=100, blank=True)
+
+    verified = models.BooleanField(default=False)
+
     writer_split = models.DecimalField(default=0.0, max_digits=10, decimal_places=2, null=True, blank=True)
     publisher_split = models.DecimalField(default=0.0, max_digits=10, decimal_places=2, null=True, blank=True)
+    mechanical_share = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    performance_share = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    sync_share = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    administrative_fee_percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    revenue_split_notes = models.TextField(blank=True)
 
     onboarding_step = models.CharField(max_length=20, choices=ONBOARDING_STEPS, default='profile')
 

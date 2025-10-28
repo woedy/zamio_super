@@ -1,10 +1,49 @@
-import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom';
+import { createBrowserRouter, Navigate, useLocation } from 'react-router-dom';
 import { ReactNode } from 'react';
 
-// Static demo does not enforce authentication
-const PrivateRoute = ({ children }: { children: ReactNode }) => <>{children}</>;
+import { useAuth } from './auth';
 
-const PublicRoute = ({ children }: { children: ReactNode }) => <>{children}</>;
+const FullscreenLoader = () => (
+  <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-200">
+    <div className="flex flex-col items-center space-y-4">
+      <div className="h-12 w-12 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
+      <p className="text-sm font-medium uppercase tracking-wide text-emerald-200">Preparing your workspace…</p>
+    </div>
+  </div>
+);
+
+const PrivateRoute = ({ children }: { children: ReactNode }) => {
+  const location = useLocation();
+  const { isInitialized, isAuthenticated } = useAuth();
+
+  if (!isInitialized) {
+    return <FullscreenLoader />;
+  }
+
+  if (!isAuthenticated) {
+    const target = `${location.pathname}${location.search ?? ''}${location.hash ?? ''}`;
+    return <Navigate to="/signin" replace state={{ from: target }} />;
+  }
+
+  return <>{children}</>;
+};
+
+const PublicRoute = ({ children }: { children: ReactNode }) => {
+  const location = useLocation();
+  const { isInitialized, isAuthenticated } = useAuth();
+
+  if (!isInitialized) {
+    return <FullscreenLoader />;
+  }
+
+  if (isAuthenticated) {
+    const fromState = (location.state as { from?: string } | null)?.from;
+    const destination = fromState && fromState !== '/signin' ? fromState : '/dashboard';
+    return <Navigate to={destination} replace />;
+  }
+
+  return <>{children}</>;
+};
 
 // Import pages (assuming they exist in pages/)
 import Landing from '../pages/Landing';
@@ -63,11 +102,11 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/onboarding',
+    path: '/onboarding/:stepId?',
     element: (
-      <PublicRoute>
+      <PrivateRoute>
         <PublisherOnboarding />
-      </PublicRoute>
+      </PrivateRoute>
     ),
   },
   {
