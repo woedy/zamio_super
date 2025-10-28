@@ -1,6 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Search, Bell, Settings, User, LogOut, Menu, ChevronLeft, ChevronRight, Radio, Activity } from 'lucide-react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { Search, Bell, Settings, User, LogOut, Menu, ChevronLeft, ChevronRight, RadioTower, Activity } from 'lucide-react';
 import { ThemeToggle } from '@zamio/ui';
+import { useAuth } from '../lib/auth';
 
 interface HeaderProps {
   onMenuToggle?: () => void;
@@ -17,6 +18,7 @@ const Header: React.FC<HeaderProps> = ({
   onToggleCollapse,
   activeTab = 'dashboard'
 }) => {
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -78,6 +80,22 @@ const Header: React.FC<HeaderProps> = ({
   ];
 
   const unreadCount = notifications.filter(n => n.unread).length;
+
+  const stationName = useMemo(() => {
+    if (!user || typeof user !== 'object') {
+      return null;
+    }
+    const record = user as Record<string, unknown>;
+    const nameCandidates = [
+      record['station_name'],
+      record['display_name'],
+      record['name'],
+    ];
+    const resolved = nameCandidates.find(
+      (value): value is string => typeof value === 'string' && value.trim().length > 0,
+    );
+    return resolved ? resolved.trim() : null;
+  }, [user]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -234,10 +252,10 @@ const Header: React.FC<HeaderProps> = ({
                 className="flex items-center space-x-2 p-2.5 rounded-xl text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-slate-800 transition-all duration-200"
               >
                 <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
-                  <Radio className="w-4 h-4 text-white" />
+                  <RadioTower className="w-4 h-4 text-white" />
                 </div>
                 <span className="hidden sm:block text-sm font-medium text-gray-700 dark:text-gray-200">
-                  Station Manager
+                  {stationName ?? 'Station Manager'}
                 </span>
               </button>
 
@@ -245,7 +263,7 @@ const Header: React.FC<HeaderProps> = ({
               {showUserMenu && (
                 <div className="absolute right-0 mt-3 w-56 bg-white dark:bg-slate-800 rounded-xl shadow-xl py-2 z-50 border border-gray-200 dark:border-slate-700 backdrop-blur-sm">
                   <div className="px-4 py-3 border-b border-gray-200 dark:border-slate-700">
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white">Station Manager</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">{stationName ?? 'Station Manager'}</p>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Premium Station</p>
                   </div>
                   <button className="block w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors duration-200">

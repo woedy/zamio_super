@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
-import { Link, useLocation, Outlet, NavLink } from 'react-router-dom';
+import React, { useMemo, useState } from 'react';
+import { useLocation, Outlet, NavLink } from 'react-router-dom';
 import Header from './Header';
 import {
   Home,
   BarChart3,
   Music,
-  Radio,
+  RadioTower,
   FileText,
   Search,
   AlertTriangle,
@@ -15,7 +15,7 @@ import {
   FileSearch,
   Bell,
   HelpCircle,
-  Radio as RadioIcon,
+  RadioTower as RadioIcon,
   Headphones,
   Menu,
   X,
@@ -23,11 +23,44 @@ import {
   ChevronRight
 } from 'lucide-react';
 import Dashboard from '../pages/Dashboard';
+import { useAuth } from '../lib/auth';
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const location = useLocation();
+  const { user } = useAuth();
+
+  const stationName = useMemo(() => {
+    if (!user || typeof user !== 'object') {
+      return null;
+    }
+    const record = user as Record<string, unknown>;
+    const nameCandidates = [
+      record['station_name'],
+      record['display_name'],
+      record['name'],
+    ];
+    const resolved = nameCandidates.find(
+      (value): value is string => typeof value === 'string' && value.trim().length > 0,
+    );
+    return resolved ? resolved.trim() : null;
+  }, [user]);
+
+  const stationInitials = useMemo(() => {
+    if (!stationName) {
+      return 'ST';
+    }
+    const parts = stationName.split(/\s+/).filter(Boolean);
+    if (parts.length === 0) {
+      return 'ST';
+    }
+    const initials = parts
+      .slice(0, 2)
+      .map(part => part.charAt(0).toUpperCase())
+      .join('');
+    return initials || 'ST';
+  }, [stationName]);
 
   // Check if current page is dashboard
   const isDashboard = location.pathname === '/dashboard';
@@ -116,7 +149,7 @@ export default function Layout() {
             <div className="flex items-center space-x-3">
               <div className="bg-gradient-to-br from-blue-500 to-purple-600 p-2.5 rounded-xl shadow-lg">
                 <div className="w-6 h-6 bg-white rounded-lg flex items-center justify-center shadow-sm">
-                  <Radio className="w-4 h-4 text-blue-600" />
+                  <RadioTower className="w-4 h-4 text-blue-600" />
                 </div>
               </div>
               {!sidebarCollapsed && (
@@ -184,12 +217,12 @@ export default function Layout() {
           <div className="p-4 border-t border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800">
             <div className={`flex items-center space-x-3 ${sidebarCollapsed ? 'justify-center' : ''}`}>
               <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0">
-                <span className="text-white text-sm font-semibold">ST</span>
+                <span className="text-white text-sm font-semibold">{stationInitials}</span>
               </div>
               {!sidebarCollapsed && (
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
-                    Demo Station
+                    {stationName ?? 'Demo Station'}
                   </p>
                   <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
                     Premium Station

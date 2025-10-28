@@ -4,6 +4,7 @@ import {
   Smartphone,
   Building2,
   DollarSign,
+  Wallet,
 } from 'lucide-react';
 import { useStationOnboarding } from '../StationOnboardingContext';
 
