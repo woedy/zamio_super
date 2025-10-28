@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Activity, Eye, Search, Clock, Radio, Music, TrendingUp, Filter, Download, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Activity, Eye, Search, Clock, RadioTower, Music, TrendingUp, Filter, Download, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 
 // Type definitions for better type safety
 interface PlayLogData {
@@ -427,7 +427,7 @@ const PlayLogs: React.FC = () => {
                         </th>
                         <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                           <div className="flex items-center space-x-1">
-                            <Radio className="w-3 h-3 sm:w-4 sm:h-4" />
+                            <RadioTower className="w-3 h-3 sm:w-4 sm:h-4" />
                             <span className="hidden sm:inline">Station</span>
                             <span className="sm:hidden">Station</span>
                             <span className="text-xs">{getSortIcon('station_name')}</span>

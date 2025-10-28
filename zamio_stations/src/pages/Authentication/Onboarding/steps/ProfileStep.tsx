@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { Upload, MapPin, Phone, Mail, Building2, Globe, Users, Camera } from 'lucide-react';
+import { Upload, MapPin, Phone, Mail, Building2, Globe, Users, Camera, ArrowLeft } from 'lucide-react';
 import { useStationOnboarding } from '../StationOnboardingContext';
 
 interface ProfileStepProps {
@@ -537,7 +537,7 @@ const ProfileStep: React.FC<ProfileStepProps> = ({ onNext, onPrevious }) => {
             onClick={onPrevious}
             className="inline-flex items-center rounded-lg bg-slate-800/50 px-6 py-3 text-white transition hover:bg-slate-800"
           >
-            <Radio className="w-5 h-5" />
+            <ArrowLeft className="w-5 h-5" />
             <span>Back</span>
           </button>
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Radio, CheckCircle } from 'lucide-react';
+import { ArrowLeft, ArrowRight, RadioTower, CheckCircle } from 'lucide-react';
 import { isAxiosError } from 'axios';
 
 import {
@@ -390,7 +390,7 @@ const ForgotPassword = () => {
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center space-x-3 mb-4">
             <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/20 text-indigo-300">
-              <Radio className="h-6 w-6" />
+              <RadioTower className="h-6 w-6" />
             </span>
             <span className="text-2xl font-semibold tracking-tight">Zamio Stations</span>
           </Link>

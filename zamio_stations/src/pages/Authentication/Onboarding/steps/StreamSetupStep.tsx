@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { Wifi, Settings, Play, Pause, Volume2, Monitor, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Wifi, Settings, Play, Pause, Volume2, Monitor, CheckCircle, AlertTriangle, ArrowLeft } from 'lucide-react';
 import { useStationOnboarding } from '../StationOnboardingContext';
 
 interface StreamSetupStepProps {
@@ -485,7 +485,7 @@ const StreamSetupStep: React.FC<StreamSetupStepProps> = ({ onNext, onPrevious })
             onClick={onPrevious}
             className="inline-flex items-center rounded-lg bg-slate-800/50 px-6 py-3 text-white transition hover:bg-slate-800"
           >
-            <Radio className="w-5 h-5" />
+            <ArrowLeft className="w-5 h-5" />
             <span>Back</span>
           </button>
 

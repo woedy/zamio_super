@@ -5,7 +5,7 @@ import {
   Home,
   BarChart3,
   Music,
-  Radio,
+  RadioTower,
   FileText,
   Search,
   AlertTriangle,
@@ -15,7 +15,7 @@ import {
   FileSearch,
   Bell,
   HelpCircle,
-  Radio as RadioIcon,
+  RadioTower as RadioIcon,
   Headphones,
   Menu,
   X,
@@ -116,7 +116,7 @@ export default function Layout() {
             <div className="flex items-center space-x-3">
               <div className="bg-gradient-to-br from-blue-500 to-purple-600 p-2.5 rounded-xl shadow-lg">
                 <div className="w-6 h-6 bg-white rounded-lg flex items-center justify-center shadow-sm">
-                  <Radio className="w-4 h-4 text-blue-600" />
+                  <RadioTower className="w-4 h-4 text-blue-600" />
                 </div>
               </div>
               {!sidebarCollapsed && (
