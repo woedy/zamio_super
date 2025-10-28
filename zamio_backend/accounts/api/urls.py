@@ -26,7 +26,8 @@ from accounts.api.publisher_view import (
     onboard_publisher_view, register_publisher_view, verify_publisher_email, verify_publisher_email_code, 
     list_publishers_view, invite_artist_view, skip_publisher_onboarding_view,
     publisher_onboarding_status_view, update_publisher_onboarding_status_view,
-    complete_publisher_onboarding_view, create_artist_relationship_view
+    complete_publisher_onboarding_view, create_artist_relationship_view,
+    search_publisher_artists_view
 )
 from accounts.api.station_views import (
     StationLogin, complete_add_staff_view, complete_station_payment_view,
@@ -162,16 +163,17 @@ urlpatterns = [
     path('complete-station-payment/', complete_station_payment_view, name="complete_station_payment_view"),
 
     path('register-publisher/', register_publisher_view, name="register_publisher"),
-       path('verify-publisher-email/', verify_publisher_email, name="verify_publisher_email"),
-       path('verify-publisher-email-code/', verify_publisher_email_code, name="verify_publisher_email_code"),
+    path('verify-publisher-email/', verify_publisher_email, name="verify_publisher_email"),
+    path('verify-publisher-email-code/', verify_publisher_email_code, name="verify_publisher_email_code"),
 
     path('login-publisher/', PublisherLogin.as_view(), name="login_publisher"),
     path('list-publishers/', list_publishers_view, name="list_publishers_view"),
     path('logout-publisher/', logout_publisher_view, name="logout_publisher_view"),
     path('complete-publisher-profile/', complete_publisher_profile_view, name="complete_publisher_profile_view"),
-    path('complete-revenue-split/', complete_revenue_split_view, name="complete_publisher_profile_view"),
+    path('complete-revenue-split/', complete_revenue_split_view, name="complete_revenue_split_view"),
     path('complete-link-artist/', complete_link_artist_view, name="complete_link_artist_view"),
     path('invite-artist/', invite_artist_view, name="invite_artist_view"),
+    path('search-publisher-artists/', search_publisher_artists_view, name="search_publisher_artists_view"),
     path('complete-publisher-payment/', complete_publisher_payment_view, name="complete_publisher_payment_view"),
     path('skip-publisher-onboarding/', skip_publisher_onboarding_view, name="skip_publisher_onboarding_view"),
     

@@ -1,16 +1,21 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Users, ArrowRight, UserCheck } from 'lucide-react';
-import { legacyRoleLogin, persistLegacyLoginResponse } from '@zamio/ui';
+import { legacyRoleLogin, persistLegacyLoginResponse, type LegacyLoginResponse } from '@zamio/ui';
+import { isAxiosError } from 'axios';
 
-import type { LegacyLoginResponse } from '@zamio/ui';
+import { useAuth } from '../lib/auth';
 
 export default function SignIn() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { login: hydrateAuth } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({ email: '', password: '', rememberMe: false });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const fromState = (location.state as { from?: string } | null)?.from;
 
   interface PublisherLoginData extends Record<string, unknown> {
     next_step?: string;
@@ -44,20 +49,48 @@ export default function SignIn() {
       const response = await legacyRoleLogin<PublisherLoginResponse>('/api/accounts/login-publisher/', payload);
       persistLegacyLoginResponse(response);
 
-      const nextStep = response?.data?.next_step ?? response?.data?.onboarding_step;
-      if (typeof nextStep === 'string' && nextStep && nextStep !== 'done') {
-        navigate(`/onboarding/${nextStep}`);
+      let loginSnapshot:
+        | {
+            accessToken?: string;
+            refreshToken?: string;
+            user?: Record<string, unknown> | null;
+          }
+        | undefined;
+
+      if (response?.data && typeof response.data === 'object') {
+        const dataRecord = response.data as Record<string, unknown>;
+        const accessToken = dataRecord['access_token'];
+        const refreshToken = dataRecord['refresh_token'];
+        loginSnapshot = {
+          accessToken: typeof accessToken === 'string' ? accessToken : undefined,
+          refreshToken: typeof refreshToken === 'string' ? refreshToken : undefined,
+          user: response.data,
+        };
+      }
+
+      hydrateAuth(loginSnapshot);
+
+      const rawNextStep = response?.data?.next_step ?? response?.data?.onboarding_step;
+      if (typeof rawNextStep === 'string' && rawNextStep && rawNextStep !== 'done') {
+        const normalizedStep = rawNextStep.replace(/_/g, '-');
+        navigate(`/onboarding/${normalizedStep}`, { replace: true });
       } else {
-        navigate('/dashboard');
+        const fallback = fromState && fromState !== '/signin' ? fromState : '/dashboard';
+        navigate(fallback, { replace: true });
       }
     } catch (err) {
-      const maybeResponse = (err as { response?: { data?: { message?: string; errors?: Record<string, unknown>; }; }; }).response;
-      const message = maybeResponse?.data?.message;
-      const errorKeys = maybeResponse?.data?.errors ? Object.keys(maybeResponse.data.errors) : [];
-      if (message) {
-        setError(message);
-      } else if (errorKeys.length > 0) {
-        setError(`Issues with: ${errorKeys.join(', ')}`);
+      if (isAxiosError(err) && err.response) {
+        const data = err.response.data as { message?: string; errors?: Record<string, unknown>; detail?: string };
+        if (data?.message) {
+          setError(data.message);
+        } else if (data?.detail) {
+          setError(data.detail);
+        } else if (data?.errors) {
+          const keys = Object.keys(data.errors);
+          setError(keys.length > 0 ? `Issues with: ${keys.join(', ')}` : 'Unable to sign in.');
+        } else {
+          setError('Unable to sign in. Please verify your credentials and try again.');
+        }
       } else {
         setError('Unable to sign in. Please verify your credentials and try again.');
       }
