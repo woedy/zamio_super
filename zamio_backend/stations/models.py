@@ -147,7 +147,9 @@ def test_stream_connectivity(url, timeout=10):
 class Station(models.Model):
     ONBOARDING_STEPS = [
         ('profile', 'Complete Profile'),
+        ('stream', 'Configure Stream'),
         ('staff', 'Staff'),
+        ('compliance', 'Compliance'),
         ('payment', 'Add Payment Info'),
     ]
     
@@ -189,14 +191,19 @@ class Station(models.Model):
     station_class = models.CharField(max_length=20, choices=STATION_CLASSES, default='class_c')
     station_type = models.CharField(max_length=20, choices=STATION_TYPES, default='commercial')
     license_number = models.CharField(max_length=50, null=True, blank=True, help_text="Broadcasting license number")
+    license_issuing_authority = models.CharField(max_length=255, null=True, blank=True)
+    license_issue_date = models.DateField(null=True, blank=True)
+    license_expiry_date = models.DateField(null=True, blank=True)
     coverage_area = models.CharField(max_length=100, null=True, blank=True, help_text="Coverage area description")
     estimated_listeners = models.IntegerField(null=True, blank=True, help_text="Estimated daily listeners")
+    station_category = models.CharField(max_length=100, null=True, blank=True)
     
     # Compliance and regulatory information
     regulatory_body = models.CharField(max_length=100, null=True, blank=True, help_text="e.g., GHAMRO, COSGA")
     compliance_contact_name = models.CharField(max_length=100, null=True, blank=True)
     compliance_contact_email = models.EmailField(null=True, blank=True)
     compliance_contact_phone = models.CharField(max_length=20, null=True, blank=True)
+    emergency_contact_phone = models.CharField(max_length=20, null=True, blank=True)
     
     # Operational details
     operating_hours_start = models.TimeField(null=True, blank=True)
@@ -211,6 +218,17 @@ class Station(models.Model):
     
     # Stream monitoring
     stream_url = models.URLField(blank=True, null=True, help_text="Live stream URL for audio monitoring")
+    backup_stream_url = models.URLField(blank=True, null=True, help_text="Fallback stream URL for redundancy")
+    stream_type = models.CharField(max_length=50, null=True, blank=True)
+    stream_bitrate = models.CharField(max_length=50, null=True, blank=True)
+    stream_format = models.CharField(max_length=50, null=True, blank=True)
+    stream_mount_point = models.CharField(max_length=100, null=True, blank=True)
+    stream_username = models.CharField(max_length=100, null=True, blank=True)
+    stream_password = models.CharField(max_length=255, null=True, blank=True)
+    monitoring_enabled = models.BooleanField(default=True)
+    monitoring_interval_seconds = models.PositiveIntegerField(default=60)
+    stream_auto_restart = models.BooleanField(default=True)
+    stream_quality_check_enabled = models.BooleanField(default=True)
     stream_status = models.CharField(
         max_length=20,
         choices=[
@@ -240,7 +258,14 @@ class Station(models.Model):
     verification_notes = models.TextField(null=True, blank=True)
 
     bank_account = models.CharField(max_length=100,  null=True, blank=True)
+    bank_name = models.CharField(max_length=255, null=True, blank=True)
+    bank_account_number = models.CharField(max_length=50, null=True, blank=True)
+    bank_account_name = models.CharField(max_length=255, null=True, blank=True)
+    bank_branch_code = models.CharField(max_length=50, null=True, blank=True)
+    bank_swift_code = models.CharField(max_length=50, null=True, blank=True)
     momo_account = models.CharField(max_length=100,  null=True, blank=True)
+    momo_provider = models.CharField(max_length=50, null=True, blank=True)
+    momo_account_name = models.CharField(max_length=255, null=True, blank=True)
     bio = models.TextField(blank=True, null=True)
 
 
@@ -255,9 +280,18 @@ class Station(models.Model):
     onboarding_step = models.CharField(max_length=20, choices=ONBOARDING_STEPS, default='profile')
 
     profile_completed = models.BooleanField(default=False)
+    stream_setup_completed = models.BooleanField(default=False)
     staff_completed = models.BooleanField(default=False)
+    compliance_completed = models.BooleanField(default=False)
     report_completed = models.BooleanField(default=False)
     payment_info_added = models.BooleanField(default=False)
+
+    preferred_payout_method = models.CharField(max_length=20, null=True, blank=True)
+    preferred_currency = models.CharField(max_length=10, default='GHS')
+    payout_frequency = models.CharField(max_length=20, default='monthly')
+    minimum_payout_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    tax_identification_number = models.CharField(max_length=100, null=True, blank=True)
+    business_registration_number = models.CharField(max_length=100, null=True, blank=True)
 
 
     is_archived = models.BooleanField(default=False)
@@ -274,8 +308,12 @@ class Station(models.Model):
     def get_next_onboarding_step(self):
         if not self.profile_completed:
             return 'profile'
+        elif not self.stream_setup_completed:
+            return 'stream'
         elif not self.staff_completed:
             return 'staff'
+        elif not self.compliance_completed:
+            return 'compliance'
         elif not self.payment_info_added:
             return 'payment'
         return 'done'
@@ -397,6 +435,7 @@ class StationStaff(models.Model):
         ('dj', 'DJ'),
         ('engineer', 'Sound Engineer'),
         ('admin', 'Administrator'),
+        ('reporter', 'Reporter'),
         ('compliance_officer', 'Compliance Officer'),
     ]
     
