@@ -33,6 +33,8 @@ from bank_account.models import BankAccount
 from core.utils import generate_email_token, is_valid_email, is_valid_password
 from publishers.models import PublisherProfile, PublisherArtistRelationship
 
+from accounts.api.custom_jwt import CustomJWTAuthentication
+
 logger = logging.getLogger(__name__)
 from django.db.models import Q
 
@@ -556,7 +558,7 @@ from rest_framework.permissions import IsAuthenticated
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @csrf_exempt
 def complete_publisher_profile_view(request):
     payload = {}
@@ -705,7 +707,7 @@ def complete_publisher_profile_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def complete_revenue_split_view(request):
     payload = {}
     data = {}
@@ -821,7 +823,7 @@ def complete_revenue_split_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def complete_link_artist_view(request):
     payload = {}
     data = {}
@@ -877,7 +879,7 @@ def complete_link_artist_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def complete_publisher_payment_view(request):
     payload = {}
     data = {}
@@ -998,7 +1000,7 @@ def complete_publisher_payment_view(request):
     return Response(payload, status=status.HTTP_200_OK)
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def onboard_publisher_view(request):
     payload = {}
     data = {}
@@ -1043,7 +1045,7 @@ def onboard_publisher_view(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def list_publishers_view(request):
     """Paginated, searchable list of publishers for admin/frontend use."""
     payload = {}
@@ -1108,7 +1110,7 @@ def list_publishers_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def skip_publisher_onboarding_view(request):
     payload = {}
     data = {}
@@ -1158,7 +1160,7 @@ def skip_publisher_onboarding_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def invite_artist_view(request):
     """Send an invite email to an artist to join/link with this publisher."""
     payload = {}
@@ -1212,7 +1214,7 @@ def invite_artist_view(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def search_publisher_artists_view(request):
     payload = {}
     errors = {}
@@ -1295,7 +1297,7 @@ def search_publisher_artists_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @csrf_exempt
 def logout_publisher_view(request):
     payload = {}
@@ -1380,7 +1382,7 @@ def logout_publisher_view(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def publisher_onboarding_status_view(request, publisher_id):
     """Get current onboarding status for a publisher"""
     payload = {}
@@ -1509,7 +1511,7 @@ def publisher_onboarding_status_view(request, publisher_id):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def update_publisher_onboarding_status_view(request):
     """Update specific publisher onboarding step status"""
     payload = {}
@@ -1563,7 +1565,7 @@ def update_publisher_onboarding_status_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def complete_publisher_onboarding_view(request):
     """Mark publisher onboarding as complete (requires admin approval)"""
     payload = {}
@@ -1615,7 +1617,7 @@ def complete_publisher_onboarding_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def create_artist_relationship_view(request):
     """Create a publisher-artist relationship"""
     from publishers.models import PublisherArtistRelationship
