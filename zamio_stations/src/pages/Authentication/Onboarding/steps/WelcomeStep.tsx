@@ -1,5 +1,5 @@
 import React from 'react';
-import { Radio, CheckCircle, TrendingUp, Users, Settings, ArrowRight } from 'lucide-react';
+import { Radio as RadioIcon, CheckCircle, TrendingUp, Users, Settings, ArrowRight } from 'lucide-react';
 
 interface WelcomeStepProps {
   onNext: () => void;
@@ -10,7 +10,7 @@ interface WelcomeStepProps {
 const WelcomeStep: React.FC<WelcomeStepProps> = ({ onNext }) => {
   const features = [
     {
-      icon: Radio,
+      icon: RadioIcon,
       title: 'Real-time Monitoring',
       description: 'Track airplay across FM, TV, and digital streams with minute-level accuracy'
     },
@@ -44,7 +44,7 @@ const WelcomeStep: React.FC<WelcomeStepProps> = ({ onNext }) => {
       {/* Header */}
       <div className="text-center mb-8">
         <div className="inline-flex items-center justify-center w-16 h-16 bg-indigo-500/20 rounded-full mb-6">
-          <Radio className="w-8 h-8 text-indigo-400" />
+          <RadioIcon className="w-8 h-8 text-indigo-400" />
         </div>
         <h3 className="text-3xl font-semibold text-white mb-4">
           Welcome to Zamio Stations!
@@ -97,7 +97,7 @@ const WelcomeStep: React.FC<WelcomeStepProps> = ({ onNext }) => {
       <div className="bg-indigo-500/10 border border-indigo-400/20 rounded-2xl p-6 mb-8">
         <div className="flex items-center space-x-3 mb-3">
           <div className="w-8 h-8 bg-indigo-500/20 rounded-lg flex items-center justify-center">
-            <Radio className="w-4 h-4 text-indigo-400" />
+            <RadioIcon className="w-4 h-4 text-indigo-400" />
           </div>
           <h5 className="font-medium text-indigo-300">Built for Ghana</h5>
         </div>
