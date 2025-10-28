@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 export interface OnboardingStep {
   id: string;
@@ -20,6 +20,7 @@ interface OnboardingWizardProps {
   currentStepId?: string;
   showProgress?: boolean;
   allowStepNavigation?: boolean;
+  showFooterNavigation?: boolean;
   className?: string;
 }
 
@@ -33,6 +34,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
   currentStepId: controlledCurrentStepId,
   showProgress = true,
   allowStepNavigation = true,
+  showFooterNavigation = true,
   className = ""
 }) => {
   const [internalCurrentStepId, setInternalCurrentStepId] = useState(
@@ -170,48 +172,50 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
           </div>
 
           {/* Navigation */}
-          <div className="flex items-center justify-between pt-6 border-t border-white/10">
-            <button
-              onClick={handlePrevious}
-              disabled={isFirstStep}
-              className={`flex items-center space-x-2 px-6 py-3 rounded-lg transition-colors ${
-                isFirstStep
-                  ? 'bg-slate-800/50 text-slate-500 cursor-not-allowed'
-                  : 'bg-slate-800/50 hover:bg-slate-800 text-white'
-              }`}
-            >
-              <ChevronLeft className="w-5 h-5" />
-              <span>Previous</span>
-            </button>
+          {showFooterNavigation && (
+            <div className="flex items-center justify-between pt-6 border-t border-white/10">
+              <button
+                onClick={handlePrevious}
+                disabled={isFirstStep}
+                className={`flex items-center space-x-2 px-6 py-3 rounded-lg transition-colors ${
+                  isFirstStep
+                    ? 'bg-slate-800/50 text-slate-500 cursor-not-allowed'
+                    : 'bg-slate-800/50 hover:bg-slate-800 text-white'
+                }`}
+              >
+                <ChevronLeft className="w-5 h-5" />
+                <span>Previous</span>
+              </button>
 
-            <div className="flex items-center space-x-3">
-              {/* Step Indicators - Mobile */}
-              <div className="md:hidden flex items-center space-x-2">
-                {steps.map((_, index) => (
-                  <div
-                    key={index}
-                    className={`w-2 h-2 rounded-full ${
-                      index === currentStepIndex
-                        ? 'bg-indigo-400'
-                        : index < currentStepIndex
-                        ? 'bg-green-400'
-                        : 'bg-slate-600'
-                    }`}
-                  />
-                ))}
+              <div className="flex items-center space-x-3">
+                {/* Step Indicators - Mobile */}
+                <div className="md:hidden flex items-center space-x-2">
+                  {steps.map((_, index) => (
+                    <div
+                      key={index}
+                      className={`w-2 h-2 rounded-full ${
+                        index === currentStepIndex
+                          ? 'bg-indigo-400'
+                          : index < currentStepIndex
+                          ? 'bg-green-400'
+                          : 'bg-slate-600'
+                      }`}
+                    />
+                  ))}
+                </div>
+
+                {!isLastStep && (
+                  <button
+                    onClick={handleNext}
+                    className="flex items-center space-x-2 bg-indigo-500 hover:bg-indigo-400 text-white px-6 py-3 rounded-lg transition-colors"
+                  >
+                    <span>Continue</span>
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                )}
               </div>
-
-              {!isLastStep && (
-                <button
-                  onClick={handleNext}
-                  className="flex items-center space-x-2 bg-indigo-500 hover:bg-indigo-400 text-white px-6 py-3 rounded-lg transition-colors"
-                >
-                  <span>Continue</span>
-                  <ChevronRight className="w-5 h-5" />
-                </button>
-              )}
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

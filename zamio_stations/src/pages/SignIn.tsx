@@ -4,9 +4,12 @@ import { Eye, EyeOff, Radio, ArrowRight, Headphones } from 'lucide-react';
 import { legacyRoleLogin, persistLegacyLoginResponse } from '@zamio/ui';
 
 import type { LegacyLoginResponse } from '@zamio/ui';
+import { useAuth } from '../lib/auth';
+import { resolveStationOnboardingRedirect } from '../lib/onboarding';
 
 export default function SignIn() {
   const navigate = useNavigate();
+  const { login: hydrateAuth } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({ email: '', password: '', rememberMe: false });
   const [loading, setLoading] = useState(false);
@@ -44,12 +47,30 @@ export default function SignIn() {
       const response = await legacyRoleLogin<StationLoginResponse>('/api/accounts/login-station/', payload);
       persistLegacyLoginResponse(response);
 
-      const nextStep = response?.data?.next_step ?? response?.data?.onboarding_step;
-      if (typeof nextStep === 'string' && nextStep && nextStep !== 'done') {
-        navigate(`/onboarding/${nextStep}`);
-      } else {
-        navigate('/dashboard');
+      let loginSnapshot: {
+        accessToken?: string;
+        refreshToken?: string;
+        user?: Record<string, unknown> | null;
+      } | undefined;
+
+      if (response?.data && typeof response.data === 'object') {
+        const record = response.data as Record<string, unknown>;
+        const accessToken = record['access_token'];
+        const refreshToken = record['refresh_token'];
+        loginSnapshot = {
+          accessToken: typeof accessToken === 'string' ? accessToken : undefined,
+          refreshToken: typeof refreshToken === 'string' ? refreshToken : undefined,
+          user: response.data,
+        };
       }
+
+      hydrateAuth(loginSnapshot);
+
+      const rawNextStep = typeof response?.data?.next_step === 'string' ? response.data.next_step : null;
+      const rawOnboardingStep =
+        typeof response?.data?.onboarding_step === 'string' ? response.data.onboarding_step : null;
+      const redirectPath = resolveStationOnboardingRedirect(rawNextStep ?? rawOnboardingStep);
+      navigate(redirectPath ?? '/dashboard');
     } catch (err) {
       const maybeResponse = (err as { response?: { data?: { message?: string; errors?: Record<string, unknown>; }; }; }).response;
       const message = maybeResponse?.data?.message;

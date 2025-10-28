@@ -29,9 +29,9 @@ from accounts.api.publisher_view import (
     complete_publisher_onboarding_view, create_artist_relationship_view
 )
 from accounts.api.station_views import (
-    StationLogin, complete_add_staff_view, complete_station_payment_view, 
-    complete_station_profile_view, logout_station_view, register_station_view, 
-    verify_station_email, verify_station_email_code, onboard_station_view, skip_station_onboarding_view, 
+    StationLogin, complete_add_staff_view, complete_station_payment_view,
+    complete_station_profile_view, complete_station_stream_setup_view, logout_station_view, register_station_view,
+    verify_station_email, verify_station_email_code, onboard_station_view, skip_station_onboarding_view,
     station_onboarding_status_view, enhanced_station_onboarding_status_view,
     update_station_onboarding_status_view, complete_station_onboarding_view,
     update_station_stream_links_view, update_station_compliance_setup_view
@@ -157,6 +157,7 @@ urlpatterns = [
     path('update-station-compliance-setup/', update_station_compliance_setup_view, name="update_station_compliance_setup_view"),
     path('logout-station/', logout_station_view, name="logout_station_view"),
     path('complete-station-profile/', complete_station_profile_view, name="complete_station_profile_view"),
+    path('complete-station-stream/', complete_station_stream_setup_view, name="complete_station_stream_setup_view"),
     path('complete-add-staff/', complete_add_staff_view, name="complete_add_staff_view"),
     path('complete-station-payment/', complete_station_payment_view, name="complete_station_payment_view"),
 
