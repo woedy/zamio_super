@@ -1,28 +1,26 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { Outlet, useLocation } from 'react-router-dom';
+
 import Header from './Header';
 import Sidebar from './Sidebar';
-import { useLocation } from 'react-router-dom';
 
-interface LayoutProps {
-  children?: React.ReactNode;
-}
-
-export default function Layout({ children }: LayoutProps) {
+export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const location = useLocation();
 
-  // Don't show layout on onboarding and auth pages
-  const authPaths = ['/signin', '/signup', '/verify-email', '/onboarding'];
-  const isAuthPage = authPaths.includes(location.pathname);
+  const isAuthPage = useMemo(() => {
+    const restrictedPrefixes = ['/signin', '/signup', '/verify-email', '/onboarding'];
+    return restrictedPrefixes.some((prefix) => location.pathname.startsWith(prefix));
+  }, [location.pathname]);
 
   if (isAuthPage) {
-    return <>{children}</>;
+    return <Outlet />;
   }
 
   const handleToggleSidebar = () => {
-    setSidebarOpen(!sidebarOpen);
+    setSidebarOpen((prev) => !prev);
   };
 
   const handleCloseSidebar = () => {
@@ -30,12 +28,11 @@ export default function Layout({ children }: LayoutProps) {
   };
 
   const handleToggleCollapse = () => {
-    setSidebarCollapsed(!sidebarCollapsed);
+    setSidebarCollapsed((prev) => !prev);
   };
 
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
-    // Close mobile sidebar when tab changes
     setSidebarOpen(false);
   };
 
@@ -46,7 +43,7 @@ export default function Layout({ children }: LayoutProps) {
         {/* Desktop Sidebar - fixed position, doesn't scroll */}
         <aside className={`fixed left-0 top-0 h-full transition-all duration-300 ease-in-out z-40 ${sidebarCollapsed ? 'w-20' : 'w-64'}`}>
           <Sidebar
-            isOpen={true}
+            isOpen
             onClose={handleCloseSidebar}
             isCollapsed={sidebarCollapsed}
             onToggleCollapse={handleToggleCollapse}
@@ -71,7 +68,7 @@ export default function Layout({ children }: LayoutProps) {
           {/* Desktop Page Content - scrollable */}
           <main className="flex-1 overflow-y-auto">
             <div className="h-full p-4 md:p-6">
-              {children}
+              <Outlet />
             </div>
           </main>
         </div>
@@ -95,7 +92,7 @@ export default function Layout({ children }: LayoutProps) {
           {/* Mobile Page Content */}
           <main className="flex-1">
             <div className="h-full p-4">
-              {children}
+              <Outlet />
             </div>
           </main>
         </div>
@@ -103,12 +100,7 @@ export default function Layout({ children }: LayoutProps) {
         {/* Mobile Sidebar Overlay - only when open */}
         {sidebarOpen && (
           <>
-            {/* Mobile backdrop */}
-            <div
-              className="fixed inset-0 bg-black/50 z-30"
-              onClick={handleCloseSidebar}
-            />
-            {/* Mobile sidebar */}
+            <div className="fixed inset-0 bg-black/50 z-30" onClick={handleCloseSidebar} />
             <aside className={`fixed left-0 top-0 h-full w-64 z-40 transform transition-transform duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
               <Sidebar
                 isOpen={sidebarOpen}
@@ -125,3 +117,4 @@ export default function Layout({ children }: LayoutProps) {
     </div>
   );
 }
+

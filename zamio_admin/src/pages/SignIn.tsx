@@ -1,12 +1,33 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Shield, ArrowRight, Settings } from 'lucide-react';
-import { legacyRoleLogin, persistLegacyLoginResponse } from '@zamio/ui';
+import { legacyRoleLogin, persistLegacyLoginResponse, type StoredUserPayload } from '@zamio/ui';
 
 import type { LegacyLoginResponse } from '@zamio/ui';
+import { useAuth } from '../lib/auth';
+
+const extractSnapshotFromLegacyResponse = (
+  response: LegacyLoginResponse | null | undefined,
+): Partial<{ accessToken: string; refreshToken: string; user: StoredUserPayload }> | undefined => {
+  if (!response?.data || typeof response.data !== 'object') {
+    return undefined;
+  }
+  const record = response.data as Record<string, unknown>;
+  const accessToken = typeof record['access_token'] === 'string' ? record['access_token'] : undefined;
+  if (!accessToken) {
+    return undefined;
+  }
+  const refreshToken = typeof record['refresh_token'] === 'string' ? record['refresh_token'] : undefined;
+  return {
+    accessToken,
+    refreshToken,
+    user: response.data as StoredUserPayload,
+  };
+};
 
 export default function SignIn() {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({ email: '', password: '', rememberMe: false });
   const [loading, setLoading] = useState(false);
@@ -45,9 +66,15 @@ export default function SignIn() {
       const response = await legacyRoleLogin<AdminLoginResponse>('/api/accounts/login-admin/', payload);
       persistLegacyLoginResponse(response);
 
+      const snapshot = extractSnapshotFromLegacyResponse(response);
+      if (snapshot) {
+        login(snapshot);
+      }
+
       const nextStep = response?.data?.next_step ?? response?.data?.onboarding_step;
       if (typeof nextStep === 'string' && nextStep && nextStep !== 'done') {
-        navigate(`/onboarding/${nextStep}`);
+        const normalized = nextStep.replace(/_/g, '-');
+        navigate(`/onboarding/${normalized}`);
       } else {
         navigate('/dashboard');
       }

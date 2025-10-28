@@ -8,6 +8,8 @@ from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APITestCase
 
+from accounts.api.token_utils import get_jwt_tokens_for_user
+
 from publishers.models import PublisherProfile
 
 
@@ -51,7 +53,28 @@ class PublisherOnboardingFlowTests(APITestCase):
         self.assertTrue(self.profile.profile_completed)
         self.assertEqual(self.profile.onboarding_step, "revenue-split")
         self.assertEqual(response.data["data"]["next_step"], "revenue-split")
+        self.assertEqual(self.profile.onboarding_step, "revenue-split")
+        self.assertEqual(response.data["data"]["next_step"], "revenue-split")
         self.assertEqual(self.profile.company_name, "Acme Publishing")
+
+    def test_complete_profile_accepts_jwt_token(self) -> None:
+        tokens = get_jwt_tokens_for_user(self.user)
+        self.client.credentials()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {tokens['access']}")
+
+        payload = {
+            "publisher_id": str(self.profile.publisher_id),
+            "company_name": "Acme Publishing",
+            "country": "GH",
+            "city": "Accra",
+            "primary_contact_name": "Jane Manager",
+        }
+
+        response = self.client.post(self.profile_url, payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.profile.refresh_from_db()
+        self.assertTrue(self.profile.profile_completed)
 
     def test_revenue_split_requires_balanced_percentages(self) -> None:
         payload = {
