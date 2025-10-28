@@ -664,7 +664,8 @@ const PaymentStep: React.FC<PaymentStepProps> = ({ onNext, onPrevious }) => {
             onClick={onPrevious}
             className="inline-flex items-center rounded-lg bg-slate-800/50 px-6 py-3 text-white transition hover:bg-slate-800"
           >
-            Previous
+            <Wallet className="w-5 h-5" />
+            <span>Back</span>
           </button>
 
           <div className="flex items-center space-x-3">

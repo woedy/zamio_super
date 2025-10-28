@@ -485,7 +485,8 @@ const StreamSetupStep: React.FC<StreamSetupStepProps> = ({ onNext, onPrevious })
             onClick={onPrevious}
             className="inline-flex items-center rounded-lg bg-slate-800/50 px-6 py-3 text-white transition hover:bg-slate-800"
           >
-            Previous
+            <Radio className="w-5 h-5" />
+            <span>Back</span>
           </button>
 
           <button
