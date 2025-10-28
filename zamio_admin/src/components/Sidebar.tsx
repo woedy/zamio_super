@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Home,
@@ -19,6 +19,8 @@ import {
   Activity,
 } from 'lucide-react';
 
+import { useAuth } from '../lib/auth';
+
 interface SidebarProps {
   isOpen?: boolean;
   onClose?: () => void;
@@ -34,10 +36,23 @@ const Sidebar: React.FC<SidebarProps> = ({
   isCollapsed = false,
   onToggleCollapse,
   activeTab = 'overview',
-  onTabChange
+  onTabChange,
 }) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { logout, user } = useAuth();
+
+  const userSummary = useMemo(() => {
+    if (!user || typeof user !== 'object') {
+      return { name: 'Admin User', role: 'Administrator' };
+    }
+    const record = user as Record<string, unknown>;
+    const firstName = typeof record['first_name'] === 'string' ? record['first_name'] : '';
+    const lastName = typeof record['last_name'] === 'string' ? record['last_name'] : '';
+    const email = typeof record['email'] === 'string' ? record['email'] : '';
+    const name = `${firstName} ${lastName}`.trim() || email || 'Admin User';
+    return { name, role: 'Administrator' };
+  }, [user]);
 
   const navigationItems = [
     {
@@ -51,7 +66,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       onClick: () => {
         navigate('/dashboard');
         onTabChange?.('overview');
-      }
+      },
     },
     {
       name: 'Users',
@@ -60,7 +75,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       current: location.pathname === '/user-management',
       description: 'User management and profiles',
       link: '/user-management',
-      isRoute: true
+      isRoute: true,
     },
     {
       name: 'Stations',
@@ -69,7 +84,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       current: location.pathname === '/dashboard' && activeTab === 'stations',
       description: 'Station management and monitoring',
       isRoute: false,
-      onClick: () => onTabChange?.('stations')
+      onClick: () => onTabChange?.('stations'),
     },
     {
       name: 'Disputes',
@@ -78,7 +93,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       current: location.pathname === '/disputes',
       description: 'Dispute management and resolution',
       link: '/disputes',
-      isRoute: true
+      isRoute: true,
     },
     {
       name: 'Partners',
@@ -87,7 +102,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       current: location.pathname === '/partners',
       description: 'Partner agreements and management',
       link: '/partners',
-      isRoute: true
+      isRoute: true,
     },
     {
       name: 'Play Logs',
@@ -96,13 +111,12 @@ const Sidebar: React.FC<SidebarProps> = ({
       current: location.pathname === '/playlogs',
       description: 'Music play and match logs',
       link: '/playlogs',
-      isRoute: true
+      isRoute: true,
     },
   ];
 
   return (
     <aside className={`${isCollapsed ? 'w-20' : 'w-64'} bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-700 h-full flex flex-col`}>
-      {/* Sidebar header */}
       <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800">
         <div className="flex items-center space-x-3">
           <div className="bg-gradient-to-br from-indigo-600 via-purple-600 to-blue-600 p-2.5 rounded-xl shadow-lg">
@@ -115,23 +129,16 @@ const Sidebar: React.FC<SidebarProps> = ({
             </div>
           )}
         </div>
-
-        {/* Collapse button */}
         <div className="flex items-center space-x-2">
           <button
             onClick={onToggleCollapse}
             className="p-1.5 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-slate-800 transition-colors duration-200"
           >
-            {isCollapsed ? (
-              <ChevronRight className="w-4 h-4" />
-            ) : (
-              <ChevronLeft className="w-4 h-4" />
-            )}
+            {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
           </button>
         </div>
       </div>
 
-      {/* Navigation */}
       <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto scrollbar-hide">
         <div className="space-y-1">
           <div className={`px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider ${isCollapsed ? 'text-center' : ''}`}>
@@ -145,7 +152,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               <ButtonComponent
                 key={item.id}
                 to={isRoute ? item.link : undefined}
-                onClick={!isRoute ? item.onClick : (item.onClick || undefined)}
+                onClick={!isRoute ? item.onClick : item.onClick || undefined}
                 className={`${
                   item.current
                     ? 'bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/50 dark:to-purple-900/50 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 shadow-sm'
@@ -153,17 +160,17 @@ const Sidebar: React.FC<SidebarProps> = ({
                 } group flex items-center px-3 py-3 text-sm font-medium rounded-xl border transition-all duration-200 w-full ${isCollapsed ? 'justify-center' : ''}`}
                 title={isCollapsed ? item.name : undefined}
               >
-                <item.icon className={`${
-                  item.current
-                    ? 'text-indigo-600 dark:text-indigo-400'
-                    : 'text-gray-400 group-hover:text-gray-500 dark:group-hover:text-gray-300'
-                } w-5 h-5 ${isCollapsed ? '' : 'mr-3'} flex-shrink-0`} />
+                <item.icon
+                  className={`${
+                    item.current
+                      ? 'text-indigo-600 dark:text-indigo-400'
+                      : 'text-gray-400 group-hover:text-gray-500 dark:group-hover:text-gray-300'
+                  } w-5 h-5 ${isCollapsed ? '' : 'mr-3'} flex-shrink-0`}
+                />
                 {!isCollapsed && (
                   <div className="flex-1 min-w-0 text-left">
                     <div className="font-medium">{item.name}</div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                      {item.description}
-                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{item.description}</div>
                   </div>
                 )}
               </ButtonComponent>
@@ -172,7 +179,6 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </nav>
 
-      {/* Sidebar footer */}
       <div className="p-4 border-t border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800">
         <div className={`flex items-center space-x-3 ${isCollapsed ? 'justify-center' : 'justify-start'}`}>
           <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0">
@@ -180,12 +186,19 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
           {!isCollapsed && (
             <div className="flex-1 min-w-0 text-left">
-              <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
-                Admin User
-              </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                Super Admin
-              </p>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{userSummary.name}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{userSummary.role}</p>
+              <button
+                onClick={() => {
+                  logout();
+                  navigate('/signin', { replace: true });
+                  onClose?.();
+                }}
+                className="mt-2 inline-flex items-center space-x-1 text-xs text-red-500 hover:text-red-400"
+              >
+                <LogOut className="h-3 w-3" />
+                <span>Sign out</span>
+              </button>
             </div>
           )}
         </div>
@@ -195,3 +208,4 @@ const Sidebar: React.FC<SidebarProps> = ({
 };
 
 export default Sidebar;
+

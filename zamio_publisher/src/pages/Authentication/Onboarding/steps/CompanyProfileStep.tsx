@@ -1,192 +1,311 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Building2, Upload, MapPin, Phone, Mail, User, FileText, X } from 'lucide-react';
+import { isAxiosError } from 'axios';
+
+import {
+  usePublisherOnboarding,
+  type PublisherCompanyProfileForm,
+} from '../PublisherOnboardingContext';
 
 interface CompanyProfileStepProps {
   onNext: () => void;
   onPrevious: () => void;
 }
 
+interface FormState {
+  companyName: string;
+  companyType: string;
+  industry: string;
+  foundedYear: string;
+  employeeCount: string;
+  country: string;
+  region: string;
+  city: string;
+  address: string;
+  postalCode: string;
+  businessRegistration: string;
+  taxId: string;
+  licenseNumber: string;
+  primaryContact: string;
+  contactEmail: string;
+  contactPhone: string;
+  website: string;
+  complianceOfficer: string;
+  officerEmail: string;
+  officerPhone: string;
+  officerTitle: string;
+  description: string;
+}
+
+const INITIAL_FORM_STATE: FormState = {
+  companyName: '',
+  companyType: '',
+  industry: '',
+  foundedYear: '',
+  employeeCount: '',
+  country: 'Ghana',
+  region: '',
+  city: '',
+  address: '',
+  postalCode: '',
+  businessRegistration: '',
+  taxId: '',
+  licenseNumber: '',
+  primaryContact: '',
+  contactEmail: '',
+  contactPhone: '',
+  website: '',
+  complianceOfficer: '',
+  officerEmail: '',
+  officerPhone: '',
+  officerTitle: '',
+  description: '',
+};
+
+const sanitize = (value: string) => value.trim();
+
 const CompanyProfileStep: React.FC<CompanyProfileStepProps> = ({ onNext, onPrevious }) => {
-  const [formData, setFormData] = useState({
-    // Company Information
-    companyName: '',
-    companyType: '',
-    industry: '',
-    foundedYear: '',
-    employeeCount: '',
-
-    // Location
-    country: 'Ghana',
-    region: '',
-    city: '',
-    address: '',
-    postalCode: '',
-
-    // Business Details
-    businessRegistration: '',
-    taxId: '',
-    licenseNumber: '',
-
-    // Contact Information
-    primaryContact: '',
-    contactEmail: '',
-    contactPhone: '',
-    website: '',
-
-    // Compliance Officer
-    complianceOfficer: '',
-    officerEmail: '',
-    officerPhone: '',
-    officerTitle: '',
-
-    // Company Description
-    description: '',
-
-    // Logo Upload
-    logoPreview: null as string | null,
-    logoFile: null as File | null
-  });
-
+  const { status, submitCompanyProfile } = usePublisherOnboarding();
+  const [formData, setFormData] = useState<FormState>(INITIAL_FORM_STATE);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const hydratedRef = useRef(false);
 
-  const companyTypes = [
-    'Music Publishing Company',
-    'Record Label',
-    'Artist Management',
-    'Music Production',
-    'Entertainment Company',
-    'Independent Publisher',
-    'Other'
-  ];
+  const companyTypes = useMemo(
+    () => [
+      'Music Publishing Company',
+      'Record Label',
+      'Artist Management',
+      'Music Production',
+      'Entertainment Company',
+      'Independent Publisher',
+      'Other',
+    ],
+    [],
+  );
 
-  const industries = [
-    'Music Publishing',
-    'Entertainment',
-    'Media & Broadcasting',
-    'Creative Arts',
-    'Digital Media',
-    'Music Technology',
-    'Other'
-  ];
+  const industries = useMemo(
+    () => [
+      'Music Publishing',
+      'Entertainment',
+      'Media & Broadcasting',
+      'Creative Arts',
+      'Digital Media',
+      'Music Technology',
+      'Other',
+    ],
+    [],
+  );
 
-  const regions = [
-    'Greater Accra',
-    'Ashanti',
-    'Western',
-    'Central',
-    'Eastern',
-    'Volta',
-    'Northern',
-    'Upper East',
-    'Upper West',
-    'Brong-Ahafo',
-    'Other'
-  ];
+  const regions = useMemo(
+    () => [
+      'Greater Accra',
+      'Ashanti',
+      'Western',
+      'Central',
+      'Eastern',
+      'Volta',
+      'Northern',
+      'Upper East',
+      'Upper West',
+      'Brong-Ahafo',
+      'Other',
+    ],
+    [],
+  );
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-
-    // Clear error when user starts typing
-    if (errors[name]) {
-      setErrors(prev => ({
-        ...prev,
-        [name]: ''
-      }));
+  useEffect(() => {
+    const profile = status?.company_profile;
+    if (!profile || hydratedRef.current) {
+      return;
     }
+
+    const next: FormState = {
+      companyName: profile.company_name ?? '',
+      companyType: profile.company_type ?? '',
+      industry: profile.industry ?? '',
+      foundedYear: profile.founded_year ? String(profile.founded_year) : '',
+      employeeCount: profile.employee_count ? String(profile.employee_count) : '',
+      country: profile.country ?? 'Ghana',
+      region: profile.region ?? '',
+      city: profile.city ?? '',
+      address: profile.address ?? '',
+      postalCode: profile.postal_code ?? '',
+      businessRegistration: profile.business_registration_number ?? '',
+      taxId: profile.tax_id ?? '',
+      licenseNumber: profile.license_number ?? '',
+      primaryContact: profile.primary_contact_name ?? '',
+      contactEmail: profile.primary_contact_email ?? '',
+      contactPhone: profile.primary_contact_phone ?? '',
+      website: profile.website_url ?? '',
+      complianceOfficer: profile.compliance_officer_name ?? '',
+      officerEmail: profile.compliance_officer_email ?? '',
+      officerPhone: profile.compliance_officer_phone ?? '',
+      officerTitle: profile.compliance_officer_title ?? '',
+      description: profile.description ?? '',
+    };
+
+    setFormData(next);
+    setLogoPreview((profile.logo_url as string | null) ?? null);
+    hydratedRef.current = true;
+  }, [status?.company_profile]);
+
+  const handleInputChange = (
+    event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
+  ) => {
+    const { name, value } = event.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+    if (errors[name]) {
+      setErrors((prev) => {
+        const nextErrors = { ...prev };
+        delete nextErrors[name];
+        return nextErrors;
+      });
+    }
+    setApiError(null);
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && file.type.startsWith('image/')) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData(prev => ({
-          ...prev,
-          logoPreview: typeof reader.result === 'string' ? reader.result : null,
-          logoFile: file
-        }));
-      };
-      reader.readAsDataURL(file);
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
     }
+    if (!file.type.startsWith('image/')) {
+      setApiError('Please upload an image file for your company logo.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setLogoPreview(typeof reader.result === 'string' ? reader.result : null);
+      setLogoFile(file);
+    };
+    reader.readAsDataURL(file);
   };
 
   const removeLogo = () => {
-    setFormData(prev => ({
-      ...prev,
-      logoPreview: null,
-      logoFile: null
-    }));
+    setLogoPreview(null);
+    setLogoFile(null);
   };
 
   const validateForm = () => {
-    const newErrors: Record<string, string> = {};
+    const validationErrors: Record<string, string> = {};
 
-    if (!formData.companyName.trim()) {
-      newErrors.companyName = 'Company name is required';
+    if (!sanitize(formData.companyName)) {
+      validationErrors.companyName = 'Company name is required';
+    }
+    if (!sanitize(formData.companyType)) {
+      validationErrors.companyType = 'Company type is required';
+    }
+    if (!sanitize(formData.country)) {
+      validationErrors.country = 'Country is required';
+    }
+    if (!sanitize(formData.region)) {
+      validationErrors.region = 'Region is required';
+    }
+    if (!sanitize(formData.contactEmail)) {
+      validationErrors.contactEmail = 'Contact email is required';
+    } else if (!/\S+@\S+\.\S+/.test(formData.contactEmail.trim())) {
+      validationErrors.contactEmail = 'Please enter a valid email address';
+    }
+    if (!sanitize(formData.contactPhone)) {
+      validationErrors.contactPhone = 'Contact phone is required';
+    }
+    if (!sanitize(formData.complianceOfficer)) {
+      validationErrors.complianceOfficer = 'Compliance officer name is required';
+    }
+    if (!sanitize(formData.description)) {
+      validationErrors.description = 'Company description is required';
     }
 
-    if (!formData.companyType) {
-      newErrors.companyType = 'Company type is required';
-    }
-
-    if (!formData.country.trim()) {
-      newErrors.country = 'Country is required';
-    }
-
-    if (!formData.region.trim()) {
-      newErrors.region = 'Region is required';
-    }
-
-    if (!formData.contactEmail.trim()) {
-      newErrors.contactEmail = 'Contact email is required';
-    } else if (!/\S+@\S+\.\S+/.test(formData.contactEmail)) {
-      newErrors.contactEmail = 'Please enter a valid email address';
-    }
-
-    if (!formData.contactPhone.trim()) {
-      newErrors.contactPhone = 'Contact phone is required';
-    }
-
-    if (!formData.complianceOfficer.trim()) {
-      newErrors.complianceOfficer = 'Compliance officer name is required';
-    }
-
-    if (!formData.description.trim()) {
-      newErrors.description = 'Company description is required';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    setErrors(validationErrors);
+    return Object.keys(validationErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setApiError(null);
 
-    if (validateForm()) {
-      // Demo: Log the form data
-      console.log('Company profile data:', formData);
+    if (!validateForm()) {
+      return;
+    }
+
+    const payload: PublisherCompanyProfileForm = {
+      companyName: sanitize(formData.companyName),
+      companyType: sanitize(formData.companyType) || undefined,
+      industry: sanitize(formData.industry) || undefined,
+      foundedYear: sanitize(formData.foundedYear) || undefined,
+      employeeCount: sanitize(formData.employeeCount) || undefined,
+      country: sanitize(formData.country) || undefined,
+      region: sanitize(formData.region) || undefined,
+      city: sanitize(formData.city) || undefined,
+      address: formData.address.trim(),
+      postalCode: formData.postalCode.trim(),
+      businessRegistration: sanitize(formData.businessRegistration) || undefined,
+      taxId: sanitize(formData.taxId) || undefined,
+      licenseNumber: sanitize(formData.licenseNumber) || undefined,
+      primaryContactName: sanitize(formData.primaryContact) || undefined,
+      primaryContactEmail: sanitize(formData.contactEmail) || undefined,
+      primaryContactPhone: sanitize(formData.contactPhone) || undefined,
+      websiteUrl: sanitize(formData.website) || undefined,
+      complianceOfficerName: sanitize(formData.complianceOfficer) || undefined,
+      complianceOfficerEmail: sanitize(formData.officerEmail) || undefined,
+      complianceOfficerPhone: sanitize(formData.officerPhone) || undefined,
+      complianceOfficerTitle: sanitize(formData.officerTitle) || undefined,
+      description: formData.description.trim(),
+      logoFile,
+    };
+
+    setIsSubmitting(true);
+    try {
+      await submitCompanyProfile(payload);
       onNext();
+    } catch (error) {
+      if (isAxiosError(error) && error.response) {
+        const data = error.response.data as { message?: string; errors?: Record<string, unknown> };
+        if (data?.errors) {
+          const nextErrors: Record<string, string> = {};
+          Object.entries(data.errors).forEach(([key, value]) => {
+            if (Array.isArray(value) && value.length > 0) {
+              nextErrors[key] = String(value[0]);
+            } else if (typeof value === 'string') {
+              nextErrors[key] = value;
+            }
+          });
+          setErrors((prev) => ({ ...prev, ...nextErrors }));
+          if (Object.keys(nextErrors).length > 0) {
+            setApiError('Please review the highlighted fields.');
+          }
+        } else if (data?.message) {
+          setApiError(data.message);
+        } else {
+          setApiError('Unable to save your company profile. Please try again.');
+        }
+      } else {
+        setApiError('Unable to save your company profile. Please try again.');
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
     <div className="py-8">
-      {/* Header */}
       <div className="text-center mb-8">
-        <h3 className="text-3xl font-semibold text-white mb-4">
-          Company Profile Setup
-        </h3>
+        <h3 className="text-3xl font-semibold text-white mb-4">Company Profile Setup</h3>
         <p className="text-slate-300 text-lg max-w-2xl mx-auto">
-          Set up your publishing company profile with all the essential business information. This will be used for contracts, reporting, and official communications.
+          Set up your publishing company profile with all the essential business information. This will be used for contracts,
+          reporting, and official communications.
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-8">
-        {/* Company Information */}
         <div className="bg-slate-900/60 rounded-2xl border border-white/10 p-8">
           <h4 className="text-xl font-semibold text-white mb-6">Company Information</h4>
           <div className="grid md:grid-cols-2 gap-6">
@@ -200,14 +319,12 @@ const CompanyProfileStep: React.FC<CompanyProfileStepProps> = ({ onNext, onPrevi
                 name="companyName"
                 value={formData.companyName}
                 onChange={handleInputChange}
-                className={`w-full rounded-lg border px-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 ${
-                  errors.companyName
-                    ? 'border-red-400 bg-slate-800/50 focus:border-red-400 focus:ring-red-400'
-                    : 'border-white/20 bg-slate-800/50 focus:border-indigo-400 focus:ring-indigo-400'
-                }`}
-                placeholder="Your Publishing Company Ltd."
+                className={`w-full rounded-lg border ${
+                  errors.companyName ? 'border-red-400 focus:border-red-400 focus:ring-red-400' : 'border-white/20 focus:border-indigo-400 focus:ring-indigo-400'
+                } bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1`}
+                placeholder="Zamio Music Publishing"
               />
-              {errors.companyName && <p className="text-red-400 text-sm mt-1">{errors.companyName}</p>}
+              {errors.companyName && <p className="mt-1 text-xs text-red-400">{errors.companyName}</p>}
             </div>
 
             <div>
@@ -219,34 +336,36 @@ const CompanyProfileStep: React.FC<CompanyProfileStepProps> = ({ onNext, onPrevi
                 name="companyType"
                 value={formData.companyType}
                 onChange={handleInputChange}
-                className={`w-full rounded-lg border px-4 py-3 text-white focus:outline-none focus:ring-1 ${
-                  errors.companyType
-                    ? 'border-red-400 bg-slate-800/50 focus:border-red-400 focus:ring-red-400'
-                    : 'border-white/20 bg-slate-800/50 focus:border-indigo-400 focus:ring-indigo-400'
-                }`}
+                className={`w-full rounded-lg border ${
+                  errors.companyType ? 'border-red-400 focus:border-red-400 focus:ring-red-400' : 'border-white/20 focus:border-indigo-400 focus:ring-indigo-400'
+                } bg-slate-800/50 px-4 py-3 text-white focus:outline-none focus:ring-1`}
               >
                 <option value="">Select company type</option>
                 {companyTypes.map((type) => (
-                  <option key={type} value={type}>{type}</option>
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
                 ))}
               </select>
-              {errors.companyType && <p className="text-red-400 text-sm mt-1">{errors.companyType}</p>}
+              {errors.companyType && <p className="mt-1 text-xs text-red-400">{errors.companyType}</p>}
             </div>
 
             <div>
               <label htmlFor="industry" className="block text-sm font-medium text-slate-200 mb-2">
-                Industry
+                Industry Focus
               </label>
               <select
                 id="industry"
                 name="industry"
                 value={formData.industry}
                 onChange={handleInputChange}
-                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white focus:outline-none focus:ring-1 focus:border-indigo-400 focus:ring-indigo-400"
               >
                 <option value="">Select industry</option>
                 {industries.map((industry) => (
-                  <option key={industry} value={industry}>{industry}</option>
+                  <option key={industry} value={industry}>
+                    {industry}
+                  </option>
                 ))}
               </select>
             </div>
@@ -261,9 +380,7 @@ const CompanyProfileStep: React.FC<CompanyProfileStepProps> = ({ onNext, onPrevi
                 name="foundedYear"
                 value={formData.foundedYear}
                 onChange={handleInputChange}
-                min="1900"
-                max={new Date().getFullYear()}
-                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white focus:outline-none focus:ring-1 focus:border-indigo-400 focus:ring-indigo-400"
                 placeholder="2020"
               />
             </div>
@@ -272,66 +389,59 @@ const CompanyProfileStep: React.FC<CompanyProfileStepProps> = ({ onNext, onPrevi
               <label htmlFor="employeeCount" className="block text-sm font-medium text-slate-200 mb-2">
                 Employee Count
               </label>
-              <select
+              <input
+                type="number"
                 id="employeeCount"
                 name="employeeCount"
                 value={formData.employeeCount}
                 onChange={handleInputChange}
-                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-              >
-                <option value="">Select size</option>
-                <option value="1-5">1-5 employees</option>
-                <option value="6-20">6-20 employees</option>
-                <option value="21-50">21-50 employees</option>
-                <option value="51-100">51-100 employees</option>
-                <option value="100+">100+ employees</option>
-              </select>
+                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white focus:outline-none focus:ring-1 focus:border-indigo-400 focus:ring-indigo-400"
+                placeholder="25"
+              />
             </div>
-          </div>
 
-          <div className="mt-6">
-            <label htmlFor="description" className="block text-sm font-medium text-slate-200 mb-2">
-              Company Description *
-            </label>
-            <textarea
-              id="description"
-              name="description"
-              value={formData.description}
-              onChange={handleInputChange}
-              rows={4}
-              className={`w-full rounded-lg border px-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 ${
-                errors.description
-                  ? 'border-red-400 bg-slate-800/50 focus:border-red-400 focus:ring-red-400'
-                  : 'border-white/20 bg-slate-800/50 focus:border-indigo-400 focus:ring-indigo-400'
-              }`}
-              placeholder="Describe your publishing company, its mission, and areas of expertise..."
-            />
-            {errors.description && <p className="text-red-400 text-sm mt-1">{errors.description}</p>}
+            <div className="md:col-span-2">
+              <label htmlFor="description" className="block text-sm font-medium text-slate-200 mb-2">
+                Company Description *
+              </label>
+              <textarea
+                id="description"
+                name="description"
+                value={formData.description}
+                onChange={handleInputChange}
+                rows={4}
+                className={`w-full rounded-lg border ${
+                  errors.description ? 'border-red-400 focus:border-red-400 focus:ring-red-400' : 'border-white/20 focus:border-indigo-400 focus:ring-indigo-400'
+                } bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1`}
+                placeholder="Describe your publishing company, mission, and catalog."
+              />
+              {errors.description && <p className="mt-1 text-xs text-red-400">{errors.description}</p>}
+            </div>
           </div>
         </div>
 
-        {/* Location Information */}
         <div className="bg-slate-900/60 rounded-2xl border border-white/10 p-8">
-          <h4 className="text-xl font-semibold text-white mb-6">Location Information</h4>
+          <h4 className="text-xl font-semibold text-white mb-6">Location & Registration</h4>
           <div className="grid md:grid-cols-2 gap-6">
             <div>
               <label htmlFor="country" className="block text-sm font-medium text-slate-200 mb-2">
                 Country *
               </label>
-              <input
-                type="text"
-                id="country"
-                name="country"
-                value={formData.country}
-                onChange={handleInputChange}
-                className={`w-full rounded-lg border px-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 ${
-                  errors.country
-                    ? 'border-red-400 bg-slate-800/50 focus:border-red-400 focus:ring-red-400'
-                    : 'border-white/20 bg-slate-800/50 focus:border-indigo-400 focus:ring-indigo-400'
-                }`}
-                placeholder="Ghana"
-              />
-              {errors.country && <p className="text-red-400 text-sm mt-1">{errors.country}</p>}
+              <div className="relative">
+                <MapPin className="w-4 h-4 text-indigo-400 absolute left-3 top-3" />
+                <input
+                  type="text"
+                  id="country"
+                  name="country"
+                  value={formData.country}
+                  onChange={handleInputChange}
+                  className={`w-full rounded-lg border pl-10 ${
+                    errors.country ? 'border-red-400 focus:border-red-400 focus:ring-red-400' : 'border-white/20 focus:border-indigo-400 focus:ring-indigo-400'
+                  } bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1`}
+                  placeholder="Ghana"
+                />
+              </div>
+              {errors.country && <p className="mt-1 text-xs text-red-400">{errors.country}</p>}
             </div>
 
             <div>
@@ -343,18 +453,18 @@ const CompanyProfileStep: React.FC<CompanyProfileStepProps> = ({ onNext, onPrevi
                 name="region"
                 value={formData.region}
                 onChange={handleInputChange}
-                className={`w-full rounded-lg border px-4 py-3 text-white focus:outline-none focus:ring-1 ${
-                  errors.region
-                    ? 'border-red-400 bg-slate-800/50 focus:border-red-400 focus:ring-red-400'
-                    : 'border-white/20 bg-slate-800/50 focus:border-indigo-400 focus:ring-indigo-400'
-                }`}
+                className={`w-full rounded-lg border ${
+                  errors.region ? 'border-red-400 focus:border-red-400 focus:ring-red-400' : 'border-white/20 focus:border-indigo-400 focus:ring-indigo-400'
+                } bg-slate-800/50 px-4 py-3 text-white focus:outline-none focus:ring-1`}
               >
                 <option value="">Select region</option>
                 {regions.map((region) => (
-                  <option key={region} value={region}>{region}</option>
+                  <option key={region} value={region}>
+                    {region}
+                  </option>
                 ))}
               </select>
-              {errors.region && <p className="text-red-400 text-sm mt-1">{errors.region}</p>}
+              {errors.region && <p className="mt-1 text-xs text-red-400">{errors.region}</p>}
             </div>
 
             <div>
@@ -367,7 +477,7 @@ const CompanyProfileStep: React.FC<CompanyProfileStepProps> = ({ onNext, onPrevi
                 name="city"
                 value={formData.city}
                 onChange={handleInputChange}
-                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:border-indigo-400 focus:ring-indigo-400"
                 placeholder="Accra"
               />
             </div>
@@ -382,14 +492,14 @@ const CompanyProfileStep: React.FC<CompanyProfileStepProps> = ({ onNext, onPrevi
                 name="postalCode"
                 value={formData.postalCode}
                 onChange={handleInputChange}
-                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                placeholder="GA-123-4567"
+                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:border-indigo-400 focus:ring-indigo-400"
+                placeholder="GA-184-2564"
               />
             </div>
 
             <div className="md:col-span-2">
               <label htmlFor="address" className="block text-sm font-medium text-slate-200 mb-2">
-                Business Address
+                Street Address
               </label>
               <input
                 type="text"
@@ -397,17 +507,11 @@ const CompanyProfileStep: React.FC<CompanyProfileStepProps> = ({ onNext, onPrevi
                 name="address"
                 value={formData.address}
                 onChange={handleInputChange}
-                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                placeholder="123 Publishing Street, Business District"
+                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:border-indigo-400 focus:ring-indigo-400"
+                placeholder="12 Music Avenue, Spintex Road"
               />
             </div>
-          </div>
-        </div>
 
-        {/* Business Registration */}
-        <div className="bg-slate-900/60 rounded-2xl border border-white/10 p-8">
-          <h4 className="text-xl font-semibold text-white mb-6">Business Registration</h4>
-          <div className="grid md:grid-cols-2 gap-6">
             <div>
               <label htmlFor="businessRegistration" className="block text-sm font-medium text-slate-200 mb-2">
                 Business Registration Number
@@ -418,14 +522,13 @@ const CompanyProfileStep: React.FC<CompanyProfileStepProps> = ({ onNext, onPrevi
                 name="businessRegistration"
                 value={formData.businessRegistration}
                 onChange={handleInputChange}
-                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                placeholder="BN123456789"
+                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:border-indigo-400 focus:ring-indigo-400"
               />
             </div>
 
             <div>
               <label htmlFor="taxId" className="block text-sm font-medium text-slate-200 mb-2">
-                Tax Identification Number (TIN)
+                Tax Identification Number
               </label>
               <input
                 type="text"
@@ -433,14 +536,13 @@ const CompanyProfileStep: React.FC<CompanyProfileStepProps> = ({ onNext, onPrevi
                 name="taxId"
                 value={formData.taxId}
                 onChange={handleInputChange}
-                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                placeholder="P123456789012"
+                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:border-indigo-400 focus:ring-indigo-400"
               />
             </div>
 
-            <div className="md:col-span-2">
+            <div>
               <label htmlFor="licenseNumber" className="block text-sm font-medium text-slate-200 mb-2">
-                Publishing License Number (Optional)
+                License Number
               </label>
               <input
                 type="text"
@@ -448,81 +550,78 @@ const CompanyProfileStep: React.FC<CompanyProfileStepProps> = ({ onNext, onPrevi
                 name="licenseNumber"
                 value={formData.licenseNumber}
                 onChange={handleInputChange}
-                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                placeholder="PL-2024-001"
+                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:border-indigo-400 focus:ring-indigo-400"
               />
             </div>
           </div>
         </div>
 
-        {/* Contact Information */}
         <div className="bg-slate-900/60 rounded-2xl border border-white/10 p-8">
-          <h4 className="text-xl font-semibold text-white mb-6">Contact Information</h4>
+          <h4 className="text-xl font-semibold text-white mb-6">Primary Contacts</h4>
           <div className="grid md:grid-cols-2 gap-6">
             <div>
               <label htmlFor="primaryContact" className="block text-sm font-medium text-slate-200 mb-2">
-                Primary Contact Person
+                Primary Contact Name
               </label>
-              <input
-                type="text"
-                id="primaryContact"
-                name="primaryContact"
-                value={formData.primaryContact}
-                onChange={handleInputChange}
-                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                placeholder="John Smith"
-              />
+              <div className="relative">
+                <User className="w-4 h-4 text-indigo-400 absolute left-3 top-3" />
+                <input
+                  type="text"
+                  id="primaryContact"
+                  name="primaryContact"
+                  value={formData.primaryContact}
+                  onChange={handleInputChange}
+                  className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 pl-10 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:border-indigo-400 focus:ring-indigo-400"
+                  placeholder="Ama Boateng"
+                />
+              </div>
             </div>
 
             <div>
               <label htmlFor="contactEmail" className="block text-sm font-medium text-slate-200 mb-2">
-                Business Email *
+                Contact Email *
               </label>
               <div className="relative">
+                <Mail className="w-4 h-4 text-indigo-400 absolute left-3 top-3" />
                 <input
                   type="email"
                   id="contactEmail"
                   name="contactEmail"
                   value={formData.contactEmail}
                   onChange={handleInputChange}
-                  className={`w-full rounded-lg border pl-10 pr-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 ${
-                    errors.contactEmail
-                      ? 'border-red-400 bg-slate-800/50 focus:border-red-400 focus:ring-red-400'
-                      : 'border-white/20 bg-slate-800/50 focus:border-indigo-400 focus:ring-indigo-400'
-                  }`}
-                  placeholder="contact@yourcompany.com"
+                  className={`w-full rounded-lg border pl-10 ${
+                    errors.contactEmail ? 'border-red-400 focus:border-red-400 focus:ring-red-400' : 'border-white/20 focus:border-indigo-400 focus:ring-indigo-400'
+                  } bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1`}
+                  placeholder="contact@publisher.com"
                 />
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               </div>
-              {errors.contactEmail && <p className="text-red-400 text-sm mt-1">{errors.contactEmail}</p>}
+              {errors.contactEmail && <p className="mt-1 text-xs text-red-400">{errors.contactEmail}</p>}
             </div>
 
             <div>
               <label htmlFor="contactPhone" className="block text-sm font-medium text-slate-200 mb-2">
-                Business Phone *
+                Contact Phone *
               </label>
               <div className="relative">
+                <Phone className="w-4 h-4 text-indigo-400 absolute left-3 top-3" />
                 <input
                   type="tel"
                   id="contactPhone"
                   name="contactPhone"
                   value={formData.contactPhone}
                   onChange={handleInputChange}
-                  className={`w-full rounded-lg border pl-10 pr-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 ${
-                    errors.contactPhone
-                      ? 'border-red-400 bg-slate-800/50 focus:border-red-400 focus:ring-red-400'
-                      : 'border-white/20 bg-slate-800/50 focus:border-indigo-400 focus:ring-indigo-400'
-                  }`}
-                  placeholder="+233 XX XXX XXXX"
+                  className={`w-full rounded-lg border pl-10 ${
+                    errors.contactPhone ? 'border-red-400 focus:border-red-400 focus:ring-red-400' : 'border-white/20 focus:border-indigo-400 focus:ring-indigo-400'
+                  } bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1`}
+                  placeholder="+233 24 000 0000"
                 />
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               </div>
-              {errors.contactPhone && <p className="text-red-400 text-sm mt-1">{errors.contactPhone}</p>}
+              {errors.contactPhone && <p className="mt-1 text-xs text-red-400">{errors.contactPhone}</p>}
             </div>
 
             <div>
               <label htmlFor="website" className="block text-sm font-medium text-slate-200 mb-2">
-                Website (Optional)
+                Website
               </label>
               <input
                 type="url"
@@ -530,14 +629,13 @@ const CompanyProfileStep: React.FC<CompanyProfileStepProps> = ({ onNext, onPrevi
                 name="website"
                 value={formData.website}
                 onChange={handleInputChange}
-                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                placeholder="https://www.yourcompany.com"
+                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:border-indigo-400 focus:ring-indigo-400"
+                placeholder="https://publisher.com"
               />
             </div>
           </div>
         </div>
 
-        {/* Compliance Officer */}
         <div className="bg-slate-900/60 rounded-2xl border border-white/10 p-8">
           <h4 className="text-xl font-semibold text-white mb-6">Compliance Officer</h4>
           <div className="grid md:grid-cols-2 gap-6">
@@ -551,29 +649,12 @@ const CompanyProfileStep: React.FC<CompanyProfileStepProps> = ({ onNext, onPrevi
                 name="complianceOfficer"
                 value={formData.complianceOfficer}
                 onChange={handleInputChange}
-                className={`w-full rounded-lg border px-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 ${
-                  errors.complianceOfficer
-                    ? 'border-red-400 bg-slate-800/50 focus:border-red-400 focus:ring-red-400'
-                    : 'border-white/20 bg-slate-800/50 focus:border-indigo-400 focus:ring-indigo-400'
-                }`}
-                placeholder="Sarah Johnson"
+                className={`w-full rounded-lg border ${
+                  errors.complianceOfficer ? 'border-red-400 focus:border-red-400 focus:ring-red-400' : 'border-white/20 focus:border-indigo-400 focus:ring-indigo-400'
+                } bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1`}
+                placeholder="Yaw Mensah"
               />
-              {errors.complianceOfficer && <p className="text-red-400 text-sm mt-1">{errors.complianceOfficer}</p>}
-            </div>
-
-            <div>
-              <label htmlFor="officerTitle" className="block text-sm font-medium text-slate-200 mb-2">
-                Job Title
-              </label>
-              <input
-                type="text"
-                id="officerTitle"
-                name="officerTitle"
-                value={formData.officerTitle}
-                onChange={handleInputChange}
-                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                placeholder="Head of Compliance"
-              />
+              {errors.complianceOfficer && <p className="mt-1 text-xs text-red-400">{errors.complianceOfficer}</p>}
             </div>
 
             <div>
@@ -586,8 +667,7 @@ const CompanyProfileStep: React.FC<CompanyProfileStepProps> = ({ onNext, onPrevi
                 name="officerEmail"
                 value={formData.officerEmail}
                 onChange={handleInputChange}
-                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                placeholder="compliance@yourcompany.com"
+                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:border-indigo-400 focus:ring-indigo-400"
               />
             </div>
 
@@ -601,74 +681,102 @@ const CompanyProfileStep: React.FC<CompanyProfileStepProps> = ({ onNext, onPrevi
                 name="officerPhone"
                 value={formData.officerPhone}
                 onChange={handleInputChange}
-                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                placeholder="+233 XX XXX XXXX"
+                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:border-indigo-400 focus:ring-indigo-400"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="officerTitle" className="block text-sm font-medium text-slate-200 mb-2">
+                Officer Title
+              </label>
+              <input
+                type="text"
+                id="officerTitle"
+                name="officerTitle"
+                value={formData.officerTitle}
+                onChange={handleInputChange}
+                className="w-full rounded-lg border border-white/20 bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:border-indigo-400 focus:ring-indigo-400"
               />
             </div>
           </div>
         </div>
 
-        {/* Company Logo Upload */}
         <div className="bg-slate-900/60 rounded-2xl border border-white/10 p-8">
-          <h4 className="text-xl font-semibold text-white mb-6">Company Logo</h4>
-          <div className="flex items-center justify-center">
-            <div className="text-center">
-              {formData.logoPreview ? (
-                <div className="relative">
-                  <img
-                    src={formData.logoPreview}
-                    alt="Company Logo Preview"
-                    className="w-32 h-32 object-contain rounded-lg border-2 border-indigo-400 mx-auto mb-4"
-                  />
-                  <button
-                    type="button"
-                    onClick={removeLogo}
-                    className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors"
+          <h4 className="text-xl font-semibold text-white mb-6">Company Branding</h4>
+          <div className="grid md:grid-cols-2 gap-6 items-start">
+            <div>
+              <p className="text-sm text-slate-300 mb-3">Upload your company logo for statements and dashboards.</p>
+              <div className="flex items-center space-x-4">
+                {logoPreview ? (
+                  <div className="relative">
+                    <img src={logoPreview} alt="Logo preview" className="h-20 w-20 rounded-lg object-cover border border-white/10" />
+                    <button
+                      type="button"
+                      onClick={removeLogo}
+                      className="absolute -top-2 -right-2 p-1 bg-slate-900/80 text-white rounded-full hover:bg-red-500/80"
+                      aria-label="Remove logo"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="h-20 w-20 rounded-lg border-2 border-dashed border-white/20 flex items-center justify-center text-slate-500">
+                    <Building2 className="w-6 h-6" />
+                  </div>
+                )}
+                <div>
+                  <label
+                    htmlFor="logoUpload"
+                    className="inline-flex items-center space-x-2 rounded-lg bg-indigo-500 px-4 py-2 text-white text-sm font-medium shadow hover:bg-indigo-400 cursor-pointer"
                   >
-                    <X className="w-3 h-3" />
-                  </button>
+                    <Upload className="w-4 h-4" />
+                    <span>Upload Logo</span>
+                  </label>
+                  <input id="logoUpload" name="logoUpload" type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+                  <p className="text-xs text-slate-400 mt-2">PNG, JPG, or SVG up to 5MB.</p>
                 </div>
-              ) : (
-                <div className="w-32 h-32 border-2 border-dashed border-slate-600 rounded-lg flex items-center justify-center mx-auto mb-4">
-                  <Building2 className="w-8 h-8 text-slate-400" />
-                </div>
-              )}
+              </div>
+            </div>
 
-              <label htmlFor="logo-upload" className="cursor-pointer">
-                <span className="inline-flex items-center space-x-2 bg-indigo-500 hover:bg-indigo-400 text-white px-6 py-3 rounded-lg transition-colors">
-                  <Upload className="w-4 h-4" />
-                  <span>{formData.logoPreview ? 'Change Logo' : 'Upload Logo'}</span>
-                </span>
-                <input
-                  type="file"
-                  id="logo-upload"
-                  accept="image/*"
-                  onChange={handleFileChange}
-                  className="hidden"
-                />
-              </label>
-
-              <p className="text-sm text-slate-400 mt-2">
-                Recommended: Square image, at least 400x400px
-              </p>
+            <div className="bg-slate-800/50 border border-white/10 rounded-xl p-4">
+              <div className="flex items-center space-x-3 mb-4">
+                <FileText className="w-5 h-5 text-indigo-300" />
+                <h5 className="text-sm font-semibold text-white">Compliance Summary</h5>
+              </div>
+              <ul className="space-y-2 text-sm text-slate-300">
+                <li>• Provide accurate business registration and tax details</li>
+                <li>• Ensure contact information is kept up to date</li>
+                <li>• Compliance officer will receive regulatory notifications</li>
+              </ul>
             </div>
           </div>
         </div>
 
-        {/* Navigation */}
-        <div className="flex justify-between pt-6">
+        {apiError && (
+          <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+            {apiError}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between pt-6 border-t border-white/10">
           <button
+            type="button"
             onClick={onPrevious}
-            className="bg-slate-800/50 hover:bg-slate-800 text-white px-6 py-3 rounded-lg transition-colors"
+            className="inline-flex items-center space-x-2 rounded-lg border border-white/10 px-6 py-3 text-sm text-slate-300 hover:text-white hover:border-white/30"
           >
-            Previous
+            <X className="w-4 h-4" />
+            <span>Cancel</span>
           </button>
-          <button
-            type="submit"
-            className="bg-indigo-500 hover:bg-indigo-400 text-white px-8 py-3 rounded-lg font-semibold transition-colors"
-          >
-            Continue to Revenue Split
-          </button>
+
+          <div className="flex items-center space-x-3">
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="inline-flex items-center space-x-2 rounded-lg bg-indigo-500 px-6 py-3 text-sm font-semibold text-white shadow-lg hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <span>{isSubmitting ? 'Saving...' : 'Save and Continue'}</span>
+            </button>
+          </div>
         </div>
       </form>
     </div>
