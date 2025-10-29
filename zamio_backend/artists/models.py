@@ -147,6 +147,7 @@ class UploadProcessingStatus(models.Model):
     # File information
     original_filename = models.CharField(max_length=255)
     file_size = models.BigIntegerField()
+    mime_type = models.CharField(max_length=100, blank=True)
     file_hash = models.CharField(max_length=64, null=True, blank=True)
     
     # Processing status
