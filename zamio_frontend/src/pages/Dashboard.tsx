@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   TrendingUp,
   Music,
@@ -9,7 +9,6 @@ import {
   Share2,
   Smartphone,
   Eye,
-  TrendingDown,
   ChevronUp,
   ChevronDown,
   Radio,
@@ -17,20 +16,85 @@ import {
   Target,
   Globe,
   Info,
-  Activity,
-  Calendar,
-  Settings,
-  Bell,
-  Search,
-  Filter,
-  BarChart3
+  Activity
 } from 'lucide-react';
 
 import HoverCard from '../components/HoverCard';
+import { useAuth } from '../lib/auth';
+import {
+  fetchArtistDashboard,
+  type ArtistDashboardPayload,
+  type ArtistDashboardRegionStat,
+  type ArtistDashboardSeriesPoint,
+  type ArtistDashboardStationBreakdown,
+  type ArtistDashboardTopSong,
+  type ArtistDashboardPerformanceScore,
+} from '../lib/api';
+
+const resolveErrorMessage = (error: unknown): string => {
+  if (!error) {
+    return 'Unable to load dashboard data.';
+  }
+
+  if (typeof error === 'string') {
+    return error;
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === 'object') {
+    const maybeError = error as {
+      response?: { data?: unknown; status?: number };
+      message?: string;
+    };
+
+    if (maybeError.response?.data && typeof maybeError.response.data === 'object') {
+      const data = maybeError.response.data as Record<string, unknown>;
+      if (typeof data['message'] === 'string') {
+        return data['message'];
+      }
+      if (typeof data['detail'] === 'string') {
+        return data['detail'];
+      }
+      if (data['errors'] && typeof data['errors'] === 'object') {
+        const errors = data['errors'] as Record<string, unknown>;
+        const firstKey = Object.keys(errors)[0];
+        const firstValue = firstKey ? errors[firstKey] : null;
+        if (typeof firstValue === 'string') {
+          return firstValue;
+        }
+        if (Array.isArray(firstValue) && firstValue.length > 0) {
+          const candidate = firstValue[0];
+          if (typeof candidate === 'string') {
+            return candidate;
+          }
+        }
+      }
+    }
+
+    if (typeof maybeError.message === 'string' && maybeError.message.length > 0) {
+      return maybeError.message;
+    }
+  }
+
+  return 'Unable to load dashboard data. Please try again later.';
+};
 
 const Dashboard = () => {
+  const { user } = useAuth();
+  const artistId = useMemo(() => {
+    if (user && typeof user === 'object' && user !== null) {
+      const candidate = user['artist_id'];
+      if (typeof candidate === 'string' && candidate.length > 0) {
+        return candidate;
+      }
+    }
+    return null;
+  }, [user]);
+
   const [selectedPeriod, setSelectedPeriod] = useState('monthly');
-  const [activeTab, setActiveTab] = useState('overview');
   const [selectedRegion, setSelectedRegion] = useState('all');
   const [chartFilters, setChartFilters] = useState({
     airplayTrends: {
@@ -54,192 +118,127 @@ const Dashboard = () => {
     x: 0,
     y: 0
   });
-  const statsData = {
-    totalPlays: 45782,
-    totalStations: 127,
-    totalEarnings: 2847.5,
-    growthRate: 23.5,
-    activeTracks: 15,
-    avgConfidence: 94.2
-  };
+  const [dashboardData, setDashboardData] = useState<ArtistDashboardPayload | null>(null);
+  const [isLoadingDashboard, setIsLoadingDashboard] = useState(false);
+  const [dashboardError, setDashboardError] = useState<string | null>(null);
 
-  const topSongs = [
-    {
-      id: 1,
-      title: 'Midnight Vibes',
-      plays: 8745,
-      earnings: 524.7,
-      confidence: 98,
-      stations: 45,
-      trend: 'up'
-    },
-    {
-      id: 2,
-      title: 'Ghana My Home',
-      plays: 7234,
-      earnings: 434.04,
-      confidence: 96,
-      stations: 38,
-      trend: 'up'
-    },
-    {
-      id: 3,
-      title: 'Love Letter',
-      plays: 6543,
-      earnings: 392.58,
-      confidence: 94,
-      stations: 32,
-      trend: 'stable'
-    },
-    {
-      id: 4,
-      title: 'Hustle Hard',
-      plays: 5432,
-      earnings: 325.92,
-      confidence: 92,
-      stations: 28,
-      trend: 'up'
-    },
-    {
-      id: 5,
-      title: 'Dance Floor',
-      plays: 4321,
-      earnings: 259.26,
-      confidence: 89,
-      stations: 24,
-      trend: 'down'
+  const statsData = useMemo(
+    () => ({
+      totalPlays: dashboardData?.stats?.totalPlays ?? 0,
+      totalStations: dashboardData?.stats?.totalStations ?? 0,
+      totalEarnings: dashboardData?.stats?.totalEarnings ?? 0,
+      growthRate: dashboardData?.stats?.growthRate ?? 0,
+      activeTracks: dashboardData?.stats?.activeTracks ?? 0,
+      avgConfidence: dashboardData?.stats?.avgConfidence ?? dashboardData?.confidenceScore ?? 0,
+    }),
+    [dashboardData],
+  );
+
+  const topSongs = useMemo<ArtistDashboardTopSong[]>(() => {
+    const source = dashboardData?.topSongs ?? [];
+    return source.map((song, index) => ({
+      ...song,
+      trend:
+        song.trend ?? (index === 0 ? 'up' : index === source.length - 1 && source.length > 1 ? 'down' : 'stable'),
+    }));
+  }, [dashboardData]);
+
+  const playsOverTime = useMemo<ArtistDashboardSeriesPoint[]>(
+    () =>
+      (dashboardData?.playsOverTime ?? []).map((entry) => {
+        const parsed = entry.date ? new Date(entry.date) : null;
+        let label = entry.date;
+        if (parsed && !Number.isNaN(parsed.valueOf())) {
+          label = parsed.toLocaleDateString(undefined, {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          });
+        }
+
+        return {
+          date: label,
+          airplay: entry.airplay ?? 0,
+          earnings: entry.earnings ?? 0,
+        };
+      }),
+    [dashboardData],
+  );
+
+  const stationBreakdown = useMemo<ArtistDashboardStationBreakdown[]>(
+    () =>
+      (dashboardData?.stationBreakdown ?? []).map((station) => ({
+        ...station,
+        type: station.type ?? 'Unknown',
+      })),
+    [dashboardData],
+  );
+
+  const ghanaRegions = useMemo<ArtistDashboardRegionStat[]>(
+    () =>
+      (dashboardData?.ghanaRegions ?? []).map((region) => ({
+        ...region,
+        trend: region.trend ?? (region.growth > 1 ? 'up' : region.growth < -1 ? 'down' : 'stable'),
+      })),
+    [dashboardData],
+  );
+
+  const performanceScore = useMemo<ArtistDashboardPerformanceScore>(
+    () => ({
+      overall: dashboardData?.performanceScore?.overall ?? 0,
+      airplayGrowth: dashboardData?.performanceScore?.airplayGrowth ?? 0,
+      regionalReach: dashboardData?.performanceScore?.regionalReach ?? 0,
+      fanEngagement: dashboardData?.performanceScore?.fanEngagement ?? 0,
+      trackQuality: dashboardData?.performanceScore?.trackQuality ?? 0,
+    }),
+    [dashboardData],
+  );
+
+  const targets = useMemo(() => {
+    const backendTargets = dashboardData?.targets;
+
+    const fallbackAirplay = statsData.totalPlays ? Math.ceil(statsData.totalPlays * 1.15) : 10;
+    const fallbackEarnings = statsData.totalEarnings ? Math.round(statsData.totalEarnings * 1.2 + 50) : 100;
+    const fallbackStations = statsData.totalStations ? Math.ceil(statsData.totalStations * 1.1) : 3;
+    const fallbackConfidence = statsData.avgConfidence ? Math.min(100, Math.round((statsData.avgConfidence + 5) * 10) / 10) : 70;
+
+    return {
+      airplayTarget: backendTargets?.airplayTarget ?? fallbackAirplay,
+      earningsTarget: backendTargets?.earningsTarget ?? fallbackEarnings,
+      stationsTarget: backendTargets?.stationsTarget ?? fallbackStations,
+      confidenceTarget: backendTargets?.confidenceTarget ?? fallbackConfidence,
+    };
+  }, [dashboardData?.targets, statsData.avgConfidence, statsData.totalEarnings, statsData.totalPlays, statsData.totalStations]);
+
+  const maxPlays = useMemo(() => {
+    if (!playsOverTime.length) {
+      return 0;
     }
-  ];
+    return Math.max(...playsOverTime.map((d) => d.airplay));
+  }, [playsOverTime]);
 
-  const playsOverTime = [
-    { date: 'Jan', airplay: 3200, earnings: 192.0 },
-    { date: 'Feb', airplay: 4100, earnings: 246.0 },
-    { date: 'Mar', airplay: 3800, earnings: 228.0 },
-    { date: 'Apr', airplay: 5200, earnings: 312.0 },
-    { date: 'May', airplay: 6100, earnings: 366.0 },
-    { date: 'Jun', airplay: 7500, earnings: 450.0 },
-    { date: 'Jul', airplay: 8900, earnings: 534.0 },
-    { date: 'Aug', airplay: 9200, earnings: 552.0 },
-    { date: 'Sep', airplay: 10800, earnings: 648.0 },
-    { date: 'Oct', airplay: 12500, earnings: 750.0 },
-    { date: 'Nov', airplay: 14200, earnings: 852.0 },
-    { date: 'Dec', airplay: 15800, earnings: 948.0 }
-  ];
-
-  const stationBreakdown = [
-    {
-      station: 'Peace FM',
-      plays: 1245,
-      percentage: 28.5,
-      region: 'Greater Accra',
-      type: 'National'
-    },
-    {
-      station: 'Hitz FM',
-      plays: 987,
-      percentage: 22.6,
-      region: 'Greater Accra',
-      type: 'Urban'
-    },
-    {
-      station: 'Adom FM',
-      plays: 743,
-      percentage: 17.0,
-      region: 'Ashanti',
-      type: 'Regional'
-    },
-    {
-      station: 'Joy FM',
-      plays: 654,
-      percentage: 15.0,
-      region: 'Greater Accra',
-      type: 'National'
-    },
-    {
-      station: 'Okay FM',
-      plays: 543,
-      percentage: 12.4,
-      region: 'Greater Accra',
-      type: 'Urban'
-    },
-    {
-      station: 'Others',
-      plays: 198,
-      percentage: 4.5,
-      region: 'Various',
-      type: 'Various'
+  const maxRegionalPlays = useMemo(() => {
+    if (!ghanaRegions.length) {
+      return 0;
     }
-  ];
+    return Math.max(...ghanaRegions.map((r) => r.plays));
+  }, [ghanaRegions]);
 
-  const ghanaRegions = [
-    {
-      region: 'Greater Accra',
-      plays: 15234,
-      earnings: 913.04,
-      stations: 45,
-      growth: 15.2,
-      trend: 'up'
+  const computeRegionalShare = useCallback(
+    (plays: number) => {
+      if (!maxRegionalPlays) {
+        return 0;
+      }
+      return Math.round((plays / maxRegionalPlays) * 100);
     },
-    {
-      region: 'Ashanti',
-      plays: 12543,
-      earnings: 752.58,
-      stations: 32,
-      growth: 12.8,
-      trend: 'up'
-    },
-    {
-      region: 'Northern',
-      plays: 8765,
-      earnings: 525.9,
-      stations: 18,
-      growth: 18.5,
-      trend: 'up'
-    },
-    {
-      region: 'Western',
-      plays: 6543,
-      earnings: 392.58,
-      stations: 15,
-      growth: 8.9,
-      trend: 'stable'
-    },
-    {
-      region: 'Eastern',
-      plays: 4321,
-      earnings: 259.26,
-      stations: 12,
-      growth: 11.3,
-      trend: 'up'
-    },
-    {
-      region: 'Central',
-      plays: 3456,
-      earnings: 207.36,
-      stations: 8,
-      growth: 7.2,
-      trend: 'stable'
-    }
-  ];
+    [maxRegionalPlays],
+  );
 
-  // Sample target data for progress tracking
-  const monthlyTargets = {
-    airplayTarget: 20000,
-    earningsTarget: 1200,
-    stationsTarget: 150,
-    confidenceTarget: 95
-  };
-
-  const performanceScore = {
-    overall: 8.7,
-    airplayGrowth: 9.2,
-    regionalReach: 8.5,
-    fanEngagement: 8.8,
-    trackQuality: 9.0
-  };
-
-  const maxPlays = Math.max(...playsOverTime.map((d) => d.airplay));
-  const maxRegionalPlays = Math.max(...ghanaRegions.map((r) => r.plays));
+  const growthIsPositive = statsData.growthRate >= 0;
+  const growthTextClass = growthIsPositive
+    ? 'text-green-600 dark:text-green-400'
+    : 'text-red-600 dark:text-red-400';
+  const formattedGrowthRate = `${growthIsPositive ? '+' : '-'}${Math.abs(statsData.growthRate).toFixed(1)}%`;
 
   const statusColors = {
     excellent: {
@@ -309,26 +308,6 @@ const Dashboard = () => {
   };
 
   const [viewTransition, setViewTransition] = useState(false);
-  const [activeView, setActiveView] = useState('overview');
-
-  useEffect(() => {
-    // Simulate chart loading
-    const timer = setTimeout(() => {
-      setIsLoadingCharts(false);
-    }, 1200);
-
-    return () => clearTimeout(timer);
-  }, []);
-
-  const ChartSkeleton = () => (
-    <div className="animate-pulse">
-      <div className="bg-gradient-to-br from-gray-100 to-gray-200 dark:from-slate-700 dark:to-slate-800 rounded-lg h-64 mb-4"></div>
-      <div className="space-y-3">
-        <div className="h-4 bg-gray-200 dark:bg-slate-700 rounded w-3/4"></div>
-        <div className="h-4 bg-gray-200 dark:bg-slate-700 rounded w-1/2"></div>
-      </div>
-    </div>
-  );
 
   const viewTransitionStyles = viewTransition
     ? 'opacity-0 scale-95 translate-y-2'
@@ -339,13 +318,17 @@ const Dashboard = () => {
   };
 
   const toggleChartFilter = (chartType: keyof typeof chartFilters, filterKey: string) => {
-    setChartFilters(prev => ({
-      ...prev,
-      [chartType]: {
-        ...prev[chartType],
-        [filterKey]: !prev[chartType][filterKey as keyof typeof prev[typeof chartType]]
-      }
-    }));
+    setChartFilters(prev => {
+      const current = prev[chartType] as Record<string, boolean> | undefined;
+      const nextValue = !(current?.[filterKey] ?? false);
+      return {
+        ...prev,
+        [chartType]: {
+          ...(current ?? {}),
+          [filterKey]: nextValue,
+        },
+      };
+    });
   };
 
   const getRegionColors = (index: number) => {
@@ -360,6 +343,59 @@ const Dashboard = () => {
     return colors[index % colors.length];
   };
 
+  const loadDashboard = useCallback(async () => {
+    if (!artistId) {
+      return;
+    }
+
+    setIsLoadingDashboard(true);
+    setDashboardError(null);
+    setViewTransition(true);
+
+    try {
+      const envelope = await fetchArtistDashboard(artistId, { period: selectedPeriod });
+      const payload = (envelope?.data ?? null) as ArtistDashboardPayload | null;
+      setDashboardData(payload);
+
+      if (payload?.ghanaRegions) {
+        setSelectedRegion((prevRegion) => {
+          if (prevRegion === 'all') {
+            return prevRegion;
+          }
+          const hasRegion = payload.ghanaRegions?.some((region) => region.region === prevRegion);
+          return hasRegion ? prevRegion : 'all';
+        });
+      }
+    } catch (error) {
+      const message = resolveErrorMessage(error);
+      setDashboardError(message);
+    } finally {
+      setIsLoadingDashboard(false);
+      setViewTransition(false);
+    }
+  }, [artistId, selectedPeriod]);
+
+  useEffect(() => {
+    if (!artistId) {
+      return;
+    }
+
+    loadDashboard();
+  }, [artistId, loadDashboard]);
+
+  const showTooltip = useCallback(
+    (content: string, event: React.MouseEvent<HTMLElement>) => {
+      const { clientX, clientY } = event;
+      setTooltip({
+        show: true,
+        content,
+        x: clientX,
+        y: clientY - 12,
+      });
+    },
+    [],
+  );
+
   const getTrendIcon = (trend: string) => {
     switch (trend) {
       case 'up':
@@ -370,6 +406,33 @@ const Dashboard = () => {
         return <div className="w-4 h-4 rounded-full bg-blue-500"></div>;
     }
   };
+
+  if (!artistId) {
+    return (
+      <div className="flex min-h-[400px] flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-white p-8 text-center dark:border-slate-700 dark:bg-slate-900/60">
+        <div className="flex flex-col items-center space-y-3">
+          <div className="rounded-full bg-indigo-100 p-3 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-300">
+            <Info className="h-6 w-6" />
+          </div>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">We couldn't find your artist profile</h2>
+          <p className="max-w-md text-sm text-gray-600 dark:text-gray-300">
+            Please sign out and sign in again to refresh your account data, then return to the dashboard.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoadingDashboard && !dashboardData) {
+    return (
+      <div className="flex min-h-[480px] flex-col items-center justify-center">
+        <div className="flex flex-col items-center space-y-4 text-center">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-indigo-500 border-t-transparent" />
+          <p className="text-sm font-medium text-indigo-600 dark:text-indigo-300">Loading your dashboard metrics…</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -398,6 +461,12 @@ const Dashboard = () => {
                 Welcome back! Here's your music performance overview.
               </p>
             </div>
+            {isLoadingDashboard && dashboardData && (
+              <div className="hidden items-center space-x-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-600 dark:border-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200 sm:flex">
+                <Activity className="h-3 w-3 animate-spin" />
+                <span>Refreshing metrics…</span>
+              </div>
+            )}
             <div className="flex items-center space-x-3">
               <select
                 value={selectedPeriod}
@@ -416,6 +485,11 @@ const Dashboard = () => {
 
       {/* Content */}
       <div>
+        {dashboardError && (
+          <div className="mx-6 mb-6 rounded-xl border border-red-200 bg-red-50/90 px-4 py-3 text-sm text-red-700 shadow-sm dark:border-red-800 dark:bg-red-900/40 dark:text-red-200">
+            {dashboardError}
+          </div>
+        )}
         {/* Stats Cards */}
         <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 ${viewTransitionStyles}`}>
             <div className="bg-gradient-to-br from-red-50/90 via-orange-50/80 to-pink-50/90 dark:from-slate-900/95 dark:via-slate-800/90 dark:to-slate-900/95 backdrop-blur-sm rounded-xl shadow-lg border border-red-200/50 dark:border-slate-600/60 p-6 hover:shadow-xl hover:scale-[1.02] transition-all duration-300 hover:border-red-300 dark:hover:border-red-700/70 group cursor-pointer">
@@ -434,20 +508,20 @@ const Dashboard = () => {
               <div className="flex items-center mr-2">
                 <TrendingUp className="w-4 h-4 text-green-500" />
               </div>
-              <span className="text-green-600 dark:text-green-400">+{statsData.growthRate}%</span>
+              <span className={growthTextClass}>{formattedGrowthRate}</span>
               <span className="text-gray-500 dark:text-gray-400 ml-2">from last month</span>
             </div>
             <div className="mt-3">
               <div className="flex items-center justify-between text-xs mb-1">
                 <span className="text-gray-500 dark:text-gray-400">Monthly Target</span>
                 <span className="text-gray-600 dark:text-gray-300 font-medium">
-                  {statsData.totalPlays.toLocaleString()} / {monthlyTargets.airplayTarget.toLocaleString()}
+                  {statsData.totalPlays.toLocaleString()} / {targets.airplayTarget.toLocaleString()}
                 </span>
               </div>
               <div className="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-2">
                 <div
                   className="bg-blue-500 h-2 rounded-full transition-all duration-500"
-                  style={{ width: `${Math.min((statsData.totalPlays / monthlyTargets.airplayTarget) * 100, 100)}%` }}
+                    style={{ width: `${Math.min((statsData.totalPlays / targets.airplayTarget) * 100, 100)}%` }}
                 />
               </div>
             </div>
@@ -476,13 +550,13 @@ const Dashboard = () => {
               <div className="flex items-center justify-between text-xs mb-1">
                 <span className="text-gray-500 dark:text-gray-400">Monthly Target</span>
                 <span className="text-gray-600 dark:text-gray-300 font-medium">
-                  ₵{statsData.totalEarnings.toLocaleString()} / ₵{monthlyTargets.earningsTarget.toLocaleString()}
+                  ₵{statsData.totalEarnings.toLocaleString()} / ₵{targets.earningsTarget.toLocaleString()}
                 </span>
               </div>
               <div className="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-2">
                 <div
                   className="bg-green-500 h-2 rounded-full transition-all duration-500"
-                  style={{ width: `${Math.min((statsData.totalEarnings / monthlyTargets.earningsTarget) * 100, 100)}%` }}
+                    style={{ width: `${Math.min((statsData.totalEarnings / targets.earningsTarget) * 100, 100)}%` }}
                 />
               </div>
             </div>
@@ -504,10 +578,10 @@ const Dashboard = () => {
               <span className="text-gray-500 dark:text-gray-400">Across Ghana</span>
               <div className="flex items-center">
                 <div className="w-8 h-1 bg-gray-200 dark:bg-slate-600 rounded-full mr-2">
-                  <div className="w-full h-full bg-orange-400 rounded-full" style={{ width: `${(statsData.totalStations / monthlyTargets.stationsTarget) * 100}%` }}></div>
+                  <div className="w-full h-full bg-orange-400 rounded-full" style={{ width: `${Math.min((statsData.totalStations / targets.stationsTarget) * 100, 100)}%` }}></div>
                 </div>
                 <span className="text-orange-600 dark:text-orange-400 text-xs font-medium">
-                  {Math.round((statsData.totalStations / monthlyTargets.stationsTarget) * 100)}%
+                  {Math.round((statsData.totalStations / targets.stationsTarget) * 100)}%
                 </span>
               </div>
             </div>
@@ -515,13 +589,13 @@ const Dashboard = () => {
               <div className="flex items-center justify-between text-xs mb-1">
                 <span className="text-gray-500 dark:text-gray-400">Monthly Target</span>
                 <span className="text-gray-600 dark:text-gray-300 font-medium">
-                  {statsData.totalStations} / {monthlyTargets.stationsTarget}
+                  {statsData.totalStations} / {targets.stationsTarget}
                 </span>
               </div>
               <div className="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-2">
                 <div
                   className="bg-orange-500 h-2 rounded-full transition-all duration-500"
-                  style={{ width: `${Math.min((statsData.totalStations / monthlyTargets.stationsTarget) * 100, 100)}%` }}
+                  style={{ width: `${Math.min((statsData.totalStations / targets.stationsTarget) * 100, 100)}%` }}
                 />
               </div>
             </div>
@@ -566,13 +640,13 @@ const Dashboard = () => {
               <div className="flex items-center justify-between text-xs mb-1">
                 <span className="text-gray-500 dark:text-gray-400">Target</span>
                 <span className="text-gray-600 dark:text-gray-300 font-medium">
-                  {statsData.avgConfidence}% / {monthlyTargets.confidenceTarget}%
+                  {statsData.avgConfidence}% / {targets.confidenceTarget}%
                 </span>
               </div>
               <div className="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-2">
                 <div
                   className="bg-purple-500 h-2 rounded-full transition-all duration-500"
-                  style={{ width: `${Math.min((statsData.avgConfidence / monthlyTargets.confidenceTarget) * 100, 100)}%` }}
+                  style={{ width: `${Math.min((statsData.avgConfidence / targets.confidenceTarget) * 100, 100)}%` }}
                 />
               </div>
             </div>
@@ -626,7 +700,7 @@ const Dashboard = () => {
                         <div className="flex-1 bg-gray-200 dark:bg-slate-700 rounded-full h-2 relative group">
                           <div
                             className="bg-blue-500 h-2 rounded-full transition-all duration-300 cursor-pointer"
-                            style={{ width: `${(month.airplay / maxPlays) * 100}%` }}
+                            style={{ width: `${maxPlays ? (month.airplay / maxPlays) * 100 : 0}%` }}
                             onMouseEnter={(e) => showTooltip(`${month.airplay.toLocaleString()} plays`, e)}
                             onMouseLeave={hideTooltip}
                           />
@@ -661,7 +735,7 @@ const Dashboard = () => {
               </div>
               <div className="space-y-4">
                 {topSongs.map((song, index) => (
-                  <div key={song.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-6 sm:p-4 bg-gray-50 dark:bg-slate-700 rounded-lg space-y-2 sm:space-y-0 hover:bg-gradient-to-r hover:from-purple-50/50 hover:to-pink-50/50 dark:hover:from-slate-600/50 dark:hover:to-slate-700/50 hover:scale-[1.02] hover:shadow-md transition-all duration-300 cursor-pointer group min-h-[60px]">
+                  <div key={`${song.title}-${index}`} className="flex flex-col sm:flex-row sm:items-center justify-between p-6 sm:p-4 bg-gray-50 dark:bg-slate-700 rounded-lg space-y-2 sm:space-y-0 hover:bg-gradient-to-r hover:from-purple-50/50 hover:to-pink-50/50 dark:hover:from-slate-600/50 dark:hover:to-slate-700/50 hover:scale-[1.02] hover:shadow-md transition-all duration-300 cursor-pointer group min-h-[60px]">
                     <div className="flex items-center space-x-4">
                       <div className="bg-gradient-to-r from-purple-500 to-pink-500 text-white w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold group-hover:scale-110 transition-transform duration-300">
                         {index + 1}
@@ -736,8 +810,10 @@ const Dashboard = () => {
                 </select>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {ghanaRegions.map((region, index) => (
-                  <div key={region.region} className="p-4 sm:p-3 bg-gray-50 dark:bg-slate-700 rounded-lg hover:bg-gradient-to-r hover:from-emerald-50/50 hover:to-teal-50/50 dark:hover:from-slate-600/50 dark:hover:to-slate-700/50 hover:scale-[1.02] hover:shadow-md transition-all duration-300 cursor-pointer group min-h-[60px]">
+                {ghanaRegions.map((region, index) => {
+                  const regionalShare = computeRegionalShare(region.plays);
+                  return (
+                    <div key={region.region} className="p-4 sm:p-3 bg-gray-50 dark:bg-slate-700 rounded-lg hover:bg-gradient-to-r hover:from-emerald-50/50 hover:to-teal-50/50 dark:hover:from-slate-600/50 dark:hover:to-slate-700/50 hover:scale-[1.02] hover:shadow-md transition-all duration-300 cursor-pointer group min-h-[60px]">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 space-y-2 sm:space-y-0">
                       <h3 className="font-medium text-gray-900 dark:text-white text-sm sm:text-base group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors duration-300">
                         {region.region}
@@ -828,13 +904,14 @@ const Dashboard = () => {
                     <div className="mt-3 w-full bg-gray-200 dark:bg-slate-600 rounded-full h-2 relative group">
                       <div
                         className={`h-full bg-gradient-to-r ${getRegionColors(index)} rounded-full cursor-pointer transition-all duration-300`}
-                        style={{ width: `${(region.plays / maxRegionalPlays) * 100}%` }}
-                        onMouseEnter={(e) => showTooltip(`${Math.round((region.plays / maxRegionalPlays) * 100)}% of total regional plays`, e)}
+                        style={{ width: `${regionalShare}%` }}
+                        onMouseEnter={(e) => showTooltip(`${regionalShare}% of total regional plays`, e)}
                         onMouseLeave={hideTooltip}
                       />
                     </div>
                   </div>
-                ))}
+                );
+                })}
               </div>
             </div>
           </div>
