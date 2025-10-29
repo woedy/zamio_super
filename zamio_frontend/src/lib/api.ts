@@ -174,6 +174,159 @@ export interface KycDocumentSummary {
   uploaded_at?: string;
 }
 
+export interface ArtistDashboardStatsSummary {
+  totalPlays: number;
+  totalStations: number;
+  totalEarnings: number;
+  avgConfidence: number;
+  growthRate: number;
+  activeTracks: number;
+}
+
+export type ArtistDashboardTrend = 'up' | 'down' | 'stable';
+
+export interface ArtistDashboardTopSong {
+  title: string;
+  plays: number;
+  earnings: number;
+  confidence: number;
+  stations: number;
+  trend?: ArtistDashboardTrend;
+}
+
+export interface ArtistDashboardSeriesPoint {
+  date: string;
+  airplay: number;
+  earnings?: number;
+}
+
+export interface ArtistDashboardRegionStat {
+  region: string;
+  plays: number;
+  earnings: number;
+  stations: number;
+  growth: number;
+  trend?: ArtistDashboardTrend;
+}
+
+export interface ArtistDashboardStationBreakdown {
+  station: string;
+  plays: number;
+  percentage: number;
+  region: string;
+  type?: string;
+}
+
+export interface ArtistDashboardPerformanceScore {
+  overall: number;
+  airplayGrowth: number;
+  regionalReach: number;
+  fanEngagement: number;
+  trackQuality: number;
+}
+
+export type ArtistFanDemographicCategory = 'region' | 'country' | 'age_range';
+
+export interface ArtistFanDemographicStat {
+  category: ArtistFanDemographicCategory;
+  label: string;
+  fans: number;
+  percentage: number;
+}
+
+export interface ArtistDashboardTargets {
+  airplayTarget: number;
+  earningsTarget: number;
+  stationsTarget: number;
+  confidenceTarget: number;
+}
+
+export interface ArtistDashboardPayload {
+  period?: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  artistName?: string;
+  stats?: ArtistDashboardStatsSummary;
+  confidenceScore?: number;
+  activeRegions?: number;
+  topSongs?: ArtistDashboardTopSong[];
+  playsOverTime?: ArtistDashboardSeriesPoint[];
+  ghanaRegions?: ArtistDashboardRegionStat[];
+  stationBreakdown?: ArtistDashboardStationBreakdown[];
+  fanDemographics?: ArtistFanDemographicStat[];
+  performanceScore?: ArtistDashboardPerformanceScore;
+  targets?: ArtistDashboardTargets;
+}
+
+export interface ArtistDashboardParams {
+  period?: string;
+  start_date?: string;
+  end_date?: string;
+}
+
+export interface ArtistLogPagination {
+  count: number;
+  page_number: number;
+  page_size: number;
+  total_pages: number;
+  next: number | null;
+  previous: number | null;
+  has_next: boolean;
+  has_previous: boolean;
+}
+
+export interface ArtistPlayLogRecord {
+  id: number;
+  track_title: string;
+  artist: string | null;
+  station_name: string;
+  matched_at: string | null;
+  stop_time: string | null;
+  duration: string | null;
+  royalty_amount: number;
+  status: string;
+  attribution_source: string;
+  partner_name?: string | null;
+  plays: number;
+  source?: string | null;
+  confidence?: number | null;
+}
+
+export interface ArtistMatchLogRecord {
+  id: number;
+  song: string;
+  artist: string | null;
+  station: string;
+  matched_at: string | null;
+  confidence?: number | null;
+  source?: string | null;
+  match_type?: string | null;
+  status?: string | null;
+}
+
+export interface ArtistLogsCollection<T> {
+  results: T[];
+  pagination: ArtistLogPagination;
+}
+
+export interface ArtistLogsPayload {
+  playLogs?: ArtistLogsCollection<ArtistPlayLogRecord>;
+  matchLogs?: ArtistLogsCollection<ArtistMatchLogRecord>;
+}
+
+export interface ArtistLogsParams {
+  artistId: string;
+  search?: string;
+  playPage?: number;
+  matchPage?: number;
+  playPageSize?: number;
+  matchPageSize?: number;
+  playSortBy?: string;
+  playSortOrder?: 'asc' | 'desc';
+  matchSortBy?: string;
+  matchSortOrder?: 'asc' | 'desc';
+}
+
 export const uploadKycDocument = async (formData: FormData) => {
   const { data } = await authApi.post<ApiEnvelope<{ document_id: number }>>(
     '/api/accounts/upload-kyc-documents/',
@@ -186,6 +339,75 @@ export const fetchKycDocuments = async () => {
   const { data } = await authApi.get<ApiEnvelope<{ documents?: KycDocumentSummary[] }>>(
     '/api/accounts/get-kyc-documents/',
   );
+  return data;
+};
+
+export const fetchArtistDashboard = async (
+  artistId: string,
+  params: ArtistDashboardParams = {},
+) => {
+  const query = {
+    artist_id: artistId,
+    ...params,
+  };
+
+  const { data } = await authApi.get<ApiEnvelope<ArtistDashboardPayload>>(
+    '/api/artists/dashboard/',
+    { params: query },
+  );
+
+  return data;
+};
+
+export const fetchArtistLogs = async ({
+  artistId,
+  search,
+  playPage,
+  matchPage,
+  playPageSize,
+  matchPageSize,
+  playSortBy,
+  playSortOrder,
+  matchSortBy,
+  matchSortOrder,
+}: ArtistLogsParams) => {
+  const query: Record<string, string | number> = {
+    artist_id: artistId,
+  };
+
+  if (search) {
+    query.search = search;
+  }
+  if (typeof playPage === 'number') {
+    query.play_page = playPage;
+  }
+  if (typeof matchPage === 'number') {
+    query.match_page = matchPage;
+  }
+  if (typeof playPageSize === 'number') {
+    query.play_page_size = playPageSize;
+  }
+  if (typeof matchPageSize === 'number') {
+    query.match_page_size = matchPageSize;
+  }
+  if (playSortBy) {
+    query.play_sort_by = playSortBy;
+  }
+  if (playSortOrder) {
+    query.play_sort_order = playSortOrder;
+  }
+  if (matchSortBy) {
+    query.match_sort_by = matchSortBy;
+  }
+  if (matchSortOrder) {
+    query.match_sort_order = matchSortOrder;
+  }
+
+  const { data } = await authApi.get<ApiEnvelope<ArtistLogsPayload>>(
+    '/api/artists/playlogs/',
+    { params: query },
+  );
+
   return data;
 };
 

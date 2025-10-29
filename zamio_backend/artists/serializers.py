@@ -149,32 +149,84 @@ class PlatformAvailabilitySerializer(serializers.ModelSerializer):
 
 
 class ArtistPlayLogSerializer(serializers.ModelSerializer):
-    track_title = serializers.CharField(source='track.title', read_only=True)  
+    track_title = serializers.CharField(source='track.title', read_only=True)
     station_name = serializers.CharField(source='station.name', read_only=True)
-    start_time = serializers.SerializerMethodField()
+    artist = serializers.SerializerMethodField()
+    matched_at = serializers.SerializerMethodField()
     stop_time = serializers.SerializerMethodField()
     duration = serializers.SerializerMethodField()
+    royalty_amount = serializers.SerializerMethodField()
+    status = serializers.SerializerMethodField()
     attribution_source = serializers.SerializerMethodField()
     partner_name = serializers.SerializerMethodField()
+    plays = serializers.SerializerMethodField()
+    source = serializers.SerializerMethodField()
+    confidence = serializers.SerializerMethodField()
 
     class Meta:
         model = PlayLog
-        fields = ['id', 'track_title', 'station_name', 'start_time', 'stop_time', 'duration', 'royalty_amount', 'attribution_source', 'partner_name']
+        fields = [
+            'id',
+            'track_title',
+            'artist',
+            'station_name',
+            'matched_at',
+            'stop_time',
+            'duration',
+            'royalty_amount',
+            'status',
+            'attribution_source',
+            'partner_name',
+            'plays',
+            'source',
+            'confidence',
+        ]
 
+    def _format_datetime(self, value):
+        if not value:
+            return None
+        return value.strftime('%Y-%m-%d ~ %H:%M:%S')
 
-    def get_start_time(self, obj):
-        return obj.start_time.strftime('%Y-%m-%d ~ %H:%M:%S')
+    def get_artist(self, obj):
+        artist = getattr(obj.track, 'artist', None)
+        if not artist:
+            return None
+        if getattr(artist, 'stage_name', None):
+            return artist.stage_name
+        user = getattr(artist, 'user', None)
+        if user and (user.first_name or user.last_name):
+            return f"{user.first_name or ''} {user.last_name or ''}".strip()
+        if user and user.username:
+            return user.username
+        if user and user.email:
+            return user.email
+        return None
 
+    def get_matched_at(self, obj):
+        return self._format_datetime(obj.played_at or obj.start_time or obj.created_at)
 
     def get_stop_time(self, obj):
-        return obj.stop_time.strftime('%Y-%m-%d ~ %H:%M:%S') 
-
+        return self._format_datetime(obj.stop_time)
 
     def get_duration(self, obj):
+        if not obj.duration:
+            return None
         total_seconds = int(obj.duration.total_seconds())
         hours, remainder = divmod(total_seconds, 3600)
         minutes, seconds = divmod(remainder, 60)
         return f"{hours:02}:{minutes:02}:{seconds:02}"
+
+    def get_royalty_amount(self, obj):
+        if obj.royalty_amount is None:
+            return 0.0
+        return float(obj.royalty_amount)
+
+    def get_status(self, obj):
+        if getattr(obj, 'flagged', False):
+            return 'Flagged'
+        if getattr(obj, 'claimed', False):
+            return 'Confirmed'
+        return 'Pending'
 
     def get_attribution_source(self, obj):
         try:
@@ -192,19 +244,79 @@ class ArtistPlayLogSerializer(serializers.ModelSerializer):
             return None
         ua = UsageAttribution.objects.filter(play_log=obj).select_related('origin_partner').first()
         if ua and ua.origin_partner:
-            # Prefer display_name then company_name
             return ua.origin_partner.display_name or ua.origin_partner.company_name
         return None
 
+    def get_plays(self, obj):
+        total = getattr(obj, 'track_total_plays', None)
+        if total is not None:
+            return total
+        return obj.track.track_playlog.filter(is_archived=False).count() if obj.track_id else 0
+
+    def get_source(self, obj):
+        return obj.source
+
+    def get_confidence(self, obj):
+        if obj.avg_confidence_score is None:
+            return None
+        return float(obj.avg_confidence_score)
+
 
 class ArtistMatchCacheSerializer(serializers.ModelSerializer):
-    track_title = serializers.CharField(source='track.title', read_only=True)  
-    station_name = serializers.CharField(source='station.name', read_only=True)
+    song = serializers.CharField(source='track.title', read_only=True)
+    artist = serializers.SerializerMethodField()
+    station = serializers.CharField(source='station.name', read_only=True)
     matched_at = serializers.SerializerMethodField()
+    confidence = serializers.SerializerMethodField()
+    source = serializers.SerializerMethodField()
+    match_type = serializers.SerializerMethodField()
+    status = serializers.SerializerMethodField()
 
     class Meta:
         model = MatchCache
-        fields = ['id', 'track_title', 'station_name', 'matched_at']
+        fields = ['id', 'song', 'artist', 'station', 'matched_at', 'confidence', 'source', 'match_type', 'status']
+
+    def get_artist(self, obj):
+        artist = getattr(obj.track, 'artist', None)
+        if not artist:
+            return None
+        if getattr(artist, 'stage_name', None):
+            return artist.stage_name
+        user = getattr(artist, 'user', None)
+        if user and (user.first_name or user.last_name):
+            return f"{user.first_name or ''} {user.last_name or ''}".strip()
+        if user and user.username:
+            return user.username
+        if user and user.email:
+            return user.email
+        return None
 
     def get_matched_at(self, obj):
-        return obj.matched_at.strftime('%Y-%m-%d ~ %H:%M:%S')
+        return obj.matched_at.strftime('%Y-%m-%d ~ %H:%M:%S') if obj.matched_at else None
+
+    def get_confidence(self, obj):
+        if obj.avg_confidence_score is None:
+            return None
+        return float(obj.avg_confidence_score)
+
+    def get_source(self, obj):
+        if obj.station_program_id:
+            return 'Station Upload'
+        return 'Local Fingerprinting'
+
+    def get_match_type(self, obj):
+        confidence = obj.avg_confidence_score or 0
+        if confidence >= 95:
+            return 'Exact Match'
+        if confidence >= 85:
+            return 'High Confidence Match'
+        if confidence > 0:
+            return 'Candidate Match'
+        return 'Unclassified'
+
+    def get_status(self, obj):
+        if obj.failed_reason:
+            return 'Review'
+        if obj.processed:
+            return 'Verified'
+        return 'Pending'
