@@ -132,6 +132,46 @@ class UploadManagementAPITestCase(TestCase):
             UploadProcessingStatus.objects.filter(upload_id='failed_upload_id').exists()
         )
 
+    def test_get_user_uploads_infers_file_type_when_missing(self):
+        legacy_upload = UploadProcessingStatus.objects.create(
+            upload_id='legacy_upload_id',
+            user=self.user,
+            upload_type='track_audio',
+            original_filename='legacy-track.wav',
+            file_size=1234,
+            mime_type='',
+            status='completed',
+            progress_percentage=100,
+            metadata={
+                'title': 'Legacy Track',
+                'file_type': 'audio/wav',
+            },
+        )
+
+        response = self.client.get('/api/artists/api/uploads/', {'page': 1, 'page_size': 10})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        uploads = response.data['data']['uploads']
+        uploads_by_id = {item['upload_id']: item for item in uploads}
+        self.assertEqual(uploads_by_id[legacy_upload.upload_id]['file_type'], 'audio/wav')
+
+    def test_get_upload_status_infers_mime_type_when_missing(self):
+        UploadProcessingStatus.objects.create(
+            upload_id='detail_legacy_upload',
+            user=self.user,
+            upload_type='track_audio',
+            original_filename='detail-track.aac',
+            file_size=3210,
+            mime_type='',
+            status='processing',
+            progress_percentage=40,
+            metadata={'file_type': 'audio/aac'},
+        )
+
+        response = self.client.get('/api/artists/api/upload-status/detail_legacy_upload/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['data']['mime_type'], 'audio/aac')
+
     def test_create_album_for_uploads_creates_or_updates_album(self):
         payload = {
             'title': 'Fresh Album',
