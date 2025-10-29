@@ -4,7 +4,7 @@ from datetime import date
 from typing import Optional
 
 from django.db.models import Count, Sum, Value, Q, DecimalField
-from django.db.models.functions import Coalesce
+from django.db.models.functions import Coalesce, TruncMonth
 from django.utils.dateparse import parse_date
 from rest_framework import status
 from rest_framework.authentication import TokenAuthentication
@@ -14,8 +14,10 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from accounts.api.custom_jwt import CustomJWTAuthentication
-from artists.models import Album, Artist, Genre
+from artists.models import Album, Artist, Genre, Track, Contributor
 from artists.serializers import AlbumManagementSerializer
+from music_monitor.models import PlayLog
+
 
 
 def _get_artist_for_request(request) -> Optional[Artist]:
@@ -191,12 +193,15 @@ def create_album(request):
         payload['errors'] = {'title': ['You already have an album with this title']}
         return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
+    cover_art = request.FILES.get('cover_art')
+
     album = Album.objects.create(
         artist=artist,
         title=title,
         release_date=release_date_value,
         genre=genre,
         active=True,
+        cover_art=cover_art or None,
     )
 
     serializer = AlbumManagementSerializer(album, context={'request': request})
@@ -282,17 +287,253 @@ def update_album(request, album_id: int):
             album.active = parsed_active
             updates.append('active')
 
+    cover_art = request.FILES.get('cover_art')
+    if cover_art:
+        album.cover_art = cover_art
+        album.cover_art_hash = ''
+        updates.append('cover_art')
+
     if not updates:
         serializer = AlbumManagementSerializer(album, context={'request': request})
         payload['message'] = 'No changes applied'
         payload['data'] = {'album': serializer.data}
         return Response(payload, status=status.HTTP_200_OK)
 
-    album.save(update_fields=updates + ['updated_at'])
+    update_fields = updates + ['updated_at']
+    if 'cover_art' in updates:
+        update_fields.append('cover_art_hash')
+
+    album.save(update_fields=list(dict.fromkeys(update_fields)))
 
     serializer = AlbumManagementSerializer(album, context={'request': request})
     payload['message'] = 'Album updated successfully'
     payload['data'] = {'album': serializer.data}
+    return Response(payload, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
+@permission_classes([IsAuthenticated])
+def retrieve_album(request, album_id: int):
+    """Return rich album analytics for the authenticated artist."""
+
+    payload = {'message': '', 'data': {}, 'errors': {}}
+
+    artist = _get_artist_for_request(request)
+    if not artist:
+        payload['message'] = 'User is not registered as an artist'
+        payload['errors'] = {'user': ['Only artists can view album details']}
+        return Response(payload, status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        album = Album.objects.get(id=album_id, artist=artist, is_archived=False)
+    except Album.DoesNotExist:
+        payload['message'] = 'Album not found'
+        payload['errors'] = {'album': ['Album not found']}
+        return Response(payload, status=status.HTTP_404_NOT_FOUND)
+
+    album_serializer = AlbumManagementSerializer(album, context={'request': request})
+
+    tracks_qs = (
+        Track.objects.filter(album=album, is_archived=False)
+        .annotate(
+            plays=Count(
+                'track_playlog',
+                filter=Q(track_playlog__is_archived=False),
+            ),
+            revenue=Coalesce(
+                Sum(
+                    'track_playlog__royalty_amount',
+                    filter=Q(track_playlog__is_archived=False),
+                ),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=2)),
+            ),
+        )
+    )
+
+    tracks_payload = []
+    total_tracks = tracks_qs.count()
+    active_tracks = tracks_qs.filter(active=True).count()
+    inactive_tracks = tracks_qs.filter(active=False).count()
+    total_plays = 0
+    total_revenue_value = 0
+    total_duration_seconds = 0
+    duration_count = 0
+
+    for track in tracks_qs:
+        plays = getattr(track, 'plays', 0) or 0
+        revenue_amount = track.revenue if getattr(track, 'revenue', None) is not None else 0
+        total_plays += plays
+        total_revenue_value += float(revenue_amount)
+        if track.duration:
+            total_duration_seconds += track.duration.total_seconds()
+            duration_count += 1
+
+        cover_url = None
+        if track.cover_art:
+            try:
+                cover_url = track.cover_art.url
+            except Exception:
+                cover_url = None
+            else:
+                if request:
+                    cover_url = request.build_absolute_uri(cover_url)
+
+        tracks_payload.append(
+            {
+                'id': track.id,
+                'title': track.title,
+                'status': (track.status or '').lower(),
+                'release_date': track.release_date.isoformat() if track.release_date else None,
+                'duration_seconds': int(track.duration.total_seconds()) if track.duration else None,
+                'plays': plays,
+                'revenue': float(revenue_amount),
+                'cover_art_url': cover_url,
+                'active': track.active,
+            }
+        )
+
+    average_track_duration = (
+        total_duration_seconds / duration_count if duration_count else None
+    )
+
+    playlogs = (
+        PlayLog.objects.filter(track__album=album, is_archived=False)
+        .annotate(effective_played_at=Coalesce('played_at', 'created_at'))
+    )
+
+    monthly_summary = (
+        playlogs
+        .exclude(effective_played_at__isnull=True)
+        .annotate(month=TruncMonth('effective_played_at'))
+        .values('month')
+        .annotate(
+            amount=Coalesce(
+                Sum('royalty_amount'),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=2)),
+            ),
+            plays=Count('id'),
+        )
+        .order_by('month')
+    )
+
+    monthly_payload = []
+    plays_over_time = []
+    for item in monthly_summary:
+        month = item['month']
+        label = month.strftime('%b %Y') if month else 'Unknown'
+        amount = float(item['amount']) if item['amount'] is not None else 0.0
+        plays_count = item.get('plays', 0) or 0
+        monthly_payload.append(
+            {
+                'month': label,
+                'amount': amount,
+                'currency': 'GHS',
+                'plays': plays_count,
+            }
+        )
+        plays_over_time.append({'label': label, 'plays': plays_count})
+
+    territory_qs = (
+        playlogs
+        .values('station__country', 'station__region')
+        .annotate(
+            amount=Coalesce(
+                Sum('royalty_amount'),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=2)),
+            ),
+            plays=Count('id'),
+        )
+        .order_by('-amount')
+    )
+
+    territory_payload = []
+    total_revenue_decimal = sum(float(item['amount']) for item in territory_qs if item['amount'] is not None)
+    for item in territory_qs:
+        amount = float(item['amount']) if item['amount'] is not None else 0.0
+        territory_name = (
+            item.get('station__country')
+            or item.get('station__region')
+            or 'Unspecified'
+        )
+        percentage = (amount / total_revenue_decimal * 100) if total_revenue_decimal else 0.0
+        territory_payload.append(
+            {
+                'territory': territory_name,
+                'amount': amount,
+                'currency': 'GHS',
+                'percentage': round(percentage, 2),
+                'plays': item.get('plays', 0) or 0,
+            }
+        )
+
+    top_station_qs = (
+        playlogs
+        .values('station__name', 'station__region', 'station__country')
+        .annotate(
+            plays=Count('id'),
+            amount=Coalesce(
+                Sum('royalty_amount'),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=2)),
+            ),
+        )
+        .order_by('-plays')[:10]
+    )
+
+    top_stations_payload = [
+        {
+            'name': item.get('station__name') or 'Unknown Station',
+            'count': item.get('plays', 0) or 0,
+            'region': item.get('station__region'),
+            'country': item.get('station__country'),
+            'revenue': float(item['amount']) if item['amount'] is not None else 0.0,
+        }
+        for item in top_station_qs
+    ]
+
+    contributors_qs = Contributor.objects.filter(track__album=album, is_archived=False)
+    contributors_payload = []
+    for contributor in contributors_qs.select_related('user'):
+        user = getattr(contributor, 'user', None)
+        if user:
+            full_name = f"{user.first_name} {user.last_name}".strip()
+            if not full_name:
+                full_name = user.get_full_name() or user.username or user.email or 'Contributor'
+        else:
+            full_name = 'Contributor'
+
+        contributors_payload.append(
+            {
+                'id': contributor.id,
+                'name': full_name,
+                'role': contributor.role,
+                'percentage': float(contributor.percent_split),
+            }
+        )
+
+    payload['message'] = 'Album details retrieved successfully'
+    payload['data'] = {
+        'album': album_serializer.data,
+        'stats': {
+            'total_tracks': total_tracks,
+            'active_tracks': active_tracks,
+            'inactive_tracks': inactive_tracks,
+            'total_plays': total_plays,
+            'total_revenue': round(total_revenue_value, 2),
+            'average_track_duration_seconds': int(average_track_duration) if average_track_duration else None,
+        },
+        'tracks': tracks_payload,
+        'revenue': {
+            'monthly': monthly_payload,
+            'territories': territory_payload,
+        },
+        'performance': {
+            'plays_over_time': plays_over_time,
+            'top_stations': top_stations_payload,
+        },
+        'contributors': contributors_payload,
+    }
+
     return Response(payload, status=status.HTTP_200_OK)
 
 

@@ -105,6 +105,25 @@ const AlbumList: React.FC = () => {
     genre: '',
     releaseDate: '',
   });
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [coverPreview, setCoverPreview] = useState<string | null>(null);
+
+  const updateCoverPreview = useCallback((next: string | null) => {
+    setCoverPreview((previous) => {
+      if (previous && previous.startsWith('blob:')) {
+        URL.revokeObjectURL(previous);
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (coverPreview && coverPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(coverPreview);
+      }
+    };
+  }, [coverPreview]);
 
   const pageSize = 9;
 
@@ -196,6 +215,8 @@ const AlbumList: React.FC = () => {
   const handleOpenCreateModal = () => {
     setEditingAlbum(null);
     setFormState({ title: '', genre: '', releaseDate: '' });
+    setCoverFile(null);
+    updateCoverPreview(null);
     setIsModalOpen(true);
   };
 
@@ -206,6 +227,8 @@ const AlbumList: React.FC = () => {
       genre: album.genre === 'Uncategorized' ? '' : album.genre,
       releaseDate: album.releaseDate ? album.releaseDate.slice(0, 10) : '',
     });
+    setCoverFile(null);
+    updateCoverPreview(album.coverArt ?? null);
     setIsModalOpen(true);
   };
 
@@ -216,6 +239,21 @@ const AlbumList: React.FC = () => {
     setIsModalOpen(false);
     setEditingAlbum(null);
     setFormState({ title: '', genre: '', releaseDate: '' });
+    setCoverFile(null);
+    updateCoverPreview(null);
+  };
+
+  const handleCoverChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    setCoverFile(file);
+
+    if (file) {
+      updateCoverPreview(URL.createObjectURL(file));
+    } else if (editingAlbum?.coverArt) {
+      updateCoverPreview(editingAlbum.coverArt);
+    } else {
+      updateCoverPreview(null);
+    }
   };
 
   const handleSubmitAlbum = async () => {
@@ -232,6 +270,7 @@ const AlbumList: React.FC = () => {
           title: trimmedTitle,
           release_date: formState.releaseDate || undefined,
           genre: formState.genre || undefined,
+          cover_art: coverFile ?? undefined,
         });
         setActionMessage('Album updated successfully.');
       } else {
@@ -239,6 +278,7 @@ const AlbumList: React.FC = () => {
           title: trimmedTitle,
           release_date: formState.releaseDate || undefined,
           genre: formState.genre || undefined,
+          cover_art: coverFile ?? undefined,
         });
         setActionMessage('Album created successfully.');
       }
@@ -247,6 +287,8 @@ const AlbumList: React.FC = () => {
       setIsModalOpen(false);
       setEditingAlbum(null);
       setFormState({ title: '', genre: '', releaseDate: '' });
+      setCoverFile(null);
+      updateCoverPreview(null);
     } catch (err) {
       setActionMessage('Unable to save album. Please try again.');
     } finally {
@@ -275,7 +317,7 @@ const AlbumList: React.FC = () => {
   };
 
   const handleViewAlbum = (albumId: number) => {
-    navigate('/dashboard/album-details', { state: { albumId } });
+    navigate(`/dashboard/album-details?albumId=${albumId}`, { state: { albumId } });
   };
 
   const getStatusColor = (status: string) => {
@@ -662,6 +704,38 @@ const AlbumList: React.FC = () => {
                   onChange={(e) => setFormState((prev) => ({ ...prev, releaseDate: e.target.value }))}
                   className="w-full px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
+              </div>
+
+              <div>
+                <label htmlFor="album-cover" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Album Cover
+                </label>
+                <div className="flex items-center space-x-4">
+                  <div className="w-20 h-20 rounded-lg overflow-hidden bg-gray-100 dark:bg-slate-700 flex items-center justify-center">
+                    {coverPreview || editingAlbum?.coverArt ? (
+                      <img
+                        src={coverPreview ?? editingAlbum?.coverArt ?? ''}
+                        alt="Album cover preview"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <Album className="w-8 h-8 text-gray-400" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <input
+                      type="file"
+                      id="album-cover"
+                      accept="image/*"
+                      onChange={handleCoverChange}
+                      disabled={isSavingAlbum}
+                      className="block w-full text-sm text-gray-700 dark:text-gray-300 file:mr-4 file:rounded-lg file:border-0 file:bg-purple-600 file:text-white hover:file:bg-purple-700 focus:outline-none"
+                    />
+                    <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                      Upload a square image (JPG, PNG, GIF, or WEBP) up to 10MB.
+                    </p>
+                  </div>
+                </div>
               </div>
 
               <div className="flex space-x-3 pt-4">

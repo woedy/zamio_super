@@ -132,11 +132,13 @@ describe('AlbumList', () => {
     fireEvent.click(saveButton);
 
     await waitFor(() => {
-      expect(mockedCreateArtistAlbum).toHaveBeenCalledWith({
-        title: 'New Album',
-        release_date: '2024-02-01',
-        genre: undefined,
-      });
+      expect(mockedCreateArtistAlbum).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'New Album',
+          release_date: '2024-02-01',
+          genre: undefined,
+        }),
+      );
     });
   });
 });
