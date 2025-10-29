@@ -22,7 +22,6 @@ import {
   Eye,
 } from 'lucide-react';
 import { Card } from '@zamio/ui';
-import Layout from '../components/Layout';
 
 // Enhanced mock data with type-specific information
 const mockPartners = [
@@ -239,21 +238,19 @@ const PartnerDetail = () => {
 
   if (!partner) {
     return (
-      <Layout>
-        <div className="flex items-center justify-center min-h-screen">
-          <div className="text-center">
-            <Building className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Partner Not Found</h2>
-            <p className="text-gray-600 dark:text-gray-400 mb-4">The requested partner could not be found.</p>
-            <button
-              onClick={() => navigate('/partners')}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-            >
-              Back to Partners
-            </button>
-          </div>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <Building className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Partner Not Found</h2>
+          <p className="text-gray-600 dark:text-gray-400 mb-4">The requested partner could not be found.</p>
+          <button
+            onClick={() => navigate('/partners')}
+            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+          >
+            Back to Partners
+          </button>
         </div>
-      </Layout>
+      </div>
     );
   }
 
@@ -279,8 +276,7 @@ const PartnerDetail = () => {
   };
 
   return (
-    <Layout>
-      <main className="w-full px-6 py-8 min-h-screen">
+    <main className="w-full px-6 py-8 min-h-screen">
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center space-x-4 mb-6">
@@ -619,7 +615,6 @@ const PartnerDetail = () => {
           )}
         </div>
       </main>
-    </Layout>
   );
 };
 

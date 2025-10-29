@@ -1,8 +1,20 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 
 import Header from './Header';
 import Sidebar from './Sidebar';
+
+const DASHBOARD_TAB_IDS = new Set([
+  'overview',
+  'stations',
+  'qa',
+  'repertoire',
+  'tariffs',
+  'exports',
+  'monitoring',
+  'analytics',
+  'system',
+]);
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -14,6 +26,38 @@ export default function Layout() {
     const restrictedPrefixes = ['/signin', '/signup', '/verify-email', '/onboarding'];
     return restrictedPrefixes.some((prefix) => location.pathname.startsWith(prefix));
   }, [location.pathname]);
+
+  useEffect(() => {
+    const path = location.pathname;
+
+    if (path === '/dashboard') {
+      if (!DASHBOARD_TAB_IDS.has(activeTab)) {
+        setActiveTab('overview');
+      }
+      return;
+    }
+
+    const routeMappings: Array<[string, string]> = [
+      ['/user-management', 'users'],
+      ['/partners', 'partners'],
+      ['/agreements', 'partners'],
+      ['/disputes', 'disputes'],
+      ['/playlogs', 'playlogs'],
+    ];
+
+    for (const [prefix, tab] of routeMappings) {
+      if (path.startsWith(prefix)) {
+        if (activeTab !== tab) {
+          setActiveTab(tab);
+        }
+        return;
+      }
+    }
+
+    if (activeTab !== 'overview') {
+      setActiveTab('overview');
+    }
+  }, [activeTab, location.pathname]);
 
   if (isAuthPage) {
     return <Outlet />;

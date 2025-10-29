@@ -15,7 +15,6 @@ import {
   Activity,
 } from 'lucide-react';
 import { Card } from '@zamio/ui';
-import Layout from '../components/Layout';
 
 // Mock data from our reference documents
 const mockPartners = [
@@ -184,8 +183,7 @@ const Partners = () => {
   };
 
   return (
-    <Layout>
-      <main className="w-full px-6 py-8 min-h-screen">
+    <main className="w-full px-6 py-8 min-h-screen">
         {/* Header */}
         <div className="mb-12">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
@@ -403,7 +401,6 @@ const Partners = () => {
           )}
         </Card>
       </main>
-    </Layout>
   );
 };
 

@@ -16,7 +16,6 @@ import {
   CheckCircle,
 } from 'lucide-react';
 import { Card } from '@zamio/ui';
-import Layout from '../components/Layout';
 
 interface UserFormData {
   name: string;
@@ -223,8 +222,7 @@ const AddUser = () => {
   };
 
   return (
-    <Layout>
-      <main className="w-full px-6 py-8 min-h-screen">
+    <main className="w-full px-6 py-8 min-h-screen">
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center space-x-4 mb-6">
@@ -383,7 +381,6 @@ const AddUser = () => {
           </div>
         </form>
       </main>
-    </Layout>
   );
 };
 
