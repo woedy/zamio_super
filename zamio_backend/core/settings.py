@@ -33,8 +33,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-insecure-secret-change-me')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-# DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
-DEBUG = True
+# Allow DEBUG to be controlled via environment variables (default False)
+DEBUG = os.environ.get("DEBUG", "False").lower() in {"1", "true", "yes"}
 
 # Hosts / CSRF
 # Default to safer localhost-only in absence of env override.
@@ -220,9 +220,9 @@ USE_TZ = True
 STATIC_URL = "static/"
 
 
-STATIC_ROOT = os.path.join(BASE_DIR, "static_cdn", "static_root")  # For static files
-MEDIA_URL = "/media/"
-MEDIA_ROOT = os.path.join(BASE_DIR, "media")  # Separate media files
+STATIC_ROOT = Path(os.environ.get("STATIC_ROOT", BASE_DIR / "static_cdn" / "static_root"))
+MEDIA_URL = os.environ.get("MEDIA_URL", "/media/")
+MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", BASE_DIR / "media"))
 #DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
 
 
