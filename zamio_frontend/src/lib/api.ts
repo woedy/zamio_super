@@ -225,6 +225,22 @@ export interface ArtistDashboardPerformanceScore {
   trackQuality: number;
 }
 
+export type ArtistFanDemographicCategory = 'region' | 'country' | 'age_range';
+
+export interface ArtistFanDemographicStat {
+  category: ArtistFanDemographicCategory;
+  label: string;
+  fans: number;
+  percentage: number;
+}
+
+export interface ArtistDashboardTargets {
+  airplayTarget: number;
+  earningsTarget: number;
+  stationsTarget: number;
+  confidenceTarget: number;
+}
+
 export interface ArtistDashboardPayload {
   period?: string;
   start_date?: string | null;
@@ -237,8 +253,9 @@ export interface ArtistDashboardPayload {
   playsOverTime?: ArtistDashboardSeriesPoint[];
   ghanaRegions?: ArtistDashboardRegionStat[];
   stationBreakdown?: ArtistDashboardStationBreakdown[];
-  fanDemographics?: Record<string, unknown>[];
+  fanDemographics?: ArtistFanDemographicStat[];
   performanceScore?: ArtistDashboardPerformanceScore;
+  targets?: ArtistDashboardTargets;
 }
 
 export interface ArtistDashboardParams {

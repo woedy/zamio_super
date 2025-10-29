@@ -1,4 +1,4 @@
-import random
+from collections import Counter
 from datetime import datetime, timedelta
 
 from django.db.models import Avg, Count, Sum
@@ -12,7 +12,7 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from artists.models import Artist
-from music_monitor.models import PlayLog
+from music_monitor.models import PlayLog, StreamLog
 from stations.models import Station
 
 @api_view(['GET'])
@@ -67,6 +67,25 @@ def get_artist_homedata(request):
 
     period_end = end_date or now
 
+    comparison_start = comparison_end = None
+    lookback_delta = None
+    prev_logs = PlayLog.objects.none()
+
+    if start_date:
+        comparison_end = start_date
+        comparison_start = start_date
+        if end_date:
+            lookback_delta = end_date - start_date
+        else:
+            lookback_delta = period_end - start_date
+
+        if not lookback_delta or lookback_delta.total_seconds() <= 0:
+            lookback_delta = timedelta(days=7)
+
+        comparison_start = start_date - lookback_delta
+        prev_logs = PlayLog.objects.filter(track__artist=artist, active=True)
+        prev_logs = prev_logs.filter(played_at__gte=comparison_start, played_at__lt=comparison_end)
+
     totalPlays = playlogs.count()
     totalStations = playlogs.values('station').distinct().count()
     totalEarnings = playlogs.aggregate(total=Sum('royalty_amount'))['total'] or 0
@@ -76,7 +95,7 @@ def get_artist_homedata(request):
 
     # Top Songs
     top_tracks = (
-        playlogs.values('track__title')
+        playlogs.values('track', 'track__title')
         .annotate(
             plays=Count('id'),
             earnings=Sum('royalty_amount'),
@@ -85,19 +104,41 @@ def get_artist_homedata(request):
         )
         .order_by('-plays')[:5]
     )
+
+    prev_track_map = {}
+    if start_date:
+        prev_track_map = {
+            entry['track']: entry['plays']
+            for entry in (
+                prev_logs.values('track')
+                .annotate(plays=Count('id'))
+            )
+        }
+
     topSongs = []
     for index, track in enumerate(top_tracks):
         trend = 'stable'
-        if index == 0:
-            trend = 'up'
-        elif index == len(top_tracks) - 1 and len(top_tracks) > 1:
-            trend = 'down'
+        if start_date:
+            prev_count = prev_track_map.get(track['track'], 0)
+            if prev_count:
+                change = track['plays'] - prev_count
+                if change > 0:
+                    trend = 'up'
+                elif change < 0:
+                    trend = 'down'
+            else:
+                trend = 'up' if track['plays'] else 'stable'
+        else:
+            if index == 0:
+                trend = 'up'
+            elif index == len(top_tracks) - 1 and len(top_tracks) > 1:
+                trend = 'down'
 
         topSongs.append({
             "title": track['track__title'],
             "plays": track['plays'],
-            "earnings": round(track['earnings'] or 0, 2),
-            "confidence": int(track['confidence'] or 0),
+            "earnings": round(float(track['earnings'] or 0), 2),
+            "confidence": round(float(track['confidence'] or 0), 1),
             "stations": track['stations'],
             "trend": trend,
         })
@@ -124,7 +165,7 @@ def get_artist_homedata(request):
         {
             'date': entry['date'].strftime('%Y-%m-%d'),
             'airplay': entry['airplay'],
-            'earnings': round(entry['earnings'] or 0, 2),
+            'earnings': round(float(entry['earnings'] or 0), 2),
         }
         for entry in time_qs
     ]
@@ -133,13 +174,46 @@ def get_artist_homedata(request):
     region_qs = playlogs.values('station__region').annotate(
         plays=Count('id'), earnings=Sum('royalty_amount'), stations=Count('station', distinct=True)
     )
-    ghanaRegions = [{
-        "region": r['station__region'] or "Unknown",
-        "plays": r['plays'],
-        "earnings": round(r['earnings'] or 0, 2),
-        "stations": r['stations'],
-        "growth": round(random.uniform(-10.0, 25.0), 1)
-    } for r in region_qs]
+    prev_region_map = {}
+    if start_date:
+        prev_region_map = {
+            entry['station__region']: entry['plays']
+            for entry in (
+                prev_logs.values('station__region')
+                .annotate(plays=Count('id'))
+            )
+        }
+
+    ghanaRegions = []
+    for r in region_qs:
+        region_name = r['station__region'] or "Unknown"
+        current_plays = r['plays']
+        previous_plays = prev_region_map.get(r['station__region'], 0) if start_date else None
+        if start_date:
+            if previous_plays:
+                growth_value = ((current_plays - previous_plays) / previous_plays) * 100
+            elif current_plays:
+                growth_value = 100.0
+            else:
+                growth_value = 0.0
+        else:
+            growth_value = 0.0
+
+        if growth_value > 1:
+            region_trend = 'up'
+        elif growth_value < -1:
+            region_trend = 'down'
+        else:
+            region_trend = 'stable'
+
+        ghanaRegions.append({
+            "region": region_name,
+            "plays": current_plays,
+            "earnings": round(float(r['earnings'] or 0), 2),
+            "stations": r['stations'],
+            "growth": round(growth_value, 1),
+            "trend": region_trend,
+        })
 
     for region in ghanaRegions:
         growth = region['growth']
@@ -177,23 +251,73 @@ def get_artist_homedata(request):
             "type": "Mixed"
         })
 
-    # Fan Demographics (streaming-agnostic placeholder)
+    # Fan Demographics
     fanDemographics = []
-
-    # Performance Score
-    lookback_delta = None
+    stream_logs = StreamLog.objects.filter(track__artist=artist, active=True).exclude(fan__isnull=True)
     if start_date:
-        comparison_end = start_date
-        comparison_start = start_date
         if end_date:
-            lookback_delta = end_date - start_date
+            stream_logs = stream_logs.filter(played_at__range=(start_date, end_date))
         else:
-            lookback_delta = period_end - start_date
-        if lookback_delta.total_seconds() <= 0:
-            lookback_delta = timedelta(days=7)
-        comparison_start = start_date - lookback_delta
-        prev_logs = PlayLog.objects.filter(track__artist=artist, active=True)
-        prev_logs = prev_logs.filter(played_at__gte=comparison_start, played_at__lt=comparison_end)
+            stream_logs = stream_logs.filter(played_at__gte=start_date)
+
+    fan_ids = list(stream_logs.values_list('fan_id', flat=True).distinct())
+    if fan_ids:
+        from fan.models import Fan  # local import to avoid circular dependencies
+
+        fans = list(Fan.objects.filter(id__in=fan_ids))
+        total_fans = len(fans)
+
+        region_counts = Counter([fan.region or "Unknown" for fan in fans])
+        country_counts = Counter([fan.country or "Unknown" for fan in fans])
+
+        age_buckets = {
+            '13-17': 0,
+            '18-24': 0,
+            '25-34': 0,
+            '35-44': 0,
+            '45+': 0,
+        }
+        today = timezone.now().date()
+        for fan in fans:
+            if fan.dob:
+                age = max(0, (today - fan.dob.date()).days // 365)
+                if age < 18:
+                    age_buckets['13-17'] += 1
+                elif age < 25:
+                    age_buckets['18-24'] += 1
+                elif age < 35:
+                    age_buckets['25-34'] += 1
+                elif age < 45:
+                    age_buckets['35-44'] += 1
+                else:
+                    age_buckets['45+'] += 1
+
+        for label, count in region_counts.most_common(5):
+            fanDemographics.append({
+                "category": "region",
+                "label": label,
+                "fans": count,
+                "percentage": round((count / total_fans) * 100, 1) if total_fans else 0,
+            })
+
+        for label, count in country_counts.most_common(3):
+            fanDemographics.append({
+                "category": "country",
+                "label": label,
+                "fans": count,
+                "percentage": round((count / total_fans) * 100, 1) if total_fans else 0,
+            })
+
+        for label, count in age_buckets.items():
+            if count:
+                fanDemographics.append({
+                    "category": "age_range",
+                    "label": label,
+                    "fans": count,
+                    "percentage": round((count / total_fans) * 100, 1) if total_fans else 0,
+                })
+
+    if start_date:
         prev_plays = prev_logs.count()
     else:
         prev_plays = 0
@@ -238,10 +362,18 @@ def get_artist_homedata(request):
     stats_summary = {
         "totalPlays": totalPlays,
         "totalStations": totalStations,
-        "totalEarnings": round(totalEarnings, 2),
-        "avgConfidence": round(confidence_score, 1),
+        "totalEarnings": round(float(totalEarnings), 2) if totalEarnings else 0.0,
+        "avgConfidence": round(float(confidence_score), 1) if confidence_score else 0.0,
         "growthRate": growth_rate,
         "activeTracks": active_tracks,
+    }
+
+    confidence_value = float(confidence_score) if confidence_score else 0.0
+    targets = {
+        "airplayTarget": totalPlays + max(5, int(totalPlays * 0.15)) if totalPlays else 10,
+        "earningsTarget": round(float(totalEarnings) * 1.2 + 50, 2) if totalEarnings else 100.0,
+        "stationsTarget": totalStations + max(1, int(totalStations * 0.1)) if totalStations else 3,
+        "confidenceTarget": min(100.0, round(confidence_value + 5.0, 1)),
     }
 
     data.update({
@@ -250,14 +382,15 @@ def get_artist_homedata(request):
         "end_date": ed_str,
         "artistName": artist.stage_name,
         "stats": stats_summary,
-        "confidenceScore": round(confidence_score, 1),
+        "confidenceScore": round(float(confidence_score), 1) if confidence_score else 0.0,
         "activeRegions": active_regions,
         "topSongs": topSongs,
         "playsOverTime": playsOverTime,
         "ghanaRegions": ghanaRegions,
         "stationBreakdown": stationBreakdown,
         "fanDemographics": fanDemographics,
-        "performanceScore": performanceScore
+        "performanceScore": performanceScore,
+        "targets": targets
     })
 
     return Response({"message": "Successful", "data": data}, status=status.HTTP_200_OK)

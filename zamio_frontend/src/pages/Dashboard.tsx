@@ -194,13 +194,21 @@ const Dashboard = () => {
     [dashboardData],
   );
 
-  // Sample target data for progress tracking
-  const monthlyTargets = {
-    airplayTarget: 20000,
-    earningsTarget: 1200,
-    stationsTarget: 150,
-    confidenceTarget: 95
-  };
+  const targets = useMemo(() => {
+    const backendTargets = dashboardData?.targets;
+
+    const fallbackAirplay = statsData.totalPlays ? Math.ceil(statsData.totalPlays * 1.15) : 10;
+    const fallbackEarnings = statsData.totalEarnings ? Math.round(statsData.totalEarnings * 1.2 + 50) : 100;
+    const fallbackStations = statsData.totalStations ? Math.ceil(statsData.totalStations * 1.1) : 3;
+    const fallbackConfidence = statsData.avgConfidence ? Math.min(100, Math.round((statsData.avgConfidence + 5) * 10) / 10) : 70;
+
+    return {
+      airplayTarget: backendTargets?.airplayTarget ?? fallbackAirplay,
+      earningsTarget: backendTargets?.earningsTarget ?? fallbackEarnings,
+      stationsTarget: backendTargets?.stationsTarget ?? fallbackStations,
+      confidenceTarget: backendTargets?.confidenceTarget ?? fallbackConfidence,
+    };
+  }, [dashboardData?.targets, statsData.avgConfidence, statsData.totalEarnings, statsData.totalPlays, statsData.totalStations]);
 
   const maxPlays = useMemo(() => {
     if (!playsOverTime.length) {
@@ -507,13 +515,13 @@ const Dashboard = () => {
               <div className="flex items-center justify-between text-xs mb-1">
                 <span className="text-gray-500 dark:text-gray-400">Monthly Target</span>
                 <span className="text-gray-600 dark:text-gray-300 font-medium">
-                  {statsData.totalPlays.toLocaleString()} / {monthlyTargets.airplayTarget.toLocaleString()}
+                  {statsData.totalPlays.toLocaleString()} / {targets.airplayTarget.toLocaleString()}
                 </span>
               </div>
               <div className="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-2">
                 <div
                   className="bg-blue-500 h-2 rounded-full transition-all duration-500"
-                  style={{ width: `${Math.min((statsData.totalPlays / monthlyTargets.airplayTarget) * 100, 100)}%` }}
+                    style={{ width: `${Math.min((statsData.totalPlays / targets.airplayTarget) * 100, 100)}%` }}
                 />
               </div>
             </div>
@@ -542,13 +550,13 @@ const Dashboard = () => {
               <div className="flex items-center justify-between text-xs mb-1">
                 <span className="text-gray-500 dark:text-gray-400">Monthly Target</span>
                 <span className="text-gray-600 dark:text-gray-300 font-medium">
-                  ₵{statsData.totalEarnings.toLocaleString()} / ₵{monthlyTargets.earningsTarget.toLocaleString()}
+                  ₵{statsData.totalEarnings.toLocaleString()} / ₵{targets.earningsTarget.toLocaleString()}
                 </span>
               </div>
               <div className="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-2">
                 <div
                   className="bg-green-500 h-2 rounded-full transition-all duration-500"
-                  style={{ width: `${Math.min((statsData.totalEarnings / monthlyTargets.earningsTarget) * 100, 100)}%` }}
+                    style={{ width: `${Math.min((statsData.totalEarnings / targets.earningsTarget) * 100, 100)}%` }}
                 />
               </div>
             </div>
@@ -570,10 +578,10 @@ const Dashboard = () => {
               <span className="text-gray-500 dark:text-gray-400">Across Ghana</span>
               <div className="flex items-center">
                 <div className="w-8 h-1 bg-gray-200 dark:bg-slate-600 rounded-full mr-2">
-                  <div className="w-full h-full bg-orange-400 rounded-full" style={{ width: `${Math.min((statsData.totalStations / monthlyTargets.stationsTarget) * 100, 100)}%` }}></div>
+                  <div className="w-full h-full bg-orange-400 rounded-full" style={{ width: `${Math.min((statsData.totalStations / targets.stationsTarget) * 100, 100)}%` }}></div>
                 </div>
                 <span className="text-orange-600 dark:text-orange-400 text-xs font-medium">
-                  {Math.round((statsData.totalStations / monthlyTargets.stationsTarget) * 100)}%
+                  {Math.round((statsData.totalStations / targets.stationsTarget) * 100)}%
                 </span>
               </div>
             </div>
@@ -581,13 +589,13 @@ const Dashboard = () => {
               <div className="flex items-center justify-between text-xs mb-1">
                 <span className="text-gray-500 dark:text-gray-400">Monthly Target</span>
                 <span className="text-gray-600 dark:text-gray-300 font-medium">
-                  {statsData.totalStations} / {monthlyTargets.stationsTarget}
+                  {statsData.totalStations} / {targets.stationsTarget}
                 </span>
               </div>
               <div className="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-2">
                 <div
                   className="bg-orange-500 h-2 rounded-full transition-all duration-500"
-                  style={{ width: `${Math.min((statsData.totalStations / monthlyTargets.stationsTarget) * 100, 100)}%` }}
+                  style={{ width: `${Math.min((statsData.totalStations / targets.stationsTarget) * 100, 100)}%` }}
                 />
               </div>
             </div>
@@ -632,13 +640,13 @@ const Dashboard = () => {
               <div className="flex items-center justify-between text-xs mb-1">
                 <span className="text-gray-500 dark:text-gray-400">Target</span>
                 <span className="text-gray-600 dark:text-gray-300 font-medium">
-                  {statsData.avgConfidence}% / {monthlyTargets.confidenceTarget}%
+                  {statsData.avgConfidence}% / {targets.confidenceTarget}%
                 </span>
               </div>
               <div className="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-2">
                 <div
                   className="bg-purple-500 h-2 rounded-full transition-all duration-500"
-                  style={{ width: `${Math.min((statsData.avgConfidence / monthlyTargets.confidenceTarget) * 100, 100)}%` }}
+                  style={{ width: `${Math.min((statsData.avgConfidence / targets.confidenceTarget) * 100, 100)}%` }}
                 />
               </div>
             </div>
