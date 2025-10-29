@@ -28,6 +28,15 @@ const isLikelyAbsoluteUrl = (value: string): boolean => {
   }
 };
 
+const resolveBaseOrigin = (baseUrl: string): string => {
+  try {
+    const parsed = new URL(baseUrl);
+    return parsed.origin;
+  } catch (_error) {
+    return baseUrl;
+  }
+};
+
 export const resolveMediaUrl = (input?: string | null): string | null => {
   if (!input) {
     return null;
@@ -43,14 +52,15 @@ export const resolveMediaUrl = (input?: string | null): string | null => {
   }
 
   const baseUrl = resolveApiBaseUrl();
-  const normalizedBase = appendTrailingSlash(baseUrl);
+  const origin = resolveBaseOrigin(baseUrl);
+  const normalizedBase = appendTrailingSlash(origin);
   const normalizedPath = trimmed.startsWith('/') ? trimmed.slice(1) : trimmed;
 
   try {
     return new URL(normalizedPath, normalizedBase).toString();
   } catch (_error) {
     try {
-      return new URL(trimmed.startsWith('/') ? trimmed : `/${trimmed}`, baseUrl).toString();
+      return new URL(trimmed.startsWith('/') ? trimmed : `/${trimmed}`, origin).toString();
     } catch (_nestedError) {
       return trimmed;
     }
