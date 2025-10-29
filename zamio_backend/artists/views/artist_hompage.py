@@ -215,6 +215,15 @@ def get_artist_homedata(request):
             "trend": region_trend,
         })
 
+    for region in ghanaRegions:
+        growth = region['growth']
+        if growth > 1:
+            region['trend'] = 'up'
+        elif growth < -1:
+            region['trend'] = 'down'
+        else:
+            region['trend'] = 'stable'
+
     # Station Breakdown
     sb_qs = (
         playlogs
