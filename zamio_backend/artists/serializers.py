@@ -52,6 +52,77 @@ class AlbumSerializer(serializers.ModelSerializer):
         fields = ['id', 'title', 'artist_name']
 
 
+class AlbumManagementSerializer(serializers.ModelSerializer):
+    """Serializer used by the artist album management API."""
+
+    artist = serializers.CharField(source='artist.stage_name', read_only=True)
+    artist_id = serializers.CharField(source='artist.artist_id', read_only=True)
+    genre = serializers.SerializerMethodField()
+    status = serializers.SerializerMethodField()
+    raw_status = serializers.CharField(source='status', read_only=True)
+    cover_art_url = serializers.SerializerMethodField()
+    track_count = serializers.IntegerField(read_only=True)
+    total_plays = serializers.IntegerField(read_only=True)
+    total_revenue = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        read_only=True,
+        coerce_to_string=False,
+    )
+    release_date = serializers.DateField(format='%Y-%m-%d', allow_null=True, required=False)
+    created_at = serializers.DateTimeField(read_only=True)
+    updated_at = serializers.DateTimeField(read_only=True)
+
+    class Meta:
+        model = Album
+        fields = [
+            'id',
+            'album_id',
+            'title',
+            'artist',
+            'artist_id',
+            'genre',
+            'release_date',
+            'track_count',
+            'total_plays',
+            'total_revenue',
+            'cover_art_url',
+            'status',
+            'raw_status',
+            'is_archived',
+            'active',
+            'created_at',
+            'updated_at',
+        ]
+
+    def get_genre(self, obj):
+        return obj.genre.name if obj.genre else None
+
+    def get_status(self, obj):
+        if obj.is_archived:
+            return 'inactive'
+        if not obj.active:
+            return 'inactive'
+        if (obj.status or '').lower() == 'pending':
+            return 'draft'
+        return 'active'
+
+    def get_cover_art_url(self, obj):
+        cover = getattr(obj, 'cover_art', None)
+        if not cover:
+            return None
+
+        request = self.context.get('request') if isinstance(self.context, dict) else None
+        try:
+            url = cover.url
+        except Exception:
+            return None
+
+        if request:
+            return request.build_absolute_uri(url)
+        return url
+
+
 # Album Details Serializer for editing
 class AlbumDetailsSerializer(serializers.ModelSerializer):
     artist_name = serializers.CharField(source='artist.stage_name', read_only=True)

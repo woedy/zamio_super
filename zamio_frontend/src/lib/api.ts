@@ -542,3 +542,104 @@ export const createAlbumForUploads = async (payload: CreateAlbumPayload) => {
   );
   return data;
 };
+
+export interface AlbumSummary {
+  id: number;
+  album_id?: string | null;
+  title: string;
+  artist: string;
+  artist_id?: string;
+  genre?: string | null;
+  release_date?: string | null;
+  track_count: number;
+  total_plays: number;
+  total_revenue: number;
+  cover_art_url?: string | null;
+  status: 'active' | 'inactive' | 'draft';
+  raw_status?: string | null;
+  is_archived: boolean;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AlbumListStats {
+  total: number;
+  active: number;
+  inactive: number;
+  draft: number;
+}
+
+export interface AlbumListPagination {
+  page: number;
+  page_size: number;
+  total_pages: number;
+  total_count: number;
+  has_next: boolean;
+  has_previous: boolean;
+}
+
+export interface AlbumListPayload {
+  albums: AlbumSummary[];
+  pagination: AlbumListPagination;
+  stats: AlbumListStats;
+}
+
+export interface AlbumListParams {
+  page?: number;
+  page_size?: number;
+  search?: string;
+  status?: string;
+  sort_by?: string;
+  sort_order?: string;
+}
+
+export const fetchArtistAlbums = async (params: AlbumListParams = {}) => {
+  const { data } = await authApi.get<ApiEnvelope<AlbumListPayload>>(
+    '/api/artists/api/albums/',
+    { params },
+  );
+  return data;
+};
+
+export interface CreateArtistAlbumPayload {
+  title: string;
+  release_date?: string;
+  genre_id?: number;
+  genre?: string;
+}
+
+export const createArtistAlbum = async (payload: CreateArtistAlbumPayload) => {
+  const { data } = await authApi.post<ApiEnvelope<{ album: AlbumSummary }>>(
+    '/api/artists/api/albums/manage/',
+    payload,
+  );
+  return data;
+};
+
+export interface UpdateArtistAlbumPayload {
+  title?: string;
+  release_date?: string;
+  genre_id?: number;
+  genre?: string;
+  status?: string;
+  active?: boolean;
+}
+
+export const updateArtistAlbum = async (
+  albumId: number,
+  payload: UpdateArtistAlbumPayload,
+) => {
+  const { data } = await authApi.patch<ApiEnvelope<{ album: AlbumSummary }>>(
+    `/api/artists/api/albums/${albumId}/`,
+    payload,
+  );
+  return data;
+};
+
+export const deleteArtistAlbum = async (albumId: number) => {
+  const { data } = await authApi.delete<ApiEnvelope<Record<string, unknown>>>(
+    `/api/artists/api/albums/${albumId}/delete/`,
+  );
+  return data;
+};

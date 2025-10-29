@@ -15,6 +15,7 @@ from django.db.models import Q, Count
 from django.utils.dateparse import parse_date
 from accounts.models import AuditLog
 from artists.models import Track, Album, Artist, UploadProcessingStatus, Contributor, Genre
+from .album_management_views import _parse_release_date, _resolve_genre
 from accounts.api.custom_jwt import CustomJWTAuthentication
 from artists.tasks import process_track_upload, process_cover_art_upload, update_contributor_splits
 from artists.services.media_file_service import MediaFileService
@@ -630,35 +631,48 @@ def create_album_for_uploads(request):
             payload['errors'] = {'title': ['This field is required']}
             return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
-        release_date_raw = (request.data.get('release_date') or '').strip()
-        release_date_value = parse_date(release_date_raw) if release_date_raw else None
+        release_date_raw = request.data.get('release_date')
         genre_name = (request.data.get('genre') or request.data.get('genre_name') or '').strip()
+        release_date_value = _parse_release_date(release_date_raw)
+        if release_date_raw and release_date_value is None:
+            payload['message'] = 'Invalid release date'
+            payload['errors'] = {'release_date': ['Use the YYYY-MM-DD date format']}
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
-        genre = None
-        if genre_name:
-            genre, _ = Genre.objects.get_or_create(name=genre_name)
+        try:
+            genre = _resolve_genre(request.data.get('genre_id'), genre_name)
+        except Genre.DoesNotExist:
+            payload['message'] = 'Genre not found'
+            payload['errors'] = {'genre': ['The provided genre could not be found']}
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
-        album_defaults = {}
-        if release_date_value:
-            album_defaults['release_date'] = release_date_value
-        if genre:
-            album_defaults['genre'] = genre
+        album = Album.objects.filter(artist=artist, title__iexact=title).first()
+        created = False
 
-        album, created = Album.objects.get_or_create(
-            artist=artist,
-            title=title,
-            defaults={**album_defaults}
-        )
+        if album and album.is_archived:
+            album.is_archived = False
+            album.active = True
+            album.save(update_fields=['is_archived', 'active', 'updated_at'])
 
-        updates = []
-        if release_date_value and album.release_date != release_date_value:
-            album.release_date = release_date_value
-            updates.append('release_date')
-        if genre and album.genre_id != genre.id:
-            album.genre = genre
-            updates.append('genre')
-        if updates:
-            album.save(update_fields=updates)
+        if not album:
+            album = Album.objects.create(
+                artist=artist,
+                title=title,
+                release_date=release_date_value,
+                genre=genre,
+                active=True,
+            )
+            created = True
+        else:
+            updates = []
+            if release_date_value and album.release_date != release_date_value:
+                album.release_date = release_date_value
+                updates.append('release_date')
+            if genre and album.genre != genre:
+                album.genre = genre
+                updates.append('genre')
+            if updates:
+                album.save(update_fields=updates + ['updated_at'])
 
         AuditLog.objects.create(
             user=request.user,
