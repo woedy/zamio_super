@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Upload,
@@ -6,123 +6,64 @@ import {
   CheckCircle,
   XCircle,
   Clock,
-  AlertTriangle,
   Search,
-  Filter,
-  Download,
   Eye,
   Trash2,
   RefreshCw,
-  Play,
   Pause,
-  MoreHorizontal,
   ChevronUp,
   ChevronDown,
   ArrowUpDown,
   Album
 } from 'lucide-react';
+import {
+  fetchUploadManagement,
+  initiateUpload,
+  fetchUploadStatusById,
+  cancelUploadRequest,
+  deleteUploadRequest,
+  createAlbumForUploads,
+  type UploadLifecycleStatus,
+  type UploadManagementPagination,
+} from '../lib/api';
 
-// Type definitions for upload management
 interface UploadData {
   id: string;
-  filename: string;
-  fileType: string;
-  fileSize: number;
-  uploadDate: string;
-  status: 'uploading' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  uploadId: string;
+  status: UploadLifecycleStatus;
+  rawStatus?: string;
   progress: number;
-  duration?: string;
-  artist?: string;
-  album?: string;
-  title?: string;
-  station?: string;
-  error?: string;
+  filename: string;
+  fileSize: number;
+  fileType?: string | null;
+  uploadDate: string;
+  error?: string | null;
   retryCount?: number;
+  duration?: string | null;
+  artist?: string | null;
+  album?: string | null;
+  title?: string | null;
+  station?: string | null;
+  entityId?: number | null;
 }
 
-// Mock data for uploads
-const uploadData: UploadData[] = [
-  {
-    id: '1',
-    filename: 'track_001.mp3',
-    fileType: 'audio/mpeg',
-    fileSize: 5242880, // 5MB
-    uploadDate: '2024-10-16T10:30:00Z',
-    status: 'completed',
-    progress: 100,
-    duration: '3:45',
-    artist: 'King Promise',
-    album: '5 Star',
-    title: 'Ghana Na Woti',
-    station: 'Peace FM'
-  },
-  {
-    id: '2',
-    filename: 'album_mix.wav',
-    fileType: 'audio/wav',
-    fileSize: 15728640, // 15MB
-    uploadDate: '2024-10-16T11:15:00Z',
-    status: 'processing',
-    progress: 75,
-    duration: '4:22',
-    artist: 'Samini',
-    album: 'Obra',
-    title: 'Obra Mix'
-  },
-  {
-    id: '3',
-    filename: 'live_session.flac',
-    fileType: 'audio/flac',
-    fileSize: 26214400, // 25MB
-    uploadDate: '2024-10-16T12:00:00Z',
-    status: 'failed',
-    progress: 0,
-    error: 'File too large - maximum 20MB allowed',
-    retryCount: 2,
-    artist: 'Kuami Eugene',
-    album: 'Son Of Africa',
-    title: 'Angela'
-  },
-  {
-    id: '4',
-    filename: 'radio_show.mp3',
-    fileType: 'audio/mpeg',
-    fileSize: 10485760, // 10MB
-    uploadDate: '2024-10-16T12:30:00Z',
-    status: 'uploading',
-    progress: 45,
-    duration: '2:15:30',
-    artist: 'Various Artists',
-    album: 'Morning Drive Compilation',
-    title: 'Morning Drive Show'
-  },
-  {
-    id: '5',
-    filename: 'single_release.mp3',
-    fileType: 'audio/mpeg',
-    fileSize: 3670016, // 3.5MB
-    uploadDate: '2024-10-16T13:00:00Z',
-    status: 'completed',
-    progress: 100,
-    duration: '3:12',
-    artist: 'Kuami Eugene',
-    album: 'Love & Light',
-    title: 'Love & Light'
-  },
-  {
-    id: '6',
-    filename: 'podcast_episode.wav',
-    fileType: 'audio/wav',
-    fileSize: 8388608, // 8MB
-    uploadDate: '2024-10-16T13:30:00Z',
-    status: 'cancelled',
-    progress: 30,
-    duration: '45:20',
-    artist: 'Various Hosts',
-    album: 'Tech Talk Ghana',
-    title: 'Tech Talk Ghana'
+const mapBackendStatus = (status?: string): UploadLifecycleStatus => {
+  switch (status) {
+    case 'processing':
+      return 'processing';
+    case 'completed':
+      return 'completed';
+    case 'failed':
+      return 'failed';
+    case 'cancelled':
+      return 'cancelled';
+    case 'uploading':
+    case 'pending':
+    case 'queued':
+    default:
+      return 'uploading';
   }
-];
+};
 
 const UploadManagement: React.FC = () => {
   const navigate = useNavigate();
@@ -141,8 +82,17 @@ const UploadManagement: React.FC = () => {
     artist: '',
     genre: '',
     releaseDate: '',
-    description: ''
+    description: '',
   });
+  const [uploads, setUploads] = useState<UploadData[]>([]);
+  const [availableAlbums, setAvailableAlbums] = useState<string[]>([]);
+  const [stats, setStats] = useState({ total: 0, uploading: 0, processing: 0, completed: 0, failed: 0 });
+  const [pagination, setPagination] = useState<UploadManagementPagination | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [isCreatingAlbum, setIsCreatingAlbum] = useState(false);
 
   // Bulk Upload State Management
   const [bulkUploadStep, setBulkUploadStep] = useState(1);
@@ -164,9 +114,92 @@ const UploadManagement: React.FC = () => {
     featured?: boolean;
     tags?: string[];
   }}>({});
-  const [uploadProgress, setUploadProgress] = useState<{[key: string]: number}>({});
-  const [uploadStatus, setUploadStatus] = useState<{[key: string]: 'uploading' | 'processing' | 'completed' | 'failed' | 'cancelled'}>({});
+  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
+  const [uploadStatus, setUploadStatus] = useState<Record<string, UploadLifecycleStatus>>({});
+  const [uploadErrors, setUploadErrors] = useState<Record<string, string>>({});
+  const [uploadIdentifiers, setUploadIdentifiers] = useState<Record<string, string>>({});
   const [isBulkUploading, setIsBulkUploading] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(searchTerm), 400);
+    return () => window.clearTimeout(timer);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    if (!actionMessage) {
+      return;
+    }
+    const timer = window.setTimeout(() => setActionMessage(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [actionMessage]);
+
+  const fetchUploads = useCallback(
+    async (pageToLoad: number) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await fetchUploadManagement({
+          page: pageToLoad,
+          page_size: itemsPerPage,
+          status: activeTab !== 'all' ? activeTab : undefined,
+          search: debouncedSearch || undefined,
+          album: selectedAlbum !== 'all' ? selectedAlbum : undefined,
+          sort_by: sortBy,
+          sort_order: sortOrder,
+        });
+
+        const payload = response?.data;
+        const remoteUploads = payload?.uploads ?? [];
+        const normalizedUploads: UploadData[] = remoteUploads.map((item) => ({
+          id: item.upload_id || item.id,
+          uploadId: item.upload_id || item.id,
+          status: mapBackendStatus(item.status || item.raw_status),
+          rawStatus: item.raw_status,
+          progress: typeof item.progress === 'number' ? item.progress : 0,
+          filename: item.filename,
+          fileSize: item.file_size,
+          fileType: item.file_type ?? null,
+          uploadDate: item.upload_date,
+          error: item.error ?? null,
+          retryCount: item.retry_count ?? 0,
+          duration: item.duration ?? null,
+          artist: item.artist ?? null,
+          album: item.album ?? null,
+          title: item.title ?? null,
+          station: item.station ?? null,
+          entityId: item.entity_id ?? null,
+        }));
+
+        setUploads(normalizedUploads);
+        setStats(payload?.stats ?? { total: 0, uploading: 0, processing: 0, completed: 0, failed: 0 });
+        setAvailableAlbums(payload?.filters?.albums ?? []);
+
+        if (payload?.pagination) {
+          setPagination(payload.pagination);
+          if (payload.pagination.page !== pageToLoad) {
+            setCurrentPage(payload.pagination.page);
+          }
+        } else {
+          setPagination(null);
+        }
+
+        setSelectedUploads((prev) => prev.filter((id) => normalizedUploads.some((upload) => upload.id === id)));
+      } catch (err) {
+        setError('Failed to load uploads. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [activeTab, debouncedSearch, selectedAlbum, sortBy, sortOrder, itemsPerPage]
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, debouncedSearch, selectedAlbum, sortBy, sortOrder]);
+
+  useEffect(() => {
+    fetchUploads(currentPage);
+  }, [currentPage, fetchUploads]);
 
   const resetBulkUpload = () => {
     setBulkUploadStep(1);
@@ -181,19 +214,21 @@ const UploadManagement: React.FC = () => {
   const handleBulkFileSelect = (files: FileList | null) => {
     if (!files) return;
 
-    const audioFiles = Array.from(files).filter(file =>
-      file.type.startsWith('audio/') && file.size <= 50 * 1024 * 1024 // 50MB limit
+    const audioFiles = Array.from(files).filter(
+      (file) => file.type.startsWith('audio/') && file.size <= 50 * 1024 * 1024,
     );
 
     if (audioFiles.length !== files.length) {
-      alert('Some files were skipped. Only audio files under 50MB are supported.');
+      setActionMessage('Some files were skipped. Only audio files under 50MB are supported.');
     }
 
     setSelectedFiles(audioFiles);
 
-    // Initialize metadata for each file
-    const initialMetadata: {[key: string]: any} = {};
-    audioFiles.forEach(file => {
+    const initialMetadata: Record<string, any> = {};
+    const initialStatus: Record<string, UploadLifecycleStatus> = {};
+    const initialProgress: Record<string, number> = {};
+
+    audioFiles.forEach((file) => {
       initialMetadata[file.name] = {
         title: '',
         artist: '',
@@ -209,10 +244,17 @@ const UploadManagement: React.FC = () => {
         language: 'English',
         explicit: false,
         featured: false,
-        tags: []
+        tags: [],
       };
+      initialStatus[file.name] = 'pending';
+      initialProgress[file.name] = 0;
     });
+
     setUploadMetadata(initialMetadata);
+    setUploadStatus(initialStatus);
+    setUploadProgress(initialProgress);
+    setUploadErrors({});
+    setUploadIdentifiers({});
   };
 
   const handleMetadataChange = (fileName: string, field: string, value: any) => {
@@ -225,127 +267,208 @@ const UploadManagement: React.FC = () => {
     }));
   };
 
-  const simulateBulkUpload = async () => {
+  const pollUploadStatus = useCallback(async (uploadId: string, fileName: string) => {
+    const poll = async (attempt: number): Promise<void> => {
+      try {
+        const response = await fetchUploadStatusById(uploadId);
+        const payload: any = response?.data;
+
+        if (payload) {
+          const status = mapBackendStatus(payload.status);
+          setUploadStatus((prev) => ({ ...prev, [fileName]: status }));
+          setUploadProgress((prev) => ({ ...prev, [fileName]: payload.progress_percentage ?? prev[fileName] ?? 0 }));
+
+          if (payload.error_message) {
+            setUploadErrors((prev) => ({ ...prev, [fileName]: String(payload.error_message) }));
+          }
+
+          if (['completed', 'failed', 'cancelled'].includes(status)) {
+            return;
+          }
+        }
+      } catch (err) {
+        if (attempt >= 5) {
+          setUploadStatus((prev) => ({ ...prev, [fileName]: 'failed' }));
+          setUploadErrors((prev) => ({ ...prev, [fileName]: 'Unable to update upload status' }));
+          return;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 2000 * (attempt + 1)));
+        return poll(attempt + 1);
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      return poll(0);
+    };
+
+    await poll(0);
+  }, []);
+
+  const startBulkUpload = useCallback(async () => {
+    if (!selectedFiles.length) {
+      return;
+    }
+
     setIsBulkUploading(true);
     setBulkUploadStep(3);
 
-    for (let i = 0; i < selectedFiles.length; i++) {
-      const file = selectedFiles[i];
-      const fileId = file.name + '_' + Date.now();
+    await Promise.all(
+      selectedFiles.map(async (file) => {
+        const metadata = uploadMetadata[file.name] || {};
+        setUploadStatus((prev) => ({ ...prev, [file.name]: 'uploading' }));
+        setUploadProgress((prev) => ({ ...prev, [file.name]: 0 }));
+        setUploadErrors((prev) => ({ ...prev, [file.name]: '' }));
 
-      setUploadStatus(prev => ({ ...prev, [fileId]: 'uploading' }));
-      setUploadProgress(prev => ({ ...prev, [fileId]: 0 }));
+        const formData = new FormData();
+        formData.append('upload_type', 'track_audio');
+        formData.append('file', file);
+        formData.append('title', metadata.title || file.name);
+        if (metadata.artist) formData.append('artist_name', metadata.artist);
+        if (metadata.album) formData.append('album_title', metadata.album);
+        if (metadata.genre) formData.append('genre_name', metadata.genre);
+        if (metadata.duration) formData.append('duration', metadata.duration);
+        if (metadata.isrc) formData.append('isrc', metadata.isrc);
+        if (metadata.composer) formData.append('composer', metadata.composer);
+        if (metadata.producer) formData.append('producer', metadata.producer);
+        if (metadata.bpm) formData.append('bpm', metadata.bpm);
+        if (metadata.key) formData.append('key', metadata.key);
+        if (metadata.mood) formData.append('mood', metadata.mood);
+        if (metadata.language) formData.append('language', metadata.language);
+        formData.append('explicit', metadata.explicit ? 'true' : 'false');
+        formData.append('featured', metadata.featured ? 'true' : 'false');
+        if (Array.isArray(metadata.tags)) {
+          metadata.tags.forEach((tag: string) => {
+            if (tag) {
+              formData.append('tags', tag);
+            }
+          });
+        }
 
-      // Simulate upload progress
-      for (let progress = 0; progress <= 100; progress += 10) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        setUploadProgress(prev => ({ ...prev, [fileId]: progress }));
-      }
-
-      setUploadStatus(prev => ({ ...prev, [fileId]: 'processing' }));
-
-      // Simulate processing
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-      // Random success/failure for demo
-      const success = Math.random() > 0.1; // 90% success rate
-      setUploadStatus(prev => ({
-        ...prev,
-        [fileId]: success ? 'completed' : 'failed'
-      }));
-    }
+        try {
+          const response = await initiateUpload(formData);
+          const uploadId = response?.data?.upload_id as string | undefined;
+          if (!uploadId) {
+            throw new Error('Upload identifier not returned.');
+          }
+          setUploadIdentifiers((prev) => ({ ...prev, [file.name]: uploadId }));
+          await pollUploadStatus(uploadId, file.name);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Upload failed';
+          setUploadStatus((prev) => ({ ...prev, [file.name]: 'failed' }));
+          setUploadErrors((prev) => ({ ...prev, [file.name]: message }));
+        }
+      })
+    );
 
     setIsBulkUploading(false);
+    setBulkUploadStep(4);
+    setActionMessage('Bulk upload completed.');
+    fetchUploads(currentPage);
+  }, [selectedFiles, uploadMetadata, pollUploadStatus, fetchUploads, currentPage]);
+
+  const handlePauseUpload = async (upload: UploadData) => {
+    try {
+      await cancelUploadRequest(upload.uploadId);
+      setActionMessage('Upload cancelled successfully.');
+      await fetchUploads(currentPage);
+    } catch (err) {
+      setActionMessage('Unable to cancel upload.');
+    }
   };
 
-  const handleViewTrack = (trackId: string) => {
-    navigate('/dashboard/track-details', { state: { trackId } });
+  const handleRefreshUpload = async (upload: UploadData) => {
+    try {
+      await fetchUploadStatusById(upload.uploadId);
+      setActionMessage('Upload status refreshed.');
+      await fetchUploads(currentPage);
+    } catch (err) {
+      setActionMessage('Unable to refresh upload status.');
+    }
   };
 
-  // Filter and sort data
-  const filteredAndSortedData = useMemo(() => {
-    let data = uploadData;
+  const handleDeleteUpload = async (upload: UploadData) => {
+    try {
+      await deleteUploadRequest(upload.uploadId);
+      setActionMessage('Upload removed successfully.');
+      setSelectedUploads((prev) => prev.filter((id) => id !== upload.id));
+      await fetchUploads(currentPage);
+    } catch (err) {
+      setActionMessage('Unable to delete upload.');
+    }
+  };
 
-    // Apply tab filter
-    if (activeTab !== 'all') {
-      data = data.filter(item => {
-        switch (activeTab) {
-          case 'uploading':
-            return item.status === 'uploading';
-          case 'processing':
-            return item.status === 'processing';
-          case 'completed':
-            return item.status === 'completed';
-          case 'failed':
-            return item.status === 'failed' || item.status === 'cancelled';
-          default:
-            return true;
-        }
+  const handleViewTrack = (upload: UploadData) => {
+    if (upload.entityId) {
+      navigate('/dashboard/track-details', { state: { trackId: upload.entityId } });
+    } else {
+      setActionMessage('Track details will be available once processing completes.');
+    }
+  };
+
+  const handleCreateAlbum = async () => {
+    const trimmedTitle = newAlbumData.title.trim();
+    if (!trimmedTitle) {
+      setActionMessage('Album title is required.');
+      return;
+    }
+
+    try {
+      setIsCreatingAlbum(true);
+      const response = await createAlbumForUploads({
+        title: trimmedTitle,
+        release_date: newAlbumData.releaseDate || undefined,
+        genre: newAlbumData.genre || undefined,
       });
+
+      const createdTitle = response?.data?.title || trimmedTitle;
+      setActionMessage(`Album "${createdTitle}" is ready for uploads.`);
+      setAvailableAlbums((prev) => {
+        if (prev.includes(createdTitle)) {
+          return prev;
+        }
+        return [...prev, createdTitle].sort((a, b) => a.localeCompare(b));
+      });
+      setNewAlbumData({ title: '', artist: '', genre: '', releaseDate: '', description: '' });
+      setIsAddAlbumModalOpen(false);
+      await fetchUploads(currentPage);
+    } catch (err) {
+      setActionMessage('Unable to create album. Please try again.');
+    } finally {
+      setIsCreatingAlbum(false);
     }
+  };
 
-    // Apply album filter
-    if (selectedAlbum !== 'all') {
-      data = data.filter(item => item.album === selectedAlbum);
-    }
+  const totalPages = pagination?.total_pages ?? 1;
+  const startIndex = pagination ? (pagination.page - 1) * pagination.page_size : 0;
+  const endIndex = pagination
+    ? Math.min(pagination.page * pagination.page_size, pagination.total_count)
+    : uploads.length;
+  const totalCount = pagination?.total_count ?? uploads.length;
+  const paginatedData = uploads;
+  const pageSize = pagination?.page_size ?? itemsPerPage;
 
-    // Apply search filter
-    if (searchTerm) {
-      data = data.filter(item =>
-        item.filename.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.artist?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.album?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.station?.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
+  const isAllSelected = paginatedData.length > 0 && paginatedData.every((upload) => selectedUploads.includes(upload.id));
 
-    // Apply sorting
-    data.sort((a, b) => {
-      let aValue, bValue;
-
-      switch (sortBy) {
-        case 'filename':
-          aValue = a.filename;
-          bValue = b.filename;
-          break;
-        case 'album':
-          aValue = a.album || '';
-          bValue = b.album || '';
-          break;
-        case 'fileSize':
-          aValue = a.fileSize;
-          bValue = a.fileSize;
-          break;
-        case 'uploadDate':
-          aValue = new Date(a.uploadDate);
-          bValue = new Date(b.uploadDate);
-          break;
-        case 'status':
-          aValue = a.status;
-          bValue = b.status;
-          break;
-        default:
-          aValue = a.filename;
-          bValue = b.filename;
+  const handleToggleSelectUpload = (uploadId: string, checked: boolean) => {
+    setSelectedUploads((prev) => {
+      if (checked) {
+        if (prev.includes(uploadId)) {
+          return prev;
+        }
+        return [...prev, uploadId];
       }
-
-      if (typeof aValue === 'string') {
-        return sortOrder === 'asc'
-          ? aValue.localeCompare(bValue)
-          : bValue.localeCompare(aValue);
-      } else {
-        return sortOrder === 'asc' ? aValue - bValue : bValue - aValue;
-      }
+      return prev.filter((id) => id !== uploadId);
     });
+  };
 
-    return data;
-  }, [activeTab, selectedAlbum, searchTerm, sortBy, sortOrder]);
-
-  // Pagination
-  const totalPages = Math.ceil(filteredAndSortedData.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedData = filteredAndSortedData.slice(startIndex, startIndex + itemsPerPage);
+  const handleToggleSelectAll = (checked: boolean) => {
+    if (checked) {
+      const merged = new Set([...selectedUploads, ...paginatedData.map((upload) => upload.id)]);
+      setSelectedUploads(Array.from(merged));
+    } else {
+      setSelectedUploads((prev) => prev.filter((id) => !paginatedData.some((upload) => upload.id === id)));
+    }
+  };
 
   const handleSort = (column: string) => {
     if (sortBy === column) {
@@ -432,11 +555,11 @@ const UploadManagement: React.FC = () => {
   );
 
   const statsData = {
-    total: uploadData.length,
-    uploading: uploadData.filter(u => u.status === 'uploading').length,
-    processing: uploadData.filter(u => u.status === 'processing').length,
-    completed: uploadData.filter(u => u.status === 'completed').length,
-    failed: uploadData.filter(u => u.status === 'failed' || u.status === 'cancelled').length
+    total: stats.total ?? 0,
+    uploading: stats.uploading ?? 0,
+    processing: stats.processing ?? 0,
+    completed: stats.completed ?? 0,
+    failed: stats.failed ?? 0,
   };
 
   return (
@@ -635,12 +758,11 @@ const UploadManagement: React.FC = () => {
                 className="px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="all">All Albums</option>
-                <option value="5 Star">5 Star</option>
-                <option value="Obra">Obra</option>
-                <option value="Son Of Africa">Son Of Africa</option>
-                <option value="Morning Drive Compilation">Morning Drive Compilation</option>
-                <option value="Love & Light">Love & Light</option>
-                <option value="Tech Talk Ghana">Tech Talk Ghana</option>
+                {availableAlbums.map((album) => (
+                  <option key={album} value={album}>
+                    {album}
+                  </option>
+                ))}
               </select>
               <select
                 value={sortBy}
@@ -656,6 +778,18 @@ const UploadManagement: React.FC = () => {
             </div>
           </div>
 
+          {error && (
+            <div className="mt-4 px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-700 dark:bg-red-900/30 dark:text-red-200 dark:border-red-800">
+              {error}
+            </div>
+          )}
+
+          {actionMessage && (
+            <div className="mt-4 px-4 py-3 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-200 dark:border-indigo-700">
+              {actionMessage}
+            </div>
+          )}
+
           {/* Upload Table */}
           <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-slate-700">
             <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-slate-600 scrollbar-track-transparent">
@@ -663,7 +797,12 @@ const UploadManagement: React.FC = () => {
                 <thead className="bg-gray-50 dark:bg-slate-800">
                   <tr>
                     <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      <input type="checkbox" className="rounded border-gray-300 dark:border-slate-600" />
+                      <input
+                        type="checkbox"
+                        checked={isAllSelected}
+                        onChange={(e) => handleToggleSelectAll(e.target.checked)}
+                        className="rounded border-gray-300 dark:border-slate-600"
+                      />
                     </th>
                     <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                       <div className="flex items-center space-x-1">
@@ -706,103 +845,115 @@ const UploadManagement: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white dark:bg-slate-900 divide-y divide-gray-200 dark:divide-slate-700">
-                  {filteredAndSortedData.map((upload) => (
-                    <tr key={upload.id} className="hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors duration-200">
-                      <td className="px-6 py-4">
-                        <input
-                          type="checkbox"
-                          checked={selectedUploads.includes(upload.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedUploads([...selectedUploads, upload.id]);
-                            } else {
-                              setSelectedUploads(selectedUploads.filter(id => id !== upload.id));
-                            }
-                          }}
-                          className="rounded border-gray-300 dark:border-slate-600"
-                        />
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex flex-col">
-                          <span className="text-gray-900 dark:text-white font-medium text-sm truncate max-w-[200px]">
-                            {upload.filename}
-                          </span>
-                          {upload.artist && upload.album && upload.title && (
-                            <span className="text-gray-500 dark:text-gray-400 text-xs truncate">
-                              {upload.artist} - {upload.album} - {upload.title}
-                            </span>
-                          )}
-                          {upload.station && (
-                            <span className="text-blue-600 dark:text-blue-400 text-xs">
-                              Station: {upload.station}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-gray-600 dark:text-gray-300 text-sm hidden md:table-cell truncate max-w-[150px]">
-                        {upload.album || '-'}
-                      </td>
-                      <td className="px-6 py-4 text-gray-600 dark:text-gray-300 text-sm hidden sm:table-cell">
-                        {formatFileSize(upload.fileSize)}
-                      </td>
-                      <td className="px-6 py-4 text-gray-600 dark:text-gray-300 text-sm hidden md:table-cell">
-                        {new Date(upload.uploadDate).toLocaleDateString()}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center space-x-3">
-                          <div className="flex-1 bg-gray-200 dark:bg-slate-700 rounded-full h-2">
-                            <div
-                              className={`h-2 rounded-full transition-all duration-300 ${
-                                upload.status === 'completed' ? 'bg-emerald-500' :
-                                upload.status === 'processing' ? 'bg-blue-500' :
-                                upload.status === 'uploading' ? 'bg-amber-500' :
-                                upload.status === 'failed' || upload.status === 'cancelled' ? 'bg-red-500' : 'bg-gray-500'
-                              }`}
-                              style={{ width: `${upload.progress}%` }}
-                            />
-                          </div>
-                          <span className="text-sm text-gray-600 dark:text-gray-300 w-12">
-                            {upload.progress}%
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-full ${getStatusColor(upload.status)}`}>
-                          {getStatusIcon(upload.status)}
-                          <span className="ml-1 capitalize">{upload.status}</span>
-                        </span>
-                        {upload.error && (
-                          <div className="mt-1 text-xs text-red-600 dark:text-red-400">
-                            {upload.error}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center space-x-2">
-                          {upload.status === 'uploading' && (
-                            <button className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-                              <Pause className="w-4 h-4" />
-                            </button>
-                          )}
-                          {upload.status === 'failed' && (
-                            <button className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-                              <RefreshCw className="w-4 h-4" />
-                            </button>
-                          )}
-                          <button
-                            onClick={() => handleViewTrack(upload.id)}
-                            className="p-1 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                          <button className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={8} className="px-6 py-16 text-center text-gray-500 dark:text-gray-400">
+                        Loading uploads...
                       </td>
                     </tr>
-                  ))}
-                  {filteredAndSortedData.length === 0 && (
+                  ) : paginatedData.length > 0 ? (
+                    paginatedData.map((upload) => (
+                      <tr key={upload.id} className="hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors duration-200">
+                        <td className="px-6 py-4">
+                          <input
+                            type="checkbox"
+                            checked={selectedUploads.includes(upload.id)}
+                            onChange={(e) => handleToggleSelectUpload(upload.id, e.target.checked)}
+                            className="rounded border-gray-300 dark:border-slate-600"
+                          />
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col">
+                            <span className="text-gray-900 dark:text-white font-medium text-sm truncate max-w-[200px]">
+                              {upload.filename}
+                            </span>
+                            {upload.artist && upload.album && upload.title && (
+                              <span className="text-gray-500 dark:text-gray-400 text-xs truncate">
+                                {upload.artist} - {upload.album} - {upload.title}
+                              </span>
+                            )}
+                            {upload.station && (
+                              <span className="text-blue-600 dark:text-blue-400 text-xs">
+                                Station: {upload.station}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-gray-600 dark:text-gray-300 text-sm hidden md:table-cell truncate max-w-[150px]">
+                          {upload.album || '-'}
+                        </td>
+                        <td className="px-6 py-4 text-gray-600 dark:text-gray-300 text-sm hidden sm:table-cell">
+                          {formatFileSize(upload.fileSize)}
+                        </td>
+                        <td className="px-6 py-4 text-gray-600 dark:text-gray-300 text-sm hidden md:table-cell">
+                          {new Date(upload.uploadDate).toLocaleDateString()}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center space-x-3">
+                            <div className="flex-1 bg-gray-200 dark:bg-slate-700 rounded-full h-2">
+                              <div
+                                className={`h-2 rounded-full transition-all duration-300 ${
+                                  upload.status === 'completed' ? 'bg-emerald-500' :
+                                  upload.status === 'processing' ? 'bg-blue-500' :
+                                  upload.status === 'uploading' ? 'bg-amber-500' :
+                                  upload.status === 'failed' || upload.status === 'cancelled' ? 'bg-red-500' : 'bg-gray-500'
+                                }`}
+                                style={{ width: `${upload.progress}%` }}
+                              />
+                            </div>
+                            <span className="text-sm text-gray-600 dark:text-gray-300 w-12">
+                              {upload.progress}%
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-full ${getStatusColor(upload.status)}`}>
+                            {getStatusIcon(upload.status)}
+                            <span className="ml-1 capitalize">{upload.status}</span>
+                          </span>
+                          {upload.error && (
+                            <div className="mt-1 text-xs text-red-600 dark:text-red-400">
+                              {upload.error}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center space-x-2">
+                            {upload.status === 'uploading' && (
+                              <button
+                                onClick={() => handlePauseUpload(upload)}
+                                className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                                aria-label="Cancel upload"
+                              >
+                                <Pause className="w-4 h-4" />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleRefreshUpload(upload)}
+                              className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                              aria-label="Refresh status"
+                            >
+                              <RefreshCw className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleViewTrack(upload)}
+                              className="p-1 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                              aria-label="View track details"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteUpload(upload)}
+                              className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400"
+                              aria-label="Delete upload"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
                     <tr>
                       <td colSpan={8} className="px-6 py-16 text-center text-gray-500 dark:text-gray-400">
                         No uploads found matching your criteria.
@@ -818,9 +969,9 @@ const UploadManagement: React.FC = () => {
           {totalPages > 1 && (
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-8 pt-6 border-t border-gray-200 dark:border-slate-700 bg-gray-50/30 dark:bg-slate-800/30 -mx-8 px-8 py-4 rounded-b-2xl">
               <div className="text-sm text-gray-600 dark:text-gray-400 font-medium">
-                Showing <span className="text-indigo-600 dark:text-indigo-400 font-semibold">{startIndex + 1}</span> to{' '}
-                <span className="text-indigo-600 dark:text-indigo-400 font-semibold">{Math.min(startIndex + itemsPerPage, filteredAndSortedData.length)}</span> of{' '}
-                <span className="text-indigo-600 dark:text-indigo-400 font-semibold">{filteredAndSortedData.length}</span> uploads
+                Showing <span className="text-indigo-600 dark:text-indigo-400 font-semibold">{totalCount === 0 ? 0 : startIndex + 1}</span> to{' '}
+                <span className="text-indigo-600 dark:text-indigo-400 font-semibold">{Math.min(startIndex + pageSize, totalCount)}</span> of{' '}
+                <span className="text-indigo-600 dark:text-indigo-400 font-semibold">{totalCount}</span> uploads
               </div>
               <div className="flex items-center space-x-2">
                 <button
@@ -870,10 +1021,10 @@ const UploadManagement: React.FC = () => {
           )}
 
           {/* Show pagination info even when only one page */}
-          {totalPages === 1 && filteredAndSortedData.length > 0 && (
+          {totalPages === 1 && totalCount > 0 && (
             <div className="flex justify-center mt-6 pt-6 border-t border-gray-200 dark:border-slate-700">
               <div className="text-sm text-gray-500 dark:text-gray-400">
-                Showing all {filteredAndSortedData.length} uploads
+                Showing all {totalCount} uploads
               </div>
             </div>
           )}
@@ -979,21 +1130,15 @@ const UploadManagement: React.FC = () => {
                   Cancel
                 </button>
                 <button
-                  onClick={() => {
-                    // In a real app, this would make an API call to create the album
-                    alert(`Album "${newAlbumData.title}" by ${newAlbumData.artist} has been created successfully!`);
-                    setNewAlbumData({
-                      title: '',
-                      artist: '',
-                      genre: '',
-                      releaseDate: '',
-                      description: ''
-                    });
-                    setIsAddAlbumModalOpen(false);
-                  }}
-                  className="flex-1 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all duration-200"
+                  onClick={handleCreateAlbum}
+                  disabled={isCreatingAlbum}
+                  className={`flex-1 px-4 py-2 rounded-lg transition-all duration-200 ${
+                    isCreatingAlbum
+                      ? 'bg-purple-300 text-white cursor-not-allowed'
+                      : 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700'
+                  }`}
                 >
-                  Create Album
+                  {isCreatingAlbum ? 'Creating...' : 'Create Album'}
                 </button>
               </div>
             </div>
@@ -1253,7 +1398,7 @@ const UploadManagement: React.FC = () => {
                     Back
                   </button>
                   <button
-                    onClick={() => setBulkUploadStep(3)}
+                    onClick={startBulkUpload}
                     className="px-6 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl"
                   >
                     Start Upload
@@ -1358,7 +1503,7 @@ const UploadManagement: React.FC = () => {
                     Back
                   </button>
                   <button
-                    onClick={simulateBulkUpload}
+                    onClick={startBulkUpload}
                     disabled={isBulkUploading}
                     className={`px-6 py-2 rounded-lg transition-all duration-200 ${
                       isBulkUploading
