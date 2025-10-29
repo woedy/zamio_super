@@ -1,344 +1,305 @@
-import React, { useState, useMemo } from 'react';
-import { Activity, Eye, Search, Clock, Radio, Music, TrendingUp, Filter, Download } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Activity, Eye, Clock, Radio, Music, TrendingUp } from 'lucide-react';
 
-// Type definitions for better type safety
-interface PlayLogData {
-  id: number;
-  track_title: string;
-  artist: string;
-  station_name: string;
-  matched_at: string;
-  stop_time: string;
-  duration: string;
-  royalty_amount: number;
-  status: string;
-  attribution_source: string;
-  plays: number;
-  partner_name?: string;
-}
+import { useAuth } from '../lib/auth';
+import {
+  ArtistLogPagination,
+  ArtistLogsPayload,
+  ArtistMatchLogRecord,
+  ArtistPlayLogRecord,
+  fetchArtistLogs,
+} from '../lib/api';
 
-interface MatchLogData {
-  id: number;
-  song: string;
-  artist: string;
-  station: string;
-  matched_at: string;
-  confidence: number;
-  source: string;
-  match_type: string;
-  status: string;
-}
+const ITEMS_PER_PAGE = 10;
 
-// Demo data for play logs
-const playLogsData: PlayLogData[] = [
-  {
-    id: 1,
-    track_title: "Enjoyment",
-    artist: "Sarkodie",
-    station_name: "Joy FM",
-    matched_at: "2024-01-15 14:30:00",
-    stop_time: "2024-01-15 14:33:45",
-    duration: "3:45",
-    royalty_amount: 12.50,
-    status: "Confirmed",
-    attribution_source: "Station",
-    plays: 156
-  },
-  {
-    id: 2,
-    track_title: "Kpokeke",
-    artist: "Stonebwoy",
-    station_name: "Adom FM",
-    matched_at: "2024-01-15 16:15:00",
-    stop_time: "2024-01-15 16:18:20",
-    duration: "3:20",
-    royalty_amount: 8.75,
-    status: "Pending",
-    attribution_source: "Partner",
-    partner_name: "Ghana Music Rights",
-    plays: 89
-  },
-  {
-    id: 3,
-    track_title: "Aseda",
-    artist: "King Promise",
-    station_name: "Peace FM",
-    matched_at: "2024-01-15 19:45:00",
-    stop_time: "2024-01-15 19:49:30",
-    duration: "4:30",
-    royalty_amount: 15.20,
-    status: "Confirmed",
-    attribution_source: "Station",
-    plays: 203
-  },
-  {
-    id: 4,
-    track_title: "Heat",
-    artist: "Wendy Shay",
-    station_name: "Citi FM",
-    matched_at: "2024-01-15 12:20:00",
-    stop_time: "2024-01-15 12:23:15",
-    duration: "3:15",
-    royalty_amount: 6.80,
-    status: "Confirmed",
-    attribution_source: "Station",
-    plays: 67
-  },
-  {
-    id: 5,
-    track_title: "Second Sermon",
-    artist: "Black Sherif",
-    station_name: "Angel FM",
-    matched_at: "2024-01-15 21:10:00",
-    stop_time: "2024-01-15 21:14:45",
-    duration: "4:45",
-    royalty_amount: 18.90,
-    status: "Confirmed",
-    attribution_source: "Partner",
-    partner_name: "Audiomack Ghana",
-    plays: 245
-  },
-  {
-    id: 6,
-    track_title: "Yentie Obiaa",
-    artist: "Kuami Eugene",
-    station_name: "Okay FM",
-    matched_at: "2024-01-15 08:30:00",
-    stop_time: "2024-01-15 08:33:25",
-    duration: "3:25",
-    royalty_amount: 9.45,
-    status: "Pending",
-    attribution_source: "Station",
-    plays: 112
-  },
-  {
-    id: 7,
-    track_title: "Mood",
-    artist: "Mr Drew",
-    station_name: "Joy FM",
-    matched_at: "2024-01-15 17:55:00",
-    stop_time: "2024-01-15 17:58:40",
-    duration: "3:40",
-    royalty_amount: 11.30,
-    status: "Confirmed",
-    attribution_source: "Station",
-    plays: 178
-  },
-  {
-    id: 8,
-    track_title: "Abodie",
-    artist: "Captain Planet",
-    station_name: "Adom FM",
-    matched_at: "2024-01-15 13:45:00",
-    stop_time: "2024-01-15 13:48:15",
-    duration: "3:15",
-    royalty_amount: 7.25,
-    status: "Confirmed",
-    attribution_source: "Partner",
-    partner_name: "Boomplay Ghana",
-    plays: 94
+const buildEmptyPagination = (pageSize = ITEMS_PER_PAGE): ArtistLogPagination => ({
+  count: 0,
+  page_number: 1,
+  page_size: pageSize,
+  total_pages: 0,
+  next: null,
+  previous: null,
+  has_next: false,
+  has_previous: false,
+});
+
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'GHS',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value ?? 0);
+
+const parseDate = (value: string | null) => {
+  if (!value) {
+    return null;
   }
-];
 
-// Demo data for match logs
-const matchLogsData: MatchLogData[] = [
-  {
-    id: 1,
-    song: "Enjoyment",
-    artist: "Sarkodie",
-    station: "Joy FM",
-    matched_at: "2024-01-15 14:30:00",
-    confidence: 98.5,
-    source: "ACRCloud",
-    match_type: "Exact Match",
-    status: "Verified"
-  },
-  {
-    id: 2,
-    song: "Kpokeke",
-    artist: "Stonebwoy",
-    station: "Adom FM",
-    matched_at: "2024-01-15 16:15:00",
-    confidence: 94.2,
-    source: "Partner Detection",
-    match_type: "Partial Match",
-    status: "Under Review"
-  },
-  {
-    id: 3,
-    song: "Aseda",
-    artist: "King Promise",
-    station: "Peace FM",
-    matched_at: "2024-01-15 19:45:00",
-    confidence: 99.1,
-    source: "ACRCloud",
-    match_type: "Exact Match",
-    status: "Verified"
-  },
-  {
-    id: 4,
-    song: "Heat",
-    artist: "Wendy Shay",
-    station: "Citi FM",
-    matched_at: "2024-01-15 12:20:00",
-    confidence: 87.3,
-    source: "Station Upload",
-    match_type: "Metadata Match",
-    status: "Verified"
-  },
-  {
-    id: 5,
-    song: "Second Sermon",
-    artist: "Black Sherif",
-    station: "Angel FM",
-    matched_at: "2024-01-15 21:10:00",
-    confidence: 95.8,
-    source: "ACRCloud",
-    match_type: "Exact Match",
-    status: "Verified"
+  const normalized = value.replace(' ~ ', 'T');
+  const parsed = new Date(normalized);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
   }
-];
 
-const PlayLogs: React.FC = () => {
-  const [activeTab, setActiveTab] = useState('playlogs');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(3);
-  const [sortBy, setSortBy] = useState('matched_at');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  return parsed;
+};
 
-  // Filter and sort data
-  const filteredAndSortedData = useMemo(() => {
-    let data: (PlayLogData | MatchLogData)[] = activeTab === 'playlogs' ? playLogsData : matchLogsData;
+const formatDateTime = (value: string | null) => {
+  const parsed = parseDate(value);
+  if (!parsed) {
+    return value ? value.replace(' ~ ', ' ') : '—';
+  }
+  return parsed.toLocaleString();
+};
 
-    // Apply search filter
-    if (searchTerm) {
-      data = data.filter(item => {
-        const searchLower = searchTerm.toLowerCase();
-        if (activeTab === 'playlogs') {
-          const playLog = item as PlayLogData;
-          return (
-            playLog.track_title.toLowerCase().includes(searchLower) ||
-            playLog.artist.toLowerCase().includes(searchLower) ||
-            playLog.station_name.toLowerCase().includes(searchLower) ||
-            playLog.status.toLowerCase().includes(searchLower)
-          );
-        } else {
-          const matchLog = item as MatchLogData;
-          return (
-            matchLog.song.toLowerCase().includes(searchLower) ||
-            matchLog.artist.toLowerCase().includes(searchLower) ||
-            matchLog.station.toLowerCase().includes(searchLower) ||
-            matchLog.status.toLowerCase().includes(searchLower)
-          );
+const resolveLogsError = (maybeError: unknown) => {
+  if (!maybeError) {
+    return 'Unable to load logs. Please try again later.';
+  }
+
+  if (typeof maybeError === 'object' && maybeError !== null) {
+    const response = (maybeError as { response?: unknown }).response;
+    if (response && typeof response === 'object') {
+      const data = (response as { data?: unknown }).data;
+      if (data && typeof data === 'object') {
+        const message = (data as { message?: unknown }).message;
+        if (typeof message === 'string' && message.trim().length > 0) {
+          return message;
         }
-      });
+
+        const errors = (data as { errors?: unknown }).errors;
+        if (errors && typeof errors === 'object') {
+          const entries = Object.entries(errors as Record<string, unknown>);
+          const firstEntry = entries[0];
+          if (firstEntry) {
+            const [, errorValue] = firstEntry;
+            if (typeof errorValue === 'string' && errorValue.length > 0) {
+              return errorValue;
+            }
+            if (Array.isArray(errorValue) && errorValue.length > 0) {
+              const candidate = errorValue[0];
+              if (typeof candidate === 'string' && candidate.length > 0) {
+                return candidate;
+              }
+            }
+          }
+        }
+      }
     }
 
-    // Apply sorting
-    data.sort((a, b) => {
-      let aValue, bValue;
+    const message = (maybeError as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim().length > 0) {
+      return message;
+    }
+  }
 
-      if (activeTab === 'playlogs') {
-        const playLogA = a as PlayLogData;
-        const playLogB = b as PlayLogData;
-        switch (sortBy) {
-          case 'track_title':
-            aValue = playLogA.track_title;
-            bValue = playLogB.track_title;
-            break;
-          case 'station_name':
-            aValue = playLogA.station_name;
-            bValue = playLogB.station_name;
-            break;
-          case 'royalty_amount':
-            aValue = playLogA.royalty_amount;
-            bValue = playLogB.royalty_amount;
-            break;
-          case 'plays':
-            aValue = playLogA.plays;
-            bValue = playLogB.plays;
-            break;
-          default:
-            aValue = new Date(playLogA.matched_at);
-            bValue = new Date(playLogB.matched_at);
-        }
-      } else {
-        const matchLogA = a as MatchLogData;
-        const matchLogB = b as MatchLogData;
-        switch (sortBy) {
-          case 'song':
-            aValue = matchLogA.song;
-            bValue = matchLogB.song;
-            break;
-          case 'station':
-            aValue = matchLogA.station;
-            bValue = matchLogB.station;
-            break;
-          case 'confidence':
-            aValue = matchLogA.confidence;
-            bValue = matchLogB.confidence;
-            break;
-          default:
-            aValue = new Date(matchLogA.matched_at);
-            bValue = new Date(matchLogB.matched_at);
-        }
+  return 'Unable to load logs. Please try again later.';
+};
+
+type TabKey = 'playlogs' | 'matchlogs';
+
+const getPlayStatusClasses = (status: string) => {
+  switch (status?.toLowerCase()) {
+    case 'confirmed':
+      return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400';
+    case 'flagged':
+      return 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400';
+    case 'pending':
+    default:
+      return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
+  }
+};
+
+const getMatchStatusClasses = (status: string | null | undefined) => {
+  switch (status?.toLowerCase()) {
+    case 'verified':
+      return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400';
+    case 'review':
+    case 'under review':
+      return 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400';
+    case 'pending':
+    default:
+      return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
+  }
+};
+
+const MatchLogsPage = () => {
+  const { user } = useAuth();
+  const artistId = useMemo(() => {
+    if (user && typeof user === 'object' && user !== null) {
+      const candidate = user['artist_id'];
+      if (typeof candidate === 'string' && candidate.length > 0) {
+        return candidate;
       }
+    }
+    return null;
+  }, [user]);
 
-      if (typeof aValue === 'string') {
-        return sortOrder === 'asc'
-          ? aValue.localeCompare(bValue)
-          : bValue.localeCompare(aValue);
-      } else {
-        return sortOrder === 'asc' ? aValue - bValue : bValue - aValue;
-      }
-    });
+  const [activeTab, setActiveTab] = useState<TabKey>('playlogs');
+  const [playLogs, setPlayLogs] = useState<ArtistPlayLogRecord[]>([]);
+  const [matchLogs, setMatchLogs] = useState<ArtistMatchLogRecord[]>([]);
+  const [playPagination, setPlayPagination] = useState<ArtistLogPagination>(() => buildEmptyPagination());
+  const [matchPagination, setMatchPagination] = useState<ArtistLogPagination>(() => buildEmptyPagination());
+  const [playSort, setPlaySort] = useState<{ sortBy: string; sortOrder: 'asc' | 'desc' }>({
+    sortBy: 'matched_at',
+    sortOrder: 'desc',
+  });
+  const [matchSort, setMatchSort] = useState<{ sortBy: string; sortOrder: 'asc' | 'desc' }>({
+    sortBy: 'matched_at',
+    sortOrder: 'desc',
+  });
+  const [playPage, setPlayPage] = useState(1);
+  const [matchPage, setMatchPage] = useState(1);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-    return data;
-  }, [activeTab, searchTerm, sortBy, sortOrder]);
+  const loadLogs = useCallback(async () => {
+    if (!artistId) {
+      setPlayLogs([]);
+      setMatchLogs([]);
+      setPlayPagination(buildEmptyPagination());
+      setMatchPagination(buildEmptyPagination());
+      return;
+    }
 
-  // Pagination
-  const totalPages = Math.ceil(filteredAndSortedData.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedData = filteredAndSortedData.slice(startIndex, startIndex + itemsPerPage);
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const envelope = await fetchArtistLogs({
+        artistId,
+        playPage,
+        matchPage,
+        playPageSize: ITEMS_PER_PAGE,
+        matchPageSize: ITEMS_PER_PAGE,
+        playSortBy: playSort.sortBy,
+        playSortOrder: playSort.sortOrder,
+        matchSortBy: matchSort.sortBy,
+        matchSortOrder: matchSort.sortOrder,
+      });
+
+      const payload = (envelope?.data ?? null) as ArtistLogsPayload | null;
+
+      setPlayLogs(payload?.playLogs?.results ?? []);
+      setMatchLogs(payload?.matchLogs?.results ?? []);
+      setPlayPagination(payload?.playLogs?.pagination ?? buildEmptyPagination());
+      setMatchPagination(payload?.matchLogs?.pagination ?? buildEmptyPagination());
+    } catch (fetchError) {
+      setError(resolveLogsError(fetchError));
+      setPlayLogs([]);
+      setMatchLogs([]);
+      setPlayPagination(buildEmptyPagination());
+      setMatchPagination(buildEmptyPagination());
+    } finally {
+      setIsLoading(false);
+    }
+  }, [artistId, playPage, matchPage, playSort.sortBy, playSort.sortOrder, matchSort.sortBy, matchSort.sortOrder]);
+
+  useEffect(() => {
+    if (!artistId) {
+      return;
+    }
+    loadLogs();
+  }, [artistId, loadLogs]);
+
+  const activeData = activeTab === 'playlogs' ? playLogs : matchLogs;
+  const activePagination = activeTab === 'playlogs' ? playPagination : matchPagination;
+  const activeSort = activeTab === 'playlogs' ? playSort : matchSort;
+
+  const totalEntries = activePagination?.count ?? 0;
+  const totalPages = activePagination?.total_pages ?? 0;
+  const currentPage = activePagination?.page_number ?? 1;
+  const pageSize = activePagination?.page_size ?? ITEMS_PER_PAGE;
+
+  const startEntry = totalEntries === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const endEntry = totalEntries === 0 ? 0 : Math.min(currentPage * pageSize, totalEntries);
+
+  const pageNumbers = useMemo(() => {
+    if (!totalPages) {
+      return [] as number[];
+    }
+
+    const visiblePages = Math.min(5, totalPages);
+    const startPage = Math.max(1, Math.min(currentPage - 2, totalPages - (visiblePages - 1)));
+    return Array.from({ length: visiblePages }, (_, index) => startPage + index).filter(
+      (page) => page <= totalPages,
+    );
+  }, [currentPage, totalPages]);
+
+  const handleTabChange = (tab: TabKey) => {
+    setActiveTab(tab);
+  };
 
   const handleSort = (column: string) => {
-    if (sortBy === column) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    if (activeTab === 'playlogs') {
+      setPlaySort((prev) => {
+        if (prev.sortBy === column) {
+          return {
+            sortBy: column,
+            sortOrder: prev.sortOrder === 'asc' ? 'desc' : 'asc',
+          };
+        }
+        return {
+          sortBy: column,
+          sortOrder: 'asc',
+        };
+      });
+      setPlayPage(1);
     } else {
-      setSortBy(column);
-      setSortOrder('asc');
+      setMatchSort((prev) => {
+        if (prev.sortBy === column) {
+          return {
+            sortBy: column,
+            sortOrder: prev.sortOrder === 'asc' ? 'desc' : 'asc',
+          };
+        }
+        return {
+          sortBy: column,
+          sortOrder: 'asc',
+        };
+      });
+      setMatchPage(1);
     }
   };
 
   const getSortIcon = (column: string) => {
-    if (sortBy !== column) return '↕️';
-    return sortOrder === 'asc' ? '↑' : '↓';
+    if (activeSort.sortBy !== column) {
+      return '↕️';
+    }
+    return activeSort.sortOrder === 'asc' ? '↑' : '↓';
   };
 
-  const TabButton = ({ id, label, icon: Icon, isActive, onClick }: {
-    id: string;
-    label: string;
-    icon: any;
-    isActive: boolean;
-    onClick: (id: string) => void;
-  }) => (
-    <button
-      onClick={() => onClick(id)}
-      className={`flex items-center space-x-2 px-4 py-2 rounded-md font-medium text-sm transition-all duration-200 ${
-        isActive
-          ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md'
-          : 'bg-white/10 text-gray-300 hover:text-white hover:bg-white/20 border border-white/20 hover:border-white/40'
-      }`}
-    >
-      <Icon className="w-4 h-4" />
-      <span>{label}</span>
-    </button>
-  );
+  const changePage = (page: number) => {
+    if (page < 1 || (totalPages && page > totalPages)) {
+      return;
+    }
+    if (activeTab === 'playlogs') {
+      setPlayPage(page);
+    } else {
+      setMatchPage(page);
+    }
+  };
+
+  if (!artistId) {
+    return (
+      <div className="flex min-h-[400px] flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-white p-8 text-center dark:border-slate-700 dark:bg-slate-900/60">
+        <div className="flex flex-col items-center space-y-3">
+          <div className="rounded-full bg-indigo-100 p-3 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-300">
+            <Activity className="h-6 w-6" />
+          </div>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">We couldn't find your artist profile</h2>
+          <p className="max-w-md text-sm text-gray-600 dark:text-gray-300">
+            Please sign out and sign in again to refresh your account data, then return to your logs.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
-      {/* Page header - matching dashboard style */}
       <div className="border-b border-gray-200 dark:border-slate-700 mb-8">
         <div className="px-6 py-4">
           <div className="flex items-center justify-between">
@@ -359,29 +320,49 @@ const PlayLogs: React.FC = () => {
         </div>
       </div>
 
-      {/* Content - matching dashboard layout */}
       <div>
-        {/* Tab Navigation */}
         <div className="flex justify-center mb-8">
           <div className="flex space-x-4 bg-white/60 dark:bg-slate-800/60 p-2 rounded-xl border border-gray-200 dark:border-slate-600 backdrop-blur-sm">
-            <TabButton
-              id="playlogs"
-              label="Play Logs"
-              icon={Activity}
-              isActive={activeTab === 'playlogs'}
-              onClick={setActiveTab}
-            />
-            <TabButton
-              id="matchlogs"
-              label="Match Logs"
-              icon={Eye}
-              isActive={activeTab === 'matchlogs'}
-              onClick={setActiveTab}
-            />
+            <button
+              onClick={() => handleTabChange('playlogs')}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-md font-medium text-sm transition-all duration-200 ${
+                activeTab === 'playlogs'
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md'
+                  : 'bg-white/10 text-gray-300 hover:text-white hover:bg-white/20 border border-white/20 hover:border-white/40'
+              }`}
+            >
+              <Activity className="w-4 h-4" />
+              <span>Play Logs</span>
+            </button>
+            <button
+              onClick={() => handleTabChange('matchlogs')}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-md font-medium text-sm transition-all duration-200 ${
+                activeTab === 'matchlogs'
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md'
+                  : 'bg-white/10 text-gray-300 hover:text-white hover:bg-white/20 border border-white/20 hover:border-white/40'
+              }`}
+            >
+              <Eye className="w-4 h-4" />
+              <span>Match Logs</span>
+            </button>
           </div>
         </div>
 
-        {/* Content */}
+        {error && (
+          <div className="mx-auto mb-6 max-w-5xl rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800/40 dark:bg-red-900/30 dark:text-red-200">
+            <div className="flex items-center justify-between">
+              <span>{error}</span>
+              <button
+                type="button"
+                onClick={loadLogs}
+                className="rounded-md border border-red-300 px-3 py-1 text-xs font-medium text-red-700 transition hover:bg-red-100 dark:border-red-700 dark:text-red-200 dark:hover:bg-red-800/40"
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl rounded-2xl p-8 border border-gray-200/50 dark:border-slate-700/30 shadow-2xl">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center space-x-3">
@@ -395,9 +376,9 @@ const PlayLogs: React.FC = () => {
               </h2>
             </div>
             <div className="flex items-center space-x-4 text-sm text-gray-600 dark:text-gray-400">
-              <span>{filteredAndSortedData.length} total entries</span>
+              <span>{totalEntries} total entries</span>
               <select
-                value={sortBy}
+                value={activeSort.sortBy}
                 onChange={(e) => handleSort(e.target.value)}
                 className="bg-white dark:bg-slate-800 text-gray-900 dark:text-white px-3 py-1 rounded border border-gray-200 dark:border-slate-600"
               >
@@ -420,7 +401,6 @@ const PlayLogs: React.FC = () => {
             </div>
           </div>
 
-          {/* Responsive Table */}
           <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-slate-700">
             <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-slate-600 scrollbar-track-transparent">
               <table className="min-w-full">
@@ -488,62 +468,118 @@ const PlayLogs: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white dark:bg-slate-900 divide-y divide-gray-200 dark:divide-slate-700">
-                  {paginatedData.map((log) => (
-                    <tr key={log.id} className="hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors duration-200">
-                      {activeTab === 'playlogs' ? (
-                        <>
+                  {isLoading && activeData.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={activeTab === 'playlogs' ? 6 : 5}
+                        className="px-3 sm:px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-400"
+                      >
+                        Loading logs...
+                      </td>
+                    </tr>
+                  )}
+                  {!isLoading && activeData.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={activeTab === 'playlogs' ? 6 : 5}
+                        className="px-3 sm:px-6 py-8 sm:py-16 text-center text-gray-500 dark:text-gray-400"
+                      >
+                        No logs found matching your filters.
+                      </td>
+                    </tr>
+                  )}
+                  {activeTab === 'playlogs'
+                    ? activeData.map((log) => (
+                        <tr key={log.id} className="hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors duration-200">
                           <td className="px-3 sm:px-6 py-2 sm:py-4">
                             <div className="flex flex-col">
                               <span className="text-gray-900 dark:text-white font-medium text-xs sm:text-sm truncate max-w-[120px] sm:max-w-none">
-                                {(log as PlayLogData).track_title}
+                                {log.track_title}
                               </span>
-                              <span className="text-gray-500 dark:text-gray-400 text-xs truncate">by {(log as PlayLogData).artist}</span>
-                              {(log as PlayLogData).attribution_source === 'Partner' && (
+                              <span className="text-gray-500 dark:text-gray-400 text-xs truncate">
+                                by {log.artist ?? 'Unknown Artist'}
+                              </span>
+                              {log.attribution_source === 'Partner' && (
                                 <span className="inline-flex items-center mt-1 px-3 py-1.5 rounded-full text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
-                                  Partner: {(log as PlayLogData).partner_name || 'Ghana Music Rights'}
+                                  Partner: {log.partner_name || 'External Catalogue'}
+                                </span>
+                              )}
+                              {typeof log.plays === 'number' && (
+                                <span className="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
+                                  {log.plays} total plays
                                 </span>
                               )}
                             </div>
                           </td>
-                          <td className="px-3 sm:px-6 py-2 sm:py-4 text-gray-900 dark:text-white text-xs sm:text-sm font-medium truncate max-w-[100px] sm:max-w-none">
-                            {(log as PlayLogData).station_name}
-                          </td>
-                          <td className="px-3 sm:px-6 py-2 sm:py-4 text-gray-600 dark:text-gray-300 text-xs sm:text-sm hidden md:table-cell">
+                          <td className="px-3 sm:px-6 py-2 sm:py-4">
                             <div className="flex flex-col">
-                              <span className="sm:hidden">{new Date((log as PlayLogData).matched_at).toLocaleDateString()}</span>
-                              <span className="hidden sm:inline">{new Date((log as PlayLogData).matched_at).toLocaleString()}</span>
+                              <span className="text-gray-900 dark:text-white text-xs sm:text-sm font-medium">
+                                {log.station_name}
+                              </span>
+                              {log.source && (
+                                <span className="text-[11px] text-gray-500 dark:text-gray-400">{log.source}</span>
+                              )}
                             </div>
                           </td>
-                          <td className="px-3 sm:px-6 py-2 sm:py-4 text-gray-600 dark:text-gray-300 text-xs sm:text-sm hidden sm:table-cell">
-                            {(log as PlayLogData).duration}
+                          <td className="px-3 sm:px-6 py-2 sm:py-4 hidden md:table-cell">
+                            <div className="flex flex-col text-xs sm:text-sm text-gray-600 dark:text-gray-400">
+                              <span>{formatDateTime(log.matched_at)}</span>
+                            </div>
+                          </td>
+                          <td className="px-3 sm:px-6 py-2 sm:py-4 hidden sm:table-cell text-gray-900 dark:text-white text-xs sm:text-sm">
+                            {log.duration ?? '—'}
                           </td>
                           <td className="px-3 sm:px-6 py-2 sm:py-4">
-                            <span className="text-emerald-600 dark:text-emerald-400 font-semibold text-xs sm:text-sm">
-                              ₵{(log as PlayLogData).royalty_amount.toFixed(2)}
-                            </span>
-                          </td>
-                          <td className="px-3 sm:px-6 py-2 sm:py-4">
-                            <span className={`inline-flex px-3 py-1.5 text-xs font-semibold rounded-full ${
-                              (log as PlayLogData).status === 'Confirmed'
-                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
-                                : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400'
-                            }`}>
-                              {(log as PlayLogData).status}
-                            </span>
-                          </td>
-                        </>
-                      ) : (
-                        <>
-                          <td className="px-3 sm:px-6 py-2 sm:py-4 text-gray-900 dark:text-white font-medium text-xs sm:text-sm truncate max-w-[120px]">
-                            {(log as MatchLogData).song}
-                          </td>
-                          <td className="px-3 sm:px-6 py-2 sm:py-4 text-gray-600 dark:text-gray-300 text-xs sm:text-sm hidden sm:table-cell truncate max-w-[100px]">
-                            {(log as MatchLogData).station}
-                          </td>
-                          <td className="px-3 sm:px-6 py-2 sm:py-4 text-gray-600 dark:text-gray-300 text-xs sm:text-sm hidden md:table-cell">
                             <div className="flex flex-col">
-                              <span className="sm:hidden">{new Date((log as MatchLogData).matched_at).toLocaleDateString()}</span>
-                              <span className="hidden sm:inline">{new Date((log as MatchLogData).matched_at).toLocaleString()}</span>
+                              <span className="text-gray-900 dark:text-white font-semibold text-xs sm:text-sm">
+                                {formatCurrency(log.royalty_amount ?? 0)}
+                              </span>
+                              {typeof log.confidence === 'number' && (
+                                <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                                  Confidence {Math.round(log.confidence)}%
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-3 sm:px-6 py-2 sm:py-4">
+                            <span
+                              className={`inline-flex px-3 py-1.5 text-xs font-semibold rounded-full ${getPlayStatusClasses(
+                                log.status,
+                              )}`}
+                            >
+                              {log.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    : activeData.map((log) => (
+                        <tr key={log.id} className="hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors duration-200">
+                          <td className="px-3 sm:px-6 py-2 sm:py-4">
+                            <div className="flex flex-col">
+                              <span className="text-gray-900 dark:text-white font-medium text-xs sm:text-sm truncate max-w-[120px] sm:max-w-none">
+                                {log.song}
+                              </span>
+                              <span className="text-gray-500 dark:text-gray-400 text-xs truncate">
+                                by {log.artist ?? 'Unknown Artist'}
+                              </span>
+                              {log.match_type && (
+                                <span className="inline-flex items-center mt-1 px-3 py-1.5 rounded-full text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                                  {log.match_type}
+                                </span>
+                              )}
+                              {log.source && (
+                                <span className="mt-1 text-[11px] text-gray-400 dark:text-gray-500">{log.source}</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-3 sm:px-6 py-2 sm:py-4 hidden sm:table-cell">
+                            <span className="text-gray-900 dark:text-white text-xs sm:text-sm font-medium">
+                              {log.station}
+                            </span>
+                          </td>
+                          <td className="px-3 sm:px-6 py-2 sm:py-4 hidden md:table-cell">
+                            <div className="flex flex-col text-xs sm:text-sm text-gray-600 dark:text-gray-400">
+                              <span>{formatDateTime(log.matched_at)}</span>
                             </div>
                           </td>
                           <td className="px-3 sm:px-6 py-2 sm:py-4">
@@ -551,51 +587,41 @@ const PlayLogs: React.FC = () => {
                               <div className="w-8 sm:w-12 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 sm:h-2">
                                 <div
                                   className="bg-gradient-to-r from-blue-500 to-indigo-500 h-1.5 sm:h-2 rounded-full transition-all duration-300"
-                                  style={{ width: `${(log as MatchLogData).confidence}%` }}
+                                  style={{ width: `${Math.min(100, Math.max(0, Math.round(log.confidence ?? 0)))}%` }}
                                 ></div>
                               </div>
-                              <span className="text-gray-900 dark:text-white font-medium text-xs sm:text-sm">{(log as MatchLogData).confidence}%</span>
+                              <span className="text-gray-900 dark:text-white font-medium text-xs sm:text-sm">
+                                {Math.round(log.confidence ?? 0)}%
+                              </span>
                             </div>
                           </td>
                           <td className="px-3 sm:px-6 py-2 sm:py-4">
-                            <span className={`inline-flex px-3 py-1.5 text-xs font-semibold rounded-full ${
-                              (log as MatchLogData).status === 'Verified'
-                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
-                                : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400'
-                            }`}>
-                              {(log as MatchLogData).status}
+                            <span
+                              className={`inline-flex px-3 py-1.5 text-xs font-semibold rounded-full ${getMatchStatusClasses(
+                                log.status,
+                              )}`}
+                            >
+                              {log.status ?? 'Pending'}
                             </span>
                           </td>
-                        </>
-                      )}
-                    </tr>
-                  ))}
-                  {paginatedData.length === 0 && (
-                    <tr>
-                      <td
-                        colSpan={activeTab === 'playlogs' ? 6 : 5}
-                        className="px-3 sm:px-6 py-8 sm:py-16 text-center text-gray-500 dark:text-gray-400"
-                      >
-                        No logs found matching your search criteria.
-                      </td>
-                    </tr>
-                  )}
+                        </tr>
+                      ))}
                 </tbody>
               </table>
             </div>
           </div>
 
-          {/* Enhanced Pagination - More Visible */}
           {totalPages > 1 && (
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-8 pt-6 border-t border-gray-200 dark:border-slate-700 bg-gray-50/30 dark:bg-slate-800/30 -mx-8 px-8 py-4 rounded-b-2xl">
               <div className="text-sm text-gray-600 dark:text-gray-400 font-medium">
-                Showing <span className="text-blue-600 dark:text-blue-400 font-semibold">{startIndex + 1}</span> to{' '}
-                <span className="text-blue-600 dark:text-blue-400 font-semibold">{Math.min(startIndex + itemsPerPage, filteredAndSortedData.length)}</span> of{' '}
-                <span className="text-blue-600 dark:text-blue-400 font-semibold">{filteredAndSortedData.length}</span> entries
+                Showing{' '}
+                <span className="text-blue-600 dark:text-blue-400 font-semibold">{startEntry}</span> to{' '}
+                <span className="text-blue-600 dark:text-blue-400 font-semibold">{endEntry}</span> of{' '}
+                <span className="text-blue-600 dark:text-blue-400 font-semibold">{totalEntries}</span> entries
               </div>
               <div className="flex items-center space-x-2">
                 <button
-                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                  onClick={() => changePage(currentPage - 1)}
                   disabled={currentPage === 1}
                   className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
                 >
@@ -606,29 +632,24 @@ const PlayLogs: React.FC = () => {
                 </button>
 
                 <div className="flex items-center space-x-1">
-                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                    const pageNum = Math.max(1, Math.min(totalPages - 4, currentPage - 2)) + i;
-                    if (pageNum > totalPages) return null;
-
-                    return (
-                      <button
-                        key={pageNum}
-                        onClick={() => setCurrentPage(pageNum)}
-                        className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm ${
-                          currentPage === pageNum
-                            ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md transform scale-105'
-                            : 'text-gray-600 dark:text-gray-400 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 border border-gray-200 dark:border-slate-600 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md'
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    );
-                  })}
+                  {pageNumbers.map((pageNum) => (
+                    <button
+                      key={pageNum}
+                      onClick={() => changePage(pageNum)}
+                      className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm ${
+                        currentPage === pageNum
+                          ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md transform scale-105'
+                          : 'text-gray-600 dark:text-gray-400 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 border border-gray-200 dark:border-slate-600 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  ))}
                 </div>
 
                 <button
-                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                  disabled={currentPage === totalPages}
+                  onClick={() => changePage(currentPage + 1)}
+                  disabled={totalPages === 0 || currentPage === totalPages}
                   className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
                 >
                   <span>Next</span>
@@ -640,11 +661,10 @@ const PlayLogs: React.FC = () => {
             </div>
           )}
 
-          {/* Show pagination info even when only one page */}
-          {totalPages === 1 && filteredAndSortedData.length > 0 && (
+          {totalPages <= 1 && totalEntries > 0 && (
             <div className="flex justify-center mt-6 pt-6 border-t border-gray-200 dark:border-slate-700">
               <div className="text-sm text-gray-500 dark:text-gray-400">
-                Showing all {filteredAndSortedData.length} entries
+                Showing all {totalEntries} entries
               </div>
             </div>
           )}
@@ -654,4 +674,4 @@ const PlayLogs: React.FC = () => {
   );
 };
 
-export default PlayLogs;
+export default MatchLogsPage;

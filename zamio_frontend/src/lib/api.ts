@@ -264,6 +264,69 @@ export interface ArtistDashboardParams {
   end_date?: string;
 }
 
+export interface ArtistLogPagination {
+  count: number;
+  page_number: number;
+  page_size: number;
+  total_pages: number;
+  next: number | null;
+  previous: number | null;
+  has_next: boolean;
+  has_previous: boolean;
+}
+
+export interface ArtistPlayLogRecord {
+  id: number;
+  track_title: string;
+  artist: string | null;
+  station_name: string;
+  matched_at: string | null;
+  stop_time: string | null;
+  duration: string | null;
+  royalty_amount: number;
+  status: string;
+  attribution_source: string;
+  partner_name?: string | null;
+  plays: number;
+  source?: string | null;
+  confidence?: number | null;
+}
+
+export interface ArtistMatchLogRecord {
+  id: number;
+  song: string;
+  artist: string | null;
+  station: string;
+  matched_at: string | null;
+  confidence?: number | null;
+  source?: string | null;
+  match_type?: string | null;
+  status?: string | null;
+}
+
+export interface ArtistLogsCollection<T> {
+  results: T[];
+  pagination: ArtistLogPagination;
+}
+
+export interface ArtistLogsPayload {
+  playLogs?: ArtistLogsCollection<ArtistPlayLogRecord>;
+  matchLogs?: ArtistLogsCollection<ArtistMatchLogRecord>;
+}
+
+export interface ArtistLogsParams {
+  artistId: string;
+  search?: string;
+  playPage?: number;
+  matchPage?: number;
+  playPageSize?: number;
+  matchPageSize?: number;
+  playSortBy?: string;
+  playSortOrder?: 'asc' | 'desc';
+  matchSortBy?: string;
+  matchSortOrder?: 'asc' | 'desc';
+}
+
 export const uploadKycDocument = async (formData: FormData) => {
   const { data } = await authApi.post<ApiEnvelope<{ document_id: number }>>(
     '/api/accounts/upload-kyc-documents/',
@@ -290,6 +353,58 @@ export const fetchArtistDashboard = async (
 
   const { data } = await authApi.get<ApiEnvelope<ArtistDashboardPayload>>(
     '/api/artists/dashboard/',
+    { params: query },
+  );
+
+  return data;
+};
+
+export const fetchArtistLogs = async ({
+  artistId,
+  search,
+  playPage,
+  matchPage,
+  playPageSize,
+  matchPageSize,
+  playSortBy,
+  playSortOrder,
+  matchSortBy,
+  matchSortOrder,
+}: ArtistLogsParams) => {
+  const query: Record<string, string | number> = {
+    artist_id: artistId,
+  };
+
+  if (search) {
+    query.search = search;
+  }
+  if (typeof playPage === 'number') {
+    query.play_page = playPage;
+  }
+  if (typeof matchPage === 'number') {
+    query.match_page = matchPage;
+  }
+  if (typeof playPageSize === 'number') {
+    query.play_page_size = playPageSize;
+  }
+  if (typeof matchPageSize === 'number') {
+    query.match_page_size = matchPageSize;
+  }
+  if (playSortBy) {
+    query.play_sort_by = playSortBy;
+  }
+  if (playSortOrder) {
+    query.play_sort_order = playSortOrder;
+  }
+  if (matchSortBy) {
+    query.match_sort_by = matchSortBy;
+  }
+  if (matchSortOrder) {
+    query.match_sort_order = matchSortOrder;
+  }
+
+  const { data } = await authApi.get<ApiEnvelope<ArtistLogsPayload>>(
+    '/api/artists/playlogs/',
     { params: query },
   );
 
