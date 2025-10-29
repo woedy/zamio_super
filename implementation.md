@@ -202,3 +202,103 @@
 - **Deployment** Keep Docker compose files current; each phase should be deployable independently with feature flags if needed.
 - **Demo Readiness** At the end of every phase, ensure there is a scripted demo scenario with test data, accessible credentials, and instructions.
 - **Frontend Contract Discipline** Treat the existing static SPA screens as non-negotiable guides for data structure, copy, and flow unless explicit approval is given to revise them. Any backend/domain changes should be driven by aligning responses with these UI expectations.
+
+## Manual QA · Upload Management Flow
+
+### Backend preparation
+1. Navigate to the backend app and apply migrations:
+   ```bash
+   cd zamio_backend
+   python manage.py migrate
+   ```
+2. Seed an artist account and API token for testing:
+   ```bash
+   python manage.py shell <<'PY'
+from django.contrib.auth import get_user_model
+from artists.models import Artist
+from rest_framework.authtoken.models import Token
+
+User = get_user_model()
+user, _ = User.objects.get_or_create(
+    email='artist@example.com',
+    defaults={'first_name': 'Upload', 'last_name': 'Tester'}
+)
+user.set_password('securepass123')
+user.save()
+artist, _ = Artist.objects.get_or_create(user=user, defaults={'stage_name': 'Upload Tester'})
+Token.objects.get_or_create(user=user)
+print('Token:', Token.objects.get(user=user).key)
+PY
+   ```
+3. (Optional) Prime a few upload records for manual inspection:
+   ```bash
+   python manage.py shell <<'PY'
+from artists.models import UploadProcessingStatus
+from django.contrib.auth import get_user_model
+
+user = get_user_model().objects.get(email='artist@example.com')
+UploadProcessingStatus.objects.get_or_create(
+    upload_id='manual_processing',
+    defaults={
+        'user': user,
+        'upload_type': 'track_audio',
+        'original_filename': 'manual-processing.mp3',
+        'file_size': 2048,
+        'mime_type': 'audio/mpeg',
+        'status': 'processing',
+        'progress_percentage': 45,
+        'metadata': {'title': 'Processing Demo', 'album_title': 'Manual Album'}
+    }
+)
+UploadProcessingStatus.objects.get_or_create(
+    upload_id='manual_failed',
+    defaults={
+        'user': user,
+        'upload_type': 'track_audio',
+        'original_filename': 'manual-failed.mp3',
+        'file_size': 1024,
+        'mime_type': 'audio/mpeg',
+        'status': 'failed',
+        'progress_percentage': 20,
+        'metadata': {'title': 'Failed Demo', 'album_title': 'Manual Album'}
+    }
+)
+PY
+   ```
+
+### Backend endpoint verification
+1. Start the API server: `python manage.py runserver 0.0.0.0:8000`.
+2. Call the upload listing endpoint and verify stats, pagination, and filters are populated:
+   ```bash
+   curl -H "Authorization: Token <TOKEN_VALUE>" http://localhost:8000/api/artists/api/uploads/
+   ```
+3. Create an album and confirm the response echoes the title/genre:
+   ```bash
+   curl -X POST \
+     -H "Authorization: Token <TOKEN_VALUE>" \
+     -H "Content-Type: application/json" \
+     -d '{"title": "Manual Release", "genre": "Highlife", "release_date": "2024-06-15"}' \
+     http://localhost:8000/api/artists/api/albums/create/
+   ```
+4. Cancel an in-flight upload and delete a failed upload, confirming status changes via follow-up GET requests:
+   ```bash
+   curl -X DELETE -H "Authorization: Token <TOKEN_VALUE>" http://localhost:8000/api/artists/api/upload/manual_processing/cancel/
+   curl -X DELETE -H "Authorization: Token <TOKEN_VALUE>" http://localhost:8000/api/artists/api/upload/manual_failed/delete/
+   curl -H "Authorization: Token <TOKEN_VALUE>" http://localhost:8000/api/artists/api/uploads/
+   ```
+
+### Frontend verification
+1. Install workspace dependencies (first run only): `npm install`.
+2. Ensure the frontend points at the local API by creating `zamio_frontend/.env.local` with `VITE_API_URL=http://localhost:8000`.
+3. Start the Vite dev server: `npm run dev -- --host 0.0.0.0 --port 5173`.
+4. Sign in as `artist@example.com` / `securepass123`, open the Upload Management page, and confirm:
+   - The stats cards and table rows reflect the seeded uploads.
+   - Album filter dropdown includes the album titles returned by the API.
+   - The "Add Album" modal persists a new album and immediately refreshes the list.
+   - Bulk upload wizard accepts audio files, transitions through metadata/progress steps, and refreshes the table after completion.
+   - Row-level actions (`Cancel upload`, `Refresh status`, `Delete upload`, `View track details`) invoke the backend and update the UI state.
+5. Run the automated suites to regress the flow:
+   ```bash
+   pytest zamio_backend/artists/tests/test_upload_management_api.py
+   npm test -w zamio_frontend -- --run
+   ```
