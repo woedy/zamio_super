@@ -33,8 +33,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-insecure-secret-change-me')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-# DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
-DEBUG = True
+# Allow DEBUG to be controlled via environment variables (default False)
+DEBUG = os.environ.get("DEBUG", "False").lower() in {"1", "true", "yes"}
 
 # Hosts / CSRF
 # Default to safer localhost-only in absence of env override.
@@ -111,6 +111,7 @@ MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "accounts.middleware.SecurityHeadersMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -217,12 +218,13 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 
-STATIC_URL = "static/"
+STATIC_URL = "/static/"
 
 
-STATIC_ROOT = os.path.join(BASE_DIR, "static_cdn", "static_root")  # For static files
-MEDIA_URL = "/media/"
-MEDIA_ROOT = os.path.join(BASE_DIR, "media")  # Separate media files
+STATIC_ROOT = Path(os.environ.get("STATIC_ROOT", BASE_DIR / "static_cdn" / "static_root"))
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+MEDIA_URL = os.environ.get("MEDIA_URL", "/media/")
+MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", BASE_DIR / "media"))
 #DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
 
 
