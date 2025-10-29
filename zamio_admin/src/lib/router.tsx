@@ -1,15 +1,57 @@
-import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom';
+import { createBrowserRouter, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { ReactNode } from 'react';
 
-// Static demo does not enforce authentication
-const PrivateRoute = ({ children }: { children: ReactNode }) => <>{children}</>;
+import { useAuth } from './auth';
 
-const PublicRoute = ({ children }: { children: ReactNode }) => <>{children}</>;
+const FullscreenLoader = () => (
+  <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-200">
+    <div className="flex flex-col items-center space-y-4">
+      <div className="h-12 w-12 animate-spin rounded-full border-4 border-indigo-500 border-t-transparent" />
+      <p className="text-sm font-medium uppercase tracking-wide text-indigo-200">Preparing console…</p>
+    </div>
+  </div>
+);
 
-// Import pages (assuming they exist in pages/)
+const PrivateRoute = ({ children }: { children: ReactNode }) => {
+  const location = useLocation();
+  const { isInitialized, isAuthenticated } = useAuth();
+
+  if (!isInitialized) {
+    return <FullscreenLoader />;
+  }
+
+  if (!isAuthenticated) {
+    const target = `${location.pathname}${location.search ?? ''}${location.hash ?? ''}`;
+    return <Navigate to="/signin" replace state={{ from: target }} />;
+  }
+
+  return <>{children}</>;
+};
+
+const PublicRoute = ({ children }: { children: ReactNode }) => {
+  const location = useLocation();
+  const { isInitialized, isAuthenticated } = useAuth();
+
+  if (!isInitialized) {
+    return <FullscreenLoader />;
+  }
+
+  if (isAuthenticated) {
+    const fromState = (location.state as { from?: string } | null)?.from;
+    const destination = fromState && fromState !== '/signin' ? fromState : '/dashboard';
+    return <Navigate to={destination} replace />;
+  }
+
+  return <>{children}</>;
+};
+
+const RootContainer = () => <Outlet />;
+
 import Landing from '../pages/Landing';
 import SignIn from '../pages/SignIn';
 import SignUp from '../pages/SignUp';
+import EmailVerification from '../pages/EmailVerification';
+import AdminOnboarding from '../pages/Onboarding/AdminOnboarding';
 import Dashboard from '../pages/Dashboard';
 import UserManagement from '../pages/UserManagement';
 import UserDetail from '../pages/UserDetail';
@@ -22,121 +64,75 @@ import DisputeDetail from '../pages/DisputeDetail';
 import DisputesAnalytics from '../pages/DisputesAnalytics';
 import PlayLogs from '../pages/PlayLogs';
 import NotFound from '../pages/NotFound';
+import Layout from '../components/Layout';
 
 const router = createBrowserRouter([
   {
     path: '/',
-    element: (
-      <PublicRoute>
-        <Landing />
-      </PublicRoute>
-    ),
+    element: <RootContainer />,
+    children: [
+      {
+        index: true,
+        element: (
+          <PublicRoute>
+            <Landing />
+          </PublicRoute>
+        ),
+      },
+      {
+        path: 'signin',
+        element: (
+          <PublicRoute>
+            <SignIn />
+          </PublicRoute>
+        ),
+      },
+      {
+        path: 'signup',
+        element: (
+          <PublicRoute>
+            <SignUp />
+          </PublicRoute>
+        ),
+      },
+      {
+        path: 'verify-email',
+        element: (
+          <PublicRoute>
+            <EmailVerification />
+          </PublicRoute>
+        ),
+      },
+      {
+        path: 'onboarding/:stepId?',
+        element: (
+          <PrivateRoute>
+            <AdminOnboarding />
+          </PrivateRoute>
+        ),
+      },
+      {
+        element: (
+          <PrivateRoute>
+            <Layout />
+          </PrivateRoute>
+        ),
+        children: [
+          { path: 'dashboard', element: <Dashboard /> },
+          { path: 'user-management', element: <UserManagement /> },
+          { path: 'user-management/add', element: <AddUser /> },
+          { path: 'user-management/:id', element: <UserDetail /> },
+          { path: 'partners', element: <Partners /> },
+          { path: 'partners/:type/:id', element: <PartnerDetail /> },
+          { path: 'agreements', element: <Agreements /> },
+          { path: 'disputes', element: <Disputes /> },
+          { path: 'disputes/analytics', element: <DisputesAnalytics /> },
+          { path: 'disputes/:id', element: <DisputeDetail /> },
+          { path: 'playlogs', element: <PlayLogs /> },
+        ],
+      },
+    ],
   },
-  {
-    path: '/signin',
-    element: (
-      <PublicRoute>
-        <SignIn />
-      </PublicRoute>
-    ),
-  },
-  {
-    path: '/signup',
-    element: (
-      <PublicRoute>
-        <SignUp />
-      </PublicRoute>
-    ),
-  },
-  {
-    path: '/dashboard',
-    element: (
-      <PrivateRoute>
-        <Dashboard />
-      </PrivateRoute>
-    ),
-  },
-  {
-    path: '/partners',
-    element: (
-      <PrivateRoute>
-        <Partners />
-      </PrivateRoute>
-    ),
-  },
-  {
-    path: '/agreements',
-    element: (
-      <PrivateRoute>
-        <Agreements />
-      </PrivateRoute>
-    ),
-  },
-  {
-    path: '/disputes',
-    element: (
-      <PrivateRoute>
-        <Disputes />
-      </PrivateRoute>
-    ),
-  },
-  {
-    path: '/disputes/analytics',
-    element: (
-      <PrivateRoute>
-        <DisputesAnalytics />
-      </PrivateRoute>
-    ),
-  },
-  {
-    path: '/disputes/:id',
-    element: (
-      <PrivateRoute>
-        <DisputeDetail />
-      </PrivateRoute>
-    ),
-  },
-  {
-    path: '/playlogs',
-    element: (
-      <PrivateRoute>
-        <PlayLogs />
-      </PrivateRoute>
-    ),
-  },
-  {
-    path: '/partners/:type/:id',
-    element: (
-      <PrivateRoute>
-        <PartnerDetail />
-      </PrivateRoute>
-    ),
-  },
-  {
-    path: '/user-management',
-    element: (
-      <PrivateRoute>
-        <UserManagement />
-      </PrivateRoute>
-    ),
-  },
-  {
-    path: '/user-management/add',
-    element: (
-      <PrivateRoute>
-        <AddUser />
-      </PrivateRoute>
-    ),
-  },
-  {
-    path: '/user-management/:id',
-    element: (
-      <PrivateRoute>
-        <UserDetail />
-      </PrivateRoute>
-    ),
-  },
-  // Catch-all route for 404 errors - must be last
   {
     path: '*',
     element: <NotFound />,
@@ -144,3 +140,4 @@ const router = createBrowserRouter([
 ]);
 
 export default router;
+

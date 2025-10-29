@@ -16,6 +16,7 @@ from rest_framework.permissions import IsAuthenticated
 
 from accounts.api.serializers import UserRegistrationSerializer
 from accounts.api.token_utils import get_jwt_tokens_for_user
+from accounts.api.custom_jwt import CustomJWTAuthentication
 from accounts.models import AuditLog
 from accounts.services import EmailVerificationService
 from activities.models import AllActivity
@@ -56,6 +57,13 @@ def register_admin_view(request):
         phone = request.data.get('phone', "")
         password = request.data.get('password', "")
         password2 = request.data.get('password2', "")
+        organization_name = (
+            request.data.get('organization_name', "")
+            or request.data.get('organization', "")
+            or request.data.get('company_name', "")
+            or request.data.get('company', "")
+        ).strip()
+        role = (request.data.get('role', "") or request.data.get('admin_role', "")).strip()
 
 
         if not email:
@@ -86,6 +94,14 @@ def register_admin_view(request):
         if not is_valid_password(password):
             errors['password'] = ['Password must be at least 8 characters long\n- Must include at least one uppercase letter,\n- One lowercase letter, one digit,\n- And one special character']
 
+        if not organization_name:
+            org_error = ['Organization name is required.']
+            errors['organization_name'] = org_error
+            errors['company'] = org_error
+
+        if not role:
+            errors['role'] = ['Role is required.']
+
         if errors:
             payload['message'] = "Errors"
             payload['errors'] = errors
@@ -111,6 +127,8 @@ def register_admin_view(request):
                 user=user,
                 city='',
                 postal_code='',
+                organization_name=organization_name,
+                role=role,
             )
             admin_profile.save()
 
@@ -126,7 +144,9 @@ def register_admin_view(request):
                     'email': email,
                     'first_name': first_name,
                     'last_name': last_name,
-                    'phone': phone
+                    'phone': phone,
+                    'organization_name': organization_name,
+                    'role': role,
                 },
                 response_data={
                     'success': True,
@@ -134,13 +154,17 @@ def register_admin_view(request):
                     'admin_id': str(admin_profile.admin_id),
                     'user_type': 'Admin',
                     'admin_flag': True,
-                    'staff_flag': True
+                    'staff_flag': True,
+                    'organization_name': organization_name,
+                    'role': role,
                 },
                 status_code=201
             )
 
             data['phone'] = user.phone
             data['photo'] = getattr(user.photo, 'url', None)
+            data['organization_name'] = admin_profile.organization_name
+            data['role'] = admin_profile.role
 
         token = Token.objects.get(user=user)
         jwt_tokens = get_jwt_tokens_for_user(user)
@@ -276,13 +300,21 @@ class AdminLogin(APIView):
         data["token"] = token.key
         data["access_token"] = jwt_tokens['access']
         data["refresh_token"] = jwt_tokens['refresh']
+        data["organization_name"] = admin.organization_name
+        data["role"] = admin.role
         needs_profile = not (admin.city and admin.postal_code)
         data["next_step"] = 'profile' if needs_profile else 'done'
+        data["onboarding_step"] = data["next_step"]
+        data["progress"] = {
+            'profile_completed': not needs_profile,
+        }
         data["profile"] = {
             'address': admin.address,
             'city': admin.city,
             'postal_code': admin.postal_code,
             'active': admin.active,
+            'organization_name': admin.organization_name,
+            'role': admin.role,
         }
 
         payload['message'] = "Successful"
@@ -470,18 +502,45 @@ def verify_admin_email(request):
         
         # Get admin profile
         admin = MrAdmin.objects.filter(user=user).first()
-        
+        jwt_tokens = get_jwt_tokens_for_user(user)
+
+        needs_profile = True
+        admin_id = None
+        progress = {'profile_completed': False}
+        organization_name = ''
+        admin_role = ''
+        if admin:
+            admin_id = admin.admin_id
+            needs_profile = not (admin.city and admin.postal_code)
+            progress['profile_completed'] = not needs_profile
+            organization_name = admin.organization_name
+            admin_role = admin.role
+
         # Prepare response data (maintain backward compatibility)
         data["user_id"] = str(user.user_id)
-        if admin:
-            data["admin_id"] = admin.admin_id
+        data["admin_id"] = admin_id
         data["email"] = user.email
         data["first_name"] = user.first_name
         data["last_name"] = user.last_name
         data["photo"] = user.photo.url if getattr(user.photo, 'url', None) else None
         data["token"] = token.key
+        data["access_token"] = jwt_tokens['access']
+        data["refresh_token"] = jwt_tokens['refresh']
         data["country"] = user.country
         data["phone"] = user.phone
+        data["organization_name"] = organization_name
+        data["role"] = admin_role
+        data["next_step"] = 'profile' if needs_profile else 'done'
+        data["onboarding_step"] = data["next_step"]
+        data["progress"] = progress
+        data["profile"] = {
+            'address': getattr(admin, 'address', ''),
+            'city': getattr(admin, 'city', ''),
+            'postal_code': getattr(admin, 'postal_code', ''),
+            'active': getattr(admin, 'active', False),
+            'organization_name': organization_name,
+            'role': admin_role,
+        }
         
         payload['message'] = "Successful"
         payload['data'] = data
@@ -567,17 +626,47 @@ def verify_admin_email_code(request):
             token = Token.objects.get(user=user)
         except Token.DoesNotExist:
             token = Token.objects.create(user=user)
-        
+        jwt_tokens = get_jwt_tokens_for_user(user)
+
+        admin = MrAdmin.objects.filter(user=user).first()
+        needs_profile = True
+        admin_id = None
+        progress = {'profile_completed': False}
+        organization_name = ''
+        admin_role = ''
+        if admin:
+            admin_id = admin.admin_id
+            needs_profile = not (admin.city and admin.postal_code)
+            progress['profile_completed'] = not needs_profile
+            organization_name = admin.organization_name
+            admin_role = admin.role
+
         # Prepare response data
         data["user_id"] = str(user.user_id)
+        data["admin_id"] = admin_id
         data["email"] = user.email
         data["first_name"] = user.first_name
         data["last_name"] = user.last_name
         data["photo"] = user.photo.url if getattr(user.photo, 'url', None) else None
         data["token"] = token.key
+        data["access_token"] = jwt_tokens['access']
+        data["refresh_token"] = jwt_tokens['refresh']
         data["country"] = user.country
         data["phone"] = user.phone
-        
+        data["organization_name"] = organization_name
+        data["role"] = admin_role
+        data["next_step"] = 'profile' if needs_profile else 'done'
+        data["onboarding_step"] = data["next_step"]
+        data["progress"] = progress
+        data["profile"] = {
+            'address': getattr(admin, 'address', ''),
+            'city': getattr(admin, 'city', ''),
+            'postal_code': getattr(admin, 'postal_code', ''),
+            'active': getattr(admin, 'active', False),
+            'organization_name': organization_name,
+            'role': admin_role,
+        }
+
         payload['message'] = "Email verified successfully"
         payload['data'] = data
         
@@ -602,7 +691,7 @@ def verify_admin_email_code(request):
 # ---------- Admin Onboarding ----------
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def admin_onboarding_status_view(request):
     payload = {}
     data = {}
@@ -622,11 +711,17 @@ def admin_onboarding_status_view(request):
     data["user_id"] = str(user.user_id)
     data["admin_id"] = admin.admin_id
     data["next_step"] = next_step
+    data["onboarding_step"] = next_step
+    data["progress"] = {
+        'profile_completed': not needs_profile,
+    }
     data["profile"] = {
         'address': admin.address,
         'city': admin.city,
         'postal_code': admin.postal_code,
         'active': admin.active,
+        'organization_name': admin.organization_name,
+        'role': admin.role,
     }
 
     payload['message'] = 'Successful'
@@ -636,7 +731,7 @@ def admin_onboarding_status_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @csrf_exempt
 def complete_admin_profile_view(request):
     payload = {}
@@ -670,11 +765,17 @@ def complete_admin_profile_view(request):
 
     data['admin_id'] = admin.admin_id
     data['next_step'] = 'done'
+    data['onboarding_step'] = 'done'
+    data['progress'] = {
+        'profile_completed': True,
+    }
     data['profile'] = {
         'address': admin.address,
         'city': admin.city,
         'postal_code': admin.postal_code,
         'active': admin.active,
+        'organization_name': admin.organization_name,
+        'role': admin.role,
     }
 
     payload['message'] = 'Successful'

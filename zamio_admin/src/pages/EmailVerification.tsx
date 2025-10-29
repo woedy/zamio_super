@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Users, CheckCircle, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Shield, CheckCircle, AlertCircle } from 'lucide-react';
 import { isAxiosError } from 'axios';
 
 import { persistLegacyLoginResponse, type LegacyLoginResponse, type StoredUserPayload } from '@zamio/ui';
 
-import { verifyPublisherEmailCode, type ApiErrorMap } from '../lib/api';
+import { verifyAdminEmailCode, type ApiErrorMap } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
 const VALID_CODE_REGEX = /^\d{4}$/;
@@ -119,7 +119,7 @@ export default function EmailVerification() {
     setEmailError(null);
 
     try {
-      const response = await verifyPublisherEmailCode({ email: normalizedEmail, code });
+      const response = await verifyAdminEmailCode({ email: normalizedEmail, code });
 
       persistLegacyLoginResponse(response);
 
@@ -138,7 +138,7 @@ export default function EmailVerification() {
 
       setTimeout(() => {
         navigate(destination, { replace: true });
-      }, 1200);
+      }, 1000);
     } catch (error) {
       let message = 'Unable to verify your email. Please double-check the code and try again.';
       if (isAxiosError(error) && error.response) {
@@ -195,104 +195,112 @@ export default function EmailVerification() {
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center space-x-3 mb-4">
             <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/20 text-indigo-300">
-              <Users className="h-6 w-6" />
+              <Shield className="h-6 w-6" />
             </span>
-            <span className="text-2xl font-semibold tracking-tight">Zamio Publisher</span>
+            <span className="text-2xl font-semibold tracking-tight">Zamio Admin</span>
           </Link>
           <h2 className="text-3xl font-semibold">Verify your email</h2>
-          <p className="mt-2 text-slate-400">Enter the 4-digit code sent to your publisher email</p>
+          <p className="mt-2 text-slate-400">Enter the 4-digit code we sent to your email address</p>
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-8 shadow-2xl backdrop-blur">
-          <div className="mb-6">
-            <label htmlFor="verification-email" className="block text-sm font-medium text-slate-300 mb-2">
-              Email address
-            </label>
-            <input
-              id="verification-email"
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              className={`w-full rounded-lg border ${
-                emailError ? 'border-red-400 focus:border-red-400 focus:ring-red-400' : 'border-white/20 focus:border-indigo-400 focus:ring-indigo-400'
-              } bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1`}
-              placeholder="you@publisher.com"
-              disabled={isVerifying}
-            />
-            {emailError && (
-              <p className="mt-1 text-xs text-red-400">{emailError}</p>
-            )}
+          <div className="flex items-center justify-between mb-6">
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              className="inline-flex items-center text-sm text-slate-400 hover:text-slate-200"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back
+            </button>
+            <button
+              type="button"
+              onClick={handleResendCode}
+              className="text-sm text-indigo-400 hover:text-indigo-300"
+            >
+              Resend code
+            </button>
           </div>
 
-          <div className="mb-6">
-            <div className="flex justify-center gap-3 mb-4">
-              {verificationCode.map((digit, index) => (
-                <input
-                  key={index}
-                  ref={(el) => (inputRefs.current[index] = el)}
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  maxLength={1}
-                  value={digit}
-                  onChange={(event) => handleInputChange(index, event.target.value)}
-                  onKeyDown={(event) => handleKeyDown(index, event)}
-                  onPaste={handlePaste}
-                  className={`w-14 h-14 text-center text-2xl font-semibold rounded-lg border bg-slate-800/50 text-white focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 ${
-                    verificationStatus === 'error' ? 'border-red-400' : 'border-white/20'
-                  }`}
-                  disabled={isVerifying}
-                />
-              ))}
+          <div className="space-y-6">
+            <div className="space-y-3">
+              <label htmlFor="email" className="block text-sm font-medium text-slate-200">
+                Admin email
+              </label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  setEmailError(null);
+                }}
+                className={`w-full rounded-lg border ${
+                  emailError ? 'border-red-500 focus:border-red-400 focus:ring-red-400' : 'border-white/20 focus:border-indigo-400 focus:ring-indigo-400'
+                } bg-slate-800/50 px-4 py-3 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1`}
+                placeholder="admin@zamio.com"
+              />
+              {emailError && <p className="text-xs text-red-400">{emailError}</p>}
             </div>
 
-            {verificationStatus === 'error' && (
-              <div className="flex items-center justify-center text-red-400 text-sm mb-4">
-                <AlertCircle className="h-4 w-4 mr-2" />
-                {errorMessage}
+            <div>
+              <label className="block text-sm font-medium text-slate-200 mb-3">Verification code</label>
+              <div className="flex items-center justify-between gap-3">
+                {verificationCode.map((digit, index) => (
+                  <input
+                    key={index}
+                    ref={(el) => {
+                      inputRefs.current[index] = el;
+                    }}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={1}
+                    value={digit}
+                    onChange={(event) => handleInputChange(index, event.target.value)}
+                    onKeyDown={(event) => handleKeyDown(index, event)}
+                    onPaste={handlePaste}
+                    className="h-14 w-14 rounded-lg border border-white/20 bg-slate-800/50 text-center text-2xl font-semibold text-white focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  />
+                ))}
+              </div>
+            </div>
+
+            {verificationStatus === 'success' && (
+              <div className="flex items-center justify-center space-x-2 rounded border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-emerald-200">
+                <CheckCircle className="h-4 w-4" />
+                <span>Email verified! Redirecting…</span>
               </div>
             )}
 
-            {verificationStatus === 'success' && (
-              <div className="flex items-center justify-center text-green-400 text-sm mb-4">
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Email verified successfully! Redirecting to setup...
+            {verificationStatus === 'error' && errorMessage && (
+              <div className="flex items-center space-x-2 rounded border border-red-500/40 bg-red-500/10 px-4 py-2 text-red-200">
+                <AlertCircle className="h-4 w-4" />
+                <span>{errorMessage}</span>
               </div>
             )}
 
             <button
+              type="button"
               onClick={handleVerify}
-              disabled={isVerifying || !isCodeComplete}
-              className="w-full bg-indigo-500 hover:bg-indigo-400 disabled:bg-slate-600 text-white font-semibold py-3 px-4 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2 disabled:cursor-not-allowed"
+              disabled={!isCodeComplete || isVerifying}
+              className="w-full inline-flex items-center justify-center rounded-lg bg-indigo-500 px-4 py-3 text-base font-semibold text-white transition hover:bg-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2 disabled:opacity-60"
             >
-              {isVerifying ? 'Verifying...' : 'Verify Email'}
+              {isVerifying ? 'Verifying…' : 'Verify email'}
             </button>
           </div>
+        </div>
 
-          <div className="text-center mb-6">
-            <p className="text-sm text-slate-400">
-              Haven't received a code?{' '}
-              <button
-                onClick={handleResendCode}
-                className="text-indigo-400 hover:text-indigo-300 font-medium"
-                disabled={isVerifying}
-              >
-                Resend code
-              </button>
-            </p>
-          </div>
-
-          <div className="text-center mt-6">
-            <Link
-              to="/signup"
-              className="inline-flex items-center text-sm text-slate-400 hover:text-white transition-colors"
-            >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to publisher registration
+        <div className="mt-6 text-center text-sm text-slate-500">
+          <p>
+            Having trouble?{' '}
+            <Link to="/support" className="text-indigo-400 hover:text-indigo-300">
+              Contact support
             </Link>
-          </div>
+          </p>
         </div>
       </div>
     </div>
   );
 }
+

@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from 'react';
 import { Activity, Eye, Search, Clock, Radio, Music, TrendingUp, Filter, Download, Settings, MoreVertical, Trash2, Edit, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
-import Layout from '../components/Layout';
 
 // Type definitions for better type safety
 interface PlayLogData {
@@ -399,8 +398,7 @@ const PlayLogs: React.FC = () => {
   };
 
   return (
-    <Layout>
-      <>
+    <>
         {/* Page header */}
         <div className="border-b border-gray-200 dark:border-slate-700 mb-8">
           <div className="px-6 py-4">
@@ -901,8 +899,7 @@ const PlayLogs: React.FC = () => {
             )}
           </div>
         </div>
-      </>
-    </Layout>
+    </>
   );
 };
 

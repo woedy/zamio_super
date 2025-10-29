@@ -19,7 +19,6 @@ import {
   BarChart3,
 } from 'lucide-react';
 import { Card } from '@zamio/ui';
-import Layout from '../components/Layout';
 
 // Mock data for disputes
 const mockDisputes = [
@@ -214,8 +213,7 @@ const Disputes = () => {
   };
 
   return (
-    <Layout>
-      <main className="w-full px-6 py-8 min-h-screen">
+    <main className="w-full px-6 py-8 min-h-screen">
         {/* Header */}
         <div className="mb-12">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
@@ -477,7 +475,6 @@ const Disputes = () => {
           )}
         </Card>
       </main>
-    </Layout>
   );
 };
 

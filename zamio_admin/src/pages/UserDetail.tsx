@@ -27,7 +27,6 @@ import {
   Shield,
 } from 'lucide-react';
 import { Card } from '@zamio/ui';
-import Layout from '../components/Layout';
 
 // Mock user data (in a real app, this would come from an API)
 const mockUsers = [
@@ -146,21 +145,19 @@ const UserDetail = () => {
 
   if (!user) {
     return (
-      <Layout>
-        <div className="flex items-center justify-center min-h-screen">
-          <div className="text-center">
-            <Users className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">User Not Found</h2>
-            <p className="text-gray-600 dark:text-gray-400 mb-4">The requested user could not be found.</p>
-            <button
-              onClick={() => navigate('/user-management')}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Back to User Management
-            </button>
-          </div>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <Users className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">User Not Found</h2>
+          <p className="text-gray-600 dark:text-gray-400 mb-4">The requested user could not be found.</p>
+          <button
+            onClick={() => navigate('/user-management')}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Back to User Management
+          </button>
         </div>
-      </Layout>
+      </div>
     );
   }
 
@@ -204,8 +201,7 @@ const UserDetail = () => {
   };
 
   return (
-    <Layout>
-      <main className="w-full px-6 py-8 bg-gray-50/50 dark:bg-slate-900/50 min-h-screen">
+    <main className="w-full px-6 py-8 bg-gray-50/50 dark:bg-slate-900/50 min-h-screen">
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center space-x-4 mb-6">
@@ -581,7 +577,6 @@ const UserDetail = () => {
           )}
         </div>
       </main>
-    </Layout>
   );
 };
 

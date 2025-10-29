@@ -19,7 +19,6 @@ import {
   LineChart,
 } from 'lucide-react';
 import { Card } from '@zamio/ui';
-import Layout from '../components/Layout';
 
 // Mock analytics data for disputes
 const mockAnalyticsData = {
@@ -99,8 +98,7 @@ const DisputesAnalytics = () => {
   };
 
   return (
-    <Layout>
-      <main className="w-full px-6 py-8 min-h-screen">
+    <main className="w-full px-6 py-8 min-h-screen">
         {/* Header */}
         <div className="mb-12">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
@@ -359,7 +357,6 @@ const DisputesAnalytics = () => {
           </div>
         </Card>
       </main>
-    </Layout>
   );
 };
 

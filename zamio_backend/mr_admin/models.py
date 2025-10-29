@@ -10,11 +10,13 @@ User = get_user_model()
 class MrAdmin(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='mr_admin')
     admin_id = models.CharField(max_length=200, null=True, blank=True)
-    
-    
+
+
     address = models.TextField(null=True, blank=True)
     city = models.CharField(max_length=100)
     postal_code = models.CharField(max_length=20)
+    organization_name = models.CharField(max_length=255, blank=True)
+    role = models.CharField(max_length=120, blank=True)
 
 
     is_archived = models.BooleanField(default=False)

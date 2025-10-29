@@ -20,7 +20,6 @@ import {
   Globe,
 } from 'lucide-react';
 import { Card } from '@zamio/ui';
-import Layout from '../components/Layout';
 
 // Enhanced mock data for agreements
 const mockAgreements = [
@@ -166,8 +165,7 @@ const Agreements = () => {
   };
 
   return (
-    <Layout>
-      <main className="w-full px-6 py-8 min-h-screen">
+    <main className="w-full px-6 py-8 min-h-screen">
         {/* Header with navigation context */}
         <div className="mb-8">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
@@ -364,7 +362,6 @@ const Agreements = () => {
           )}
         </Card>
       </main>
-    </Layout>
   );
 };
 

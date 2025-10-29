@@ -56,7 +56,6 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 
 // Import the UI components
 import { Card } from '@zamio/ui';
-import Layout from '../components/Layout';
 
 const ZamioAdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('overview');
@@ -348,11 +347,7 @@ const ZamioAdminDashboard = () => {
     );
   };
 
-  return (
-    <Layout>
-      <DashboardContent activeTab={activeTab} />
-    </Layout>
-  );
+  return <DashboardContent activeTab={activeTab} />;
 };
 
 export default ZamioAdminDashboard;
