@@ -16,12 +16,13 @@ from django.db.models import Q, Count
 from django.utils.dateparse import parse_date
 from accounts.models import AuditLog
 from artists.models import Track, Album, Artist, UploadProcessingStatus, Contributor, Genre
+from accounts.api.custom_jwt import CustomJWTAuthentication
 from artists.tasks import process_track_upload, process_cover_art_upload, update_contributor_splits
 from artists.services.media_file_service import MediaFileService
 
 
 @api_view(['POST'])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @permission_classes([IsAuthenticated])
 def initiate_non_blocking_upload(request):
     """
@@ -302,7 +303,7 @@ def initiate_non_blocking_upload(request):
 
 
 @api_view(['GET'])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @permission_classes([IsAuthenticated])
 def get_upload_status(request, upload_id):
     """
@@ -367,7 +368,7 @@ def get_upload_status(request, upload_id):
 
 
 @api_view(['GET'])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @permission_classes([IsAuthenticated])
 def get_user_uploads(request):
     """Return upload records, stats, and pagination for the authenticated artist."""
@@ -593,7 +594,87 @@ def get_user_uploads(request):
 
 
 @api_view(['POST'])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
+@permission_classes([IsAuthenticated])
+def create_album_for_uploads(request):
+    """Create or fetch an album for the authenticated artist."""
+    payload = {'message': '', 'data': {}, 'errors': {}}
+
+    try:
+        try:
+            artist = Artist.objects.get(user=request.user)
+        except Artist.DoesNotExist:
+            payload['message'] = 'User is not registered as an artist'
+            payload['errors'] = {'user': ['Only artists can create albums']}
+            return Response(payload, status=status.HTTP_403_FORBIDDEN)
+
+        title = (request.data.get('title') or '').strip()
+        if not title:
+            payload['message'] = 'Album title is required'
+            payload['errors'] = {'title': ['This field is required']}
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
+        release_date_raw = (request.data.get('release_date') or '').strip()
+        release_date_value = parse_date(release_date_raw) if release_date_raw else None
+        genre_name = (request.data.get('genre') or request.data.get('genre_name') or '').strip()
+
+        genre = None
+        if genre_name:
+            genre, _ = Genre.objects.get_or_create(name=genre_name)
+
+        album_defaults = {}
+        if release_date_value:
+            album_defaults['release_date'] = release_date_value
+        if genre:
+            album_defaults['genre'] = genre
+
+        album, created = Album.objects.get_or_create(
+            artist=artist,
+            title=title,
+            defaults={**album_defaults}
+        )
+
+        updates = []
+        if release_date_value and album.release_date != release_date_value:
+            album.release_date = release_date_value
+            updates.append('release_date')
+        if genre and album.genre_id != genre.id:
+            album.genre = genre
+            updates.append('genre')
+        if updates:
+            album.save(update_fields=updates)
+
+        AuditLog.objects.create(
+            user=request.user,
+            action='album_created_via_uploads' if created else 'album_reused_via_uploads',
+            resource_type='album',
+            resource_id=str(album.id),
+            request_data={
+                'title': title,
+                'release_date': release_date_raw,
+                'genre': genre_name,
+            },
+            response_data={'album_id': album.id, 'created': created},
+            status_code=201 if created else 200,
+        )
+
+        payload['message'] = 'Album created successfully' if created else 'Album already exists'
+        payload['data'] = {
+            'album_id': album.id,
+            'title': album.title,
+            'release_date': album.release_date.isoformat() if album.release_date else None,
+            'genre': album.genre.name if album.genre else None,
+        }
+        return Response(payload, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    except Exception as e:
+        payload['message'] = 'Failed to create album'
+        payload['errors'] = {'general': [str(e)]}
+        return Response(payload, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @permission_classes([IsAuthenticated])
 def create_album_for_uploads(request):
     """Create or fetch an album for the authenticated artist."""
@@ -751,7 +832,7 @@ def update_track_contributors(request, track_id):
 
 
 @api_view(['DELETE'])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @permission_classes([IsAuthenticated])
 def cancel_upload(request, upload_id):
     """
@@ -816,7 +897,7 @@ def cancel_upload(request, upload_id):
 
 
 @api_view(['DELETE'])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @permission_classes([IsAuthenticated])
 def delete_upload(request, upload_id):
     """Delete a completed, failed, or cancelled upload record."""
