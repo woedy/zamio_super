@@ -1,47 +1,23 @@
-
 import random
-from django.contrib.auth import get_user_model
-from django.core.paginator import Paginator, PageNotAnInteger, EmptyPage
-from django.db.models import Q
-from rest_framework import status
-from rest_framework.authentication import TokenAuthentication
-from rest_framework.decorators import api_view, permission_classes, authentication_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-from django.utils import timezone
-from datetime import timedelta, datetime
+from datetime import datetime, timedelta
 
-from django.db.models import Sum, Count, Avg, F, Q
-from collections import defaultdict
-from rest_framework.decorators import api_view, permission_classes, authentication_classes
-from rest_framework.response import Response
+from django.db.models import Avg, Count, Sum
+from django.db.models.functions import TruncDate, TruncMonth
+from django.utils import timezone
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.authentication import TokenAuthentication
+from rest_framework.decorators import api_view, permission_classes, authentication_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from artists.models import Artist
 from music_monitor.models import PlayLog
 from stations.models import Station
 
-User = get_user_model()
-
-
-
-
-from datetime import datetime, timedelta
-import random
-from django.utils import timezone
-from django.db.models import Avg, Count, Sum, Q
-from django.db.models.functions import ExtractYear, TruncDate, TruncMonth
-from rest_framework.decorators import api_view, permission_classes, authentication_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.authentication import TokenAuthentication
-from rest_framework.response import Response
-from rest_framework import status
-
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([JWTAuthentication, TokenAuthentication])
 def get_artist_homedata(request):
     payload, data, errors = {}, {}, {}
     artist_id = request.query_params.get('artist_id')
