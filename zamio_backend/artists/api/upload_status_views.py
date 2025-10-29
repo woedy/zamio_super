@@ -2,6 +2,7 @@
 import uuid
 import os
 import math
+import json
 import mimetypes
 from rest_framework import status
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
@@ -94,6 +95,37 @@ def initiate_non_blocking_upload(request):
             'station_name': (request.data.get('station_name') or '').strip(),
         }
 
+        contributors_payload = request.data.get('contributors')
+        contributors_data = []
+        if contributors_payload:
+            try:
+                if isinstance(contributors_payload, str):
+                    parsed_contributors = json.loads(contributors_payload)
+                else:
+                    parsed_contributors = contributors_payload
+            except (TypeError, json.JSONDecodeError):
+                parsed_contributors = []
+
+            if isinstance(parsed_contributors, (list, tuple)):
+                for entry in parsed_contributors:
+                    if not isinstance(entry, dict):
+                        continue
+                    contributor_record = {
+                        'name': str(entry.get('name', '')).strip(),
+                        'email': str(entry.get('email', '')).strip(),
+                        'role': str(entry.get('role', '')).strip(),
+                        'percent_split': float(
+                            entry.get('percent_split', entry.get('royaltyPercentage', 0)) or 0
+                        ),
+                    }
+                    phone_value = entry.get('phone')
+                    if phone_value:
+                        contributor_record['phone'] = str(phone_value).strip()
+                    contributors_data.append(contributor_record)
+
+        if contributors_data:
+            metadata['contributors'] = contributors_data
+
         tags_payload = []
         if hasattr(request.data, 'getlist'):
             tags_payload = request.data.getlist('tags') or request.data.getlist('tags[]')
@@ -105,8 +137,13 @@ def initiate_non_blocking_upload(request):
                 tags_payload = [tag.strip() for tag in tags_value.split(',') if tag.strip()]
 
         metadata['tags'] = [tag for tag in tags_payload if tag]
-        metadata['file_type'] = uploaded_file.content_type
-        metadata['file_size_bytes'] = uploaded_file.size
+
+        if uploaded_file:
+            metadata['file_type'] = uploaded_file.content_type
+            metadata['file_size_bytes'] = uploaded_file.size
+        else:
+            metadata['file_type'] = ''
+            metadata['file_size_bytes'] = 0
         
         # Validate required fields
         if not uploaded_file:
@@ -217,7 +254,7 @@ def initiate_non_blocking_upload(request):
                     release_date=release_date_obj,
                     explicit=metadata['explicit'],
                     lyrics=metadata['lyrics'],
-                    processing_status='pending'
+                    processing_status='queued'
                 )
             else:
                 track_updates = []
@@ -230,6 +267,9 @@ def initiate_non_blocking_upload(request):
                 if release_date_obj and track.release_date != release_date_obj:
                     track.release_date = release_date_obj
                     track_updates.append('release_date')
+                if track.processing_status != 'queued':
+                    track.processing_status = 'queued'
+                    track_updates.append('processing_status')
                 if track_updates:
                     track.save(update_fields=track_updates)
 
@@ -258,7 +298,10 @@ def initiate_non_blocking_upload(request):
         # Save file to temporary location
         temp_dir = os.path.join(settings.MEDIA_ROOT, 'temp')
         os.makedirs(temp_dir, exist_ok=True)
-        temp_file_path = os.path.join(temp_dir, f"{upload_id}_{uploaded_file.name}")
+        original_name = os.path.basename(uploaded_file.name)
+        _, original_ext = os.path.splitext(original_name)
+        sanitized_name = f"{upload_id}_{uuid.uuid4().hex}{original_ext.lower()}" if original_ext else f"{upload_id}_{uuid.uuid4().hex}"
+        temp_file_path = os.path.join(temp_dir, sanitized_name)
         
         with open(temp_file_path, 'wb') as temp_file:
             for chunk in uploaded_file.chunks():

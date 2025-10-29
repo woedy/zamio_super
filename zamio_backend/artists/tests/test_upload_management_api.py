@@ -1,8 +1,16 @@
 from django.contrib.auth import get_user_model
+import json
+import os
+from types import SimpleNamespace
+from unittest.mock import patch
+
+from django.conf import settings
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
-from artists.models import Artist, UploadProcessingStatus, Album
+
+from artists.models import Artist, UploadProcessingStatus, Album, Genre, Track
 
 
 User = get_user_model()
@@ -190,3 +198,67 @@ class UploadManagementAPITestCase(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         album.refresh_from_db()
         self.assertEqual(str(album.release_date), '2024-06-15')
+
+    @patch('artists.api.upload_status_views.process_track_upload.delay')
+    def test_initiate_upload_creates_processing_record(self, mocked_delay):
+        mocked_delay.return_value = SimpleNamespace(id='task-123')
+
+        genre = Genre.objects.create(name='Highlife')
+        audio_bytes = b'ID3' + b'\x00' * 128
+        audio_file = SimpleUploadedFile(
+            'demo-track.mp3',
+            audio_bytes,
+            content_type='audio/mpeg',
+        )
+
+        contributors = [
+            {
+                'name': 'Upload Tester',
+                'email': 'artist@example.com',
+                'role': 'Artist',
+                'royaltyPercentage': 100,
+            }
+        ]
+
+        response = self.client.post(
+            '/api/artists/api/upload/initiate/',
+            {
+                'upload_type': 'track_audio',
+                'title': 'Sunrise Jam',
+                'genre_id': str(genre.id),
+                'album_title': 'Morning Energy',
+                'release_date': '2024-07-01',
+                'contributors': json.dumps(contributors),
+                'file': audio_file,
+            },
+            format='multipart',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        payload = response.data.get('data', {})
+        upload_id = payload.get('upload_id')
+        self.assertIsNotNone(upload_id)
+        track_id = payload.get('track_id')
+        self.assertIsNotNone(track_id)
+
+        mocked_delay.assert_called_once()
+        kwargs = mocked_delay.call_args.kwargs
+        temp_file_path = kwargs['temp_file_path']
+        self.assertTrue(temp_file_path.startswith(os.path.join(settings.MEDIA_ROOT, 'temp')))
+        self.assertTrue(temp_file_path.endswith('.mp3'))
+        self.assertTrue(os.path.exists(temp_file_path))
+
+        upload_status = UploadProcessingStatus.objects.get(upload_id=upload_id)
+        self.assertEqual(upload_status.status, 'queued')
+        self.assertEqual(upload_status.metadata.get('title'), 'Sunrise Jam')
+        stored_contributors = upload_status.metadata.get('contributors', [])
+        self.assertEqual(len(stored_contributors), 1)
+        self.assertEqual(stored_contributors[0]['name'], 'Upload Tester')
+        self.assertEqual(stored_contributors[0]['percent_split'], 100.0)
+
+        track = Track.objects.get(id=upload_status.entity_id)
+        self.assertEqual(track.processing_status, 'queued')
+        self.assertEqual(track.title, 'Sunrise Jam')
+
+        # Clean up temporary file created during the test
+        os.remove(temp_file_path)
