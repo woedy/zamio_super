@@ -174,6 +174,79 @@ export interface KycDocumentSummary {
   uploaded_at?: string;
 }
 
+export interface ArtistDashboardStatsSummary {
+  totalPlays: number;
+  totalStations: number;
+  totalEarnings: number;
+  avgConfidence: number;
+  growthRate: number;
+  activeTracks: number;
+}
+
+export type ArtistDashboardTrend = 'up' | 'down' | 'stable';
+
+export interface ArtistDashboardTopSong {
+  title: string;
+  plays: number;
+  earnings: number;
+  confidence: number;
+  stations: number;
+  trend?: ArtistDashboardTrend;
+}
+
+export interface ArtistDashboardSeriesPoint {
+  date: string;
+  airplay: number;
+  earnings?: number;
+}
+
+export interface ArtistDashboardRegionStat {
+  region: string;
+  plays: number;
+  earnings: number;
+  stations: number;
+  growth: number;
+  trend?: ArtistDashboardTrend;
+}
+
+export interface ArtistDashboardStationBreakdown {
+  station: string;
+  plays: number;
+  percentage: number;
+  region: string;
+  type?: string;
+}
+
+export interface ArtistDashboardPerformanceScore {
+  overall: number;
+  airplayGrowth: number;
+  regionalReach: number;
+  fanEngagement: number;
+  trackQuality: number;
+}
+
+export interface ArtistDashboardPayload {
+  period?: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  artistName?: string;
+  stats?: ArtistDashboardStatsSummary;
+  confidenceScore?: number;
+  activeRegions?: number;
+  topSongs?: ArtistDashboardTopSong[];
+  playsOverTime?: ArtistDashboardSeriesPoint[];
+  ghanaRegions?: ArtistDashboardRegionStat[];
+  stationBreakdown?: ArtistDashboardStationBreakdown[];
+  fanDemographics?: Record<string, unknown>[];
+  performanceScore?: ArtistDashboardPerformanceScore;
+}
+
+export interface ArtistDashboardParams {
+  period?: string;
+  start_date?: string;
+  end_date?: string;
+}
+
 export const uploadKycDocument = async (formData: FormData) => {
   const { data } = await authApi.post<ApiEnvelope<{ document_id: number }>>(
     '/api/accounts/upload-kyc-documents/',
@@ -186,6 +259,23 @@ export const fetchKycDocuments = async () => {
   const { data } = await authApi.get<ApiEnvelope<{ documents?: KycDocumentSummary[] }>>(
     '/api/accounts/get-kyc-documents/',
   );
+  return data;
+};
+
+export const fetchArtistDashboard = async (
+  artistId: string,
+  params: ArtistDashboardParams = {},
+) => {
+  const query = {
+    artist_id: artistId,
+    ...params,
+  };
+
+  const { data } = await authApi.get<ApiEnvelope<ArtistDashboardPayload>>(
+    '/api/artists/dashboard/',
+    { params: query },
+  );
+
   return data;
 };
 
