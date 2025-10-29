@@ -1,12 +1,37 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 
+const fallbackApiUrl = 'http://localhost:8000'
+
+const resolveTargetUrl = (value) => {
+  const trimmed = (value ?? '').trim()
+  const candidate = trimmed
+    ? /^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(trimmed)
+      ? trimmed
+      : `http://${trimmed}`
+    : fallbackApiUrl
+
+  try {
+    return new URL(candidate)
+  } catch (error) {
+    return new URL(fallbackApiUrl)
+  }
+}
+
+const toProxyTarget = (url) => {
+  if (url.pathname === '/' && !url.search && !url.hash) {
+    return url.origin
+  }
+
+  return url.toString().replace(/\/$/, '')
+}
+
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const target = process.env.VITE_API_URL || env.VITE_API_URL || 'http://localhost:8000'
-  const { hostname } = new URL(target)
-  const changeOrigin = !hostname.includes('_')
+  const targetUrl = resolveTargetUrl(process.env.VITE_API_URL || env.VITE_API_URL)
+  const target = toProxyTarget(targetUrl)
+  const changeOrigin = !targetUrl.hostname.includes('_')
 
   return {
     plugins: [react()],
