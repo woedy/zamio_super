@@ -17,6 +17,46 @@ export {
   resolveApiBaseUrl,
 };
 
+const appendTrailingSlash = (value: string): string => (value.endsWith('/') ? value : `${value}/`);
+
+const isLikelyAbsoluteUrl = (value: string): boolean => {
+  try {
+    const parsed = new URL(value);
+    return Boolean(parsed.protocol);
+  } catch (_error) {
+    return false;
+  }
+};
+
+export const resolveMediaUrl = (input?: string | null): string | null => {
+  if (!input) {
+    return null;
+  }
+
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (isLikelyAbsoluteUrl(trimmed)) {
+    return trimmed;
+  }
+
+  const baseUrl = resolveApiBaseUrl();
+  const normalizedBase = appendTrailingSlash(baseUrl);
+  const normalizedPath = trimmed.startsWith('/') ? trimmed.slice(1) : trimmed;
+
+  try {
+    return new URL(normalizedPath, normalizedBase).toString();
+  } catch (_error) {
+    try {
+      return new URL(trimmed.startsWith('/') ? trimmed : `/${trimmed}`, baseUrl).toString();
+    } catch (_nestedError) {
+      return trimmed;
+    }
+  }
+};
+
 export default authApi;
 
 export interface RegisterArtistPayload {

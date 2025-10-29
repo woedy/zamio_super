@@ -29,7 +29,7 @@ describe('AlbumDetails', () => {
         track_count: 1,
         total_plays: 100,
         total_revenue: 1234,
-        cover_art_url: null,
+        cover_art_url: '/media/albums/live.jpg',
         status: 'active',
         raw_status: 'Approved',
         is_archived: false,
@@ -84,6 +84,9 @@ describe('AlbumDetails', () => {
     await waitFor(() => {
       expect(mockedFetchAlbumDetail).toHaveBeenCalledWith(42);
     });
+
+    const coverImage = await screen.findByAltText('Live Album cover art');
+    expect(coverImage).toHaveAttribute('src', 'http://localhost:8000/media/albums/live.jpg');
 
     expect(screen.getByText('Track One')).toBeInTheDocument();
     expect(screen.getByText('Album Tracks')).toBeInTheDocument();

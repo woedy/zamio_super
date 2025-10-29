@@ -22,7 +22,7 @@ import {
   Loader2
 } from 'lucide-react';
 
-import { fetchArtistAlbumDetail, type AlbumDetailPayload } from '../lib/api';
+import { fetchArtistAlbumDetail, resolveMediaUrl, type AlbumDetailPayload } from '../lib/api';
 
 interface AlbumTrackViewModel {
   id: number;
@@ -131,7 +131,7 @@ const mapDetailToViewModel = (detail: AlbumDetailPayload): AlbumDetailsViewModel
     total_tracks: totalTracks,
     total_plays: totalPlays,
     total_revenue: totalRevenue,
-    cover_art: detail.album.cover_art_url ?? null,
+    cover_art: resolveMediaUrl(detail.album.cover_art_url),
     description: null,
     status: detail.album.status,
     raw_status: detail.album.raw_status ?? null,

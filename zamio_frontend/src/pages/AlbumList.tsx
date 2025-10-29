@@ -22,6 +22,7 @@ import {
   type AlbumSummary,
   type AlbumListStats,
   type AlbumListPagination,
+  resolveMediaUrl,
 } from '../lib/api';
 
 interface AlbumData {
@@ -69,7 +70,7 @@ const mapAlbumSummaryToData = (item: AlbumSummary): AlbumData => ({
   trackCount: typeof item.track_count === 'number' ? item.track_count : 0,
   totalPlays: typeof item.total_plays === 'number' ? item.total_plays : 0,
   totalRevenue: Number(item.total_revenue ?? 0),
-  coverArt: item.cover_art_url ?? undefined,
+  coverArt: resolveMediaUrl(item.cover_art_url) ?? undefined,
   status: item.status,
   rawStatus: item.raw_status ?? undefined,
   createdAt: item.created_at,

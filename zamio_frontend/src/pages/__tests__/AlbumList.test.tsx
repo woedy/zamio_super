@@ -30,7 +30,7 @@ describe('AlbumList', () => {
             track_count: 3,
             total_plays: 1200,
             total_revenue: 2500,
-            cover_art_url: null,
+            cover_art_url: '/media/albums/approved.jpg',
             status: 'active',
             raw_status: 'Approved',
             is_archived: false,
@@ -74,6 +74,9 @@ describe('AlbumList', () => {
     expect(albumTitle).toBeInTheDocument();
     expect(screen.getByText(/by Album Manager/i)).toBeInTheDocument();
     expect(screen.getByText(/3 tracks/i)).toBeInTheDocument();
+
+    const coverImage = await screen.findByAltText('Approved Album cover');
+    expect(coverImage).toHaveAttribute('src', 'http://localhost:8000/media/albums/approved.jpg');
 
     await waitFor(() => {
       expect(mockedFetchArtistAlbums).toHaveBeenCalled();
