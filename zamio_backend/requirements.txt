@@ -3,6 +3,7 @@ Django>=5.1.7,<5.2
 djangorestframework>=3.14.0,<4.0
 djangorestframework-simplejwt>=5.3.0,<6.0
 django-cors-headers>=4.3.1,<5.0
+whitenoise>=6.6.0,<7.0
 
 # ASGI Server
 daphne>=4.0.0,<5.0
