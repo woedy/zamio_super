@@ -95,7 +95,10 @@ urlpatterns = [
     
     # Enhanced secure media file endpoints
     path('api/', include('artists.api.media_urls')),
-    
+
     # Non-blocking upload processing endpoints
     path('api/', include('artists.api.upload_urls')),
+
+    # Album management API endpoints
+    path('api/', include('artists.api.album_urls')),
 ]

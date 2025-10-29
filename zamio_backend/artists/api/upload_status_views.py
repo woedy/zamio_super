@@ -1,8 +1,8 @@
-"""
-API views for non-blocking upload processing with real-time status tracking
-"""
+"""API views for non-blocking upload processing with real-time status tracking."""
 import uuid
 import os
+import math
+import mimetypes
 from rest_framework import status
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.authentication import TokenAuthentication
@@ -11,14 +11,35 @@ from rest_framework.response import Response
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.conf import settings
+from django.db.models import Q, Count
+from django.utils.dateparse import parse_date
 from accounts.models import AuditLog
-from artists.models import Track, Album, Artist, UploadProcessingStatus, Contributor
+from artists.models import Track, Album, Artist, UploadProcessingStatus, Contributor, Genre
+from .album_management_views import _parse_release_date, _resolve_genre
+from accounts.api.custom_jwt import CustomJWTAuthentication
 from artists.tasks import process_track_upload, process_cover_art_upload, update_contributor_splits
 from artists.services.media_file_service import MediaFileService
 
 
+def resolve_upload_mime_type(upload):
+    """Return the most accurate MIME type available for an upload record."""
+    metadata = getattr(upload, "metadata", None) or {}
+
+    candidate = getattr(upload, "mime_type", "") or metadata.get("mime_type") or metadata.get("file_type")
+    if candidate:
+        return candidate
+
+    original_filename = getattr(upload, "original_filename", "")
+    if original_filename:
+        guess, _ = mimetypes.guess_type(original_filename)
+        if guess:
+            return guess
+
+    return ""
+
+
 @api_view(['POST'])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @permission_classes([IsAuthenticated])
 def initiate_non_blocking_upload(request):
     """
@@ -41,16 +62,51 @@ def initiate_non_blocking_upload(request):
         upload_type = request.data.get('upload_type')  # 'track_audio', 'track_cover', 'album_cover'
         uploaded_file = request.FILES.get('file')
         
-        # Get metadata
+        def parse_bool(value, default=False):
+            if isinstance(value, bool):
+                return value
+            if value is None:
+                return default
+            return str(value).strip().lower() in {'true', '1', 'yes', 'on'}
+
+        # Extract metadata from the request payload
         metadata = {
-            'title': request.data.get('title', ''),
+            'title': (request.data.get('title') or '').strip(),
             'track_id': request.data.get('track_id'),
             'album_id': request.data.get('album_id'),
+            'album_title': (request.data.get('album_title') or '').strip(),
+            'artist_name': (request.data.get('artist_name') or '').strip(),
             'genre_id': request.data.get('genre_id'),
+            'genre_name': (request.data.get('genre_name') or '').strip(),
             'release_date': request.data.get('release_date'),
-            'explicit': request.data.get('explicit', False),
+            'explicit': parse_bool(request.data.get('explicit', False)),
             'lyrics': request.data.get('lyrics', ''),
+            'duration': (request.data.get('duration') or '').strip(),
+            'isrc': (request.data.get('isrc') or '').strip(),
+            'composer': (request.data.get('composer') or '').strip(),
+            'producer': (request.data.get('producer') or '').strip(),
+            'bpm': (request.data.get('bpm') or '').strip(),
+            'key': (request.data.get('key') or '').strip(),
+            'mood': (request.data.get('mood') or '').strip(),
+            'language': (request.data.get('language') or '').strip(),
+            'featured': parse_bool(request.data.get('featured', False)),
+            'tags': [],
+            'station_name': (request.data.get('station_name') or '').strip(),
         }
+
+        tags_payload = []
+        if hasattr(request.data, 'getlist'):
+            tags_payload = request.data.getlist('tags') or request.data.getlist('tags[]')
+        if not tags_payload:
+            tags_value = request.data.get('tags')
+            if isinstance(tags_value, list):
+                tags_payload = tags_value
+            elif isinstance(tags_value, str):
+                tags_payload = [tag.strip() for tag in tags_value.split(',') if tag.strip()]
+
+        metadata['tags'] = [tag for tag in tags_payload if tag]
+        metadata['file_type'] = uploaded_file.content_type
+        metadata['file_size_bytes'] = uploaded_file.size
         
         # Validate required fields
         if not uploaded_file:
@@ -85,7 +141,7 @@ def initiate_non_blocking_upload(request):
                 payload['message'] = 'Track not found or access denied'
                 payload['errors'] = {'track_id': ['Track not found or you do not have permission to modify it']}
                 return Response(payload, status=status.HTTP_404_NOT_FOUND)
-        
+
         # Validate file based on upload type
         try:
             if upload_type == 'track_audio':
@@ -96,10 +152,59 @@ def initiate_non_blocking_upload(request):
             payload['message'] = 'File validation failed'
             payload['errors'] = {'file': e.messages if hasattr(e, 'messages') else [str(e)]}
             return Response(payload, status=status.HTTP_400_BAD_REQUEST)
-        
+
+        metadata['artist_name'] = metadata['artist_name'] or artist.stage_name
+
+        release_date_value = metadata.get('release_date')
+        release_date_obj = parse_date(release_date_value) if release_date_value else None
+
+        genre = None
+        genre_identifier = metadata.get('genre_id')
+        if genre_identifier:
+            try:
+                genre = Genre.objects.get(id=genre_identifier)
+            except (Genre.DoesNotExist, ValueError, TypeError):
+                genre = None
+        if not genre and metadata.get('genre_name'):
+            genre, _ = Genre.objects.get_or_create(name=metadata['genre_name'])
+        if genre:
+            metadata['genre_id'] = genre.id
+            metadata['genre_name'] = genre.name
+
+        album = None
+        if metadata.get('album_id'):
+            try:
+                album = Album.objects.get(id=metadata['album_id'], artist=artist)
+            except Album.DoesNotExist:
+                album = None
+
+        if not album and upload_type == 'track_audio' and metadata.get('album_title'):
+            album_title = metadata['album_title']
+            album_defaults = {}
+            if release_date_obj:
+                album_defaults['release_date'] = release_date_obj
+            album, _ = Album.objects.get_or_create(
+                artist=artist,
+                title=album_title,
+                defaults={**album_defaults, 'active': True}
+            )
+
+        if album:
+            updates = []
+            if release_date_obj and album.release_date != release_date_obj:
+                album.release_date = release_date_obj
+                updates.append('release_date')
+            if genre and album.genre_id != genre.id:
+                album.genre = genre
+                updates.append('genre')
+            if updates:
+                album.save(update_fields=updates)
+            metadata['album_id'] = album.id
+            metadata['album_title'] = album.title
+
         # Generate unique upload ID
         upload_id = f"{upload_type}_{uuid.uuid4().hex[:16]}"
-        
+
         # Create or update track record if needed
         if upload_type == 'track_audio':
             if not track:
@@ -107,14 +212,35 @@ def initiate_non_blocking_upload(request):
                 track = Track.objects.create(
                     artist=artist,
                     title=metadata['title'],
-                    genre_id=metadata['genre_id'] if metadata['genre_id'] else None,
-                    album_id=metadata['album_id'] if metadata['album_id'] else None,
-                    release_date=metadata['release_date'] if metadata['release_date'] else None,
+                    genre=genre,
+                    album=album,
+                    release_date=release_date_obj,
                     explicit=metadata['explicit'],
                     lyrics=metadata['lyrics'],
                     processing_status='pending'
                 )
-        
+            else:
+                track_updates = []
+                if album and track.album_id != album.id:
+                    track.album = album
+                    track_updates.append('album')
+                if genre and track.genre_id != genre.id:
+                    track.genre = genre
+                    track_updates.append('genre')
+                if release_date_obj and track.release_date != release_date_obj:
+                    track.release_date = release_date_obj
+                    track_updates.append('release_date')
+                if track_updates:
+                    track.save(update_fields=track_updates)
+
+            metadata['track_id'] = track.id
+            metadata['genre_id'] = track.genre_id
+            if track.album:
+                metadata['album_id'] = track.album_id
+                metadata['album_title'] = track.album.title
+            metadata['title'] = track.title
+            metadata['artist_name'] = track.artist.stage_name
+
         # Create upload processing status record
         upload_status = UploadProcessingStatus.objects.create(
             upload_id=upload_id,
@@ -122,6 +248,7 @@ def initiate_non_blocking_upload(request):
             upload_type=upload_type,
             original_filename=uploaded_file.name,
             file_size=uploaded_file.size,
+            mime_type=uploaded_file.content_type or '',
             status='queued',
             entity_id=track.id if track else None,
             entity_type='track' if track else None,
@@ -193,7 +320,7 @@ def initiate_non_blocking_upload(request):
 
 
 @api_view(['GET'])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @permission_classes([IsAuthenticated])
 def get_upload_status(request, upload_id):
     """
@@ -241,6 +368,7 @@ def get_upload_status(request, upload_id):
             'upload_type': upload_status.upload_type,
             'original_filename': upload_status.original_filename,
             'file_size': upload_status.file_size,
+            'mime_type': resolve_upload_mime_type(upload_status),
             'error_message': upload_status.error_message,
             'created_at': upload_status.created_at.isoformat(),
             'started_at': upload_status.started_at.isoformat() if upload_status.started_at else None,
@@ -257,70 +385,193 @@ def get_upload_status(request, upload_id):
 
 
 @api_view(['GET'])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @permission_classes([IsAuthenticated])
 def get_user_uploads(request):
-    """
-    Get all uploads for the current user with pagination
-    """
+    """Return upload records, stats, and pagination for the authenticated artist."""
     payload = {'message': '', 'data': {}, 'errors': {}}
-    
+
     try:
         user = request.user
-        
-        # Get query parameters
-        page = int(request.GET.get('page', 1))
-        page_size = min(int(request.GET.get('page_size', 20)), 100)  # Max 100 per page
-        status_filter = request.GET.get('status')  # Filter by status
-        upload_type_filter = request.GET.get('upload_type')  # Filter by upload type
-        
-        # Build query
-        uploads_query = UploadProcessingStatus.objects.filter(user=user)
-        
-        if status_filter:
-            uploads_query = uploads_query.filter(status=status_filter)
-        
+
+        base_query = UploadProcessingStatus.objects.filter(user=user)
+
+        status_totals = base_query.values('status').annotate(total=Count('id'))
+        totals_map = {entry['status']: entry['total'] for entry in status_totals}
+        stats = {
+            'total': base_query.count(),
+            'uploading': sum(totals_map.get(status_key, 0) for status_key in ['pending', 'queued']),
+            'processing': totals_map.get('processing', 0),
+            'completed': totals_map.get('completed', 0),
+            'failed': totals_map.get('failed', 0) + totals_map.get('cancelled', 0),
+        }
+
+        albums_from_metadata = base_query.exclude(metadata__album_title__isnull=True).exclude(metadata__album_title__exact='').values_list('metadata__album_title', flat=True)
+        album_titles = {title for title in albums_from_metadata if title}
+
+        track_ids_for_albums = list(base_query.filter(entity_type='track', entity_id__isnull=False).values_list('entity_id', flat=True))
+        if track_ids_for_albums:
+            album_names = Track.objects.filter(id__in=track_ids_for_albums).select_related('album').values_list('album__title', flat=True)
+            album_titles.update(name for name in album_names if name)
+
+        page = max(int(request.GET.get('page', 1)), 1)
+        page_size = min(max(int(request.GET.get('page_size', 20)), 1), 100)
+        status_filter = request.GET.get('status')
+        upload_type_filter = request.GET.get('upload_type')
+        search_term = (request.GET.get('search') or '').strip()
+        album_filter = (request.GET.get('album') or '').strip()
+        sort_by = request.GET.get('sort_by', 'uploadDate')
+        sort_order = request.GET.get('sort_order', 'desc')
+
+        uploads_query = base_query
+
+        status_map = {
+            'uploading': ['pending', 'queued'],
+            'processing': ['processing'],
+            'completed': ['completed'],
+            'failed': ['failed', 'cancelled'],
+            'cancelled': ['cancelled'],
+        }
+
+        if status_filter and status_filter != 'all':
+            uploads_query = uploads_query.filter(status__in=status_map.get(status_filter, [status_filter]))
+
         if upload_type_filter:
             uploads_query = uploads_query.filter(upload_type=upload_type_filter)
-        
-        # Order by creation date (newest first)
-        uploads_query = uploads_query.order_by('-created_at')
-        
-        # Pagination
-        total_count = uploads_query.count()
+
+        if search_term:
+            track_ids_for_search = list(
+                Track.objects.filter(
+                    Q(title__icontains=search_term) | Q(album__title__icontains=search_term),
+                    artist__user=user,
+                ).values_list('id', flat=True)
+            )
+            uploads_query = uploads_query.filter(
+                Q(original_filename__icontains=search_term) |
+                Q(metadata__title__icontains=search_term) |
+                Q(metadata__album_title__icontains=search_term) |
+                Q(metadata__artist_name__icontains=search_term) |
+                Q(metadata__station_name__icontains=search_term) |
+                Q(entity_id__in=track_ids_for_search)
+            )
+
+        if album_filter:
+            track_ids_for_album = list(
+                Track.objects.filter(
+                    artist__user=user,
+                    album__title__iexact=album_filter
+                ).values_list('id', flat=True)
+            )
+            uploads_query = uploads_query.filter(
+                Q(metadata__album_title__iexact=album_filter) |
+                Q(entity_id__in=track_ids_for_album)
+            )
+
+        ORDERING_MAP = {
+            'uploadDate': 'created_at',
+            'filename': 'original_filename',
+            'fileSize': 'file_size',
+            'status': 'status',
+        }
+
+        manual_album_sort = sort_by == 'album'
+        if manual_album_sort:
+            uploads_query = uploads_query.order_by('-created_at')
+        else:
+            order_field = ORDERING_MAP.get(sort_by, 'created_at')
+            if sort_order == 'desc':
+                order_field = f'-{order_field}'
+            uploads_query = uploads_query.order_by(order_field)
+
+        uploads_list = list(uploads_query)
+
+        track_ids = [upload.entity_id for upload in uploads_list if upload.entity_type == 'track' and upload.entity_id]
+        tracks = Track.objects.filter(id__in=track_ids).select_related('artist', 'album')
+        track_map = {track.id: track for track in tracks}
+
+        def resolve_album_title(upload):
+            if upload.entity_type == 'track' and upload.entity_id in track_map:
+                album_obj = track_map[upload.entity_id].album
+                if album_obj and album_obj.title:
+                    return album_obj.title
+            metadata = upload.metadata or {}
+            return metadata.get('album_title', '') or ''
+
+        if manual_album_sort:
+            uploads_list.sort(
+                key=lambda item: resolve_album_title(item).lower(),
+                reverse=sort_order == 'desc'
+            )
+
+        total_count = len(uploads_list)
+        if total_count == 0:
+            total_pages = 1
+            page = 1
+        else:
+            total_pages = math.ceil(total_count / page_size)
+            if page > total_pages:
+                page = total_pages
+
         start_index = (page - 1) * page_size
         end_index = start_index + page_size
-        uploads = uploads_query[start_index:end_index]
-        
-        # Serialize uploads
+        uploads_page = uploads_list[start_index:end_index]
+
+        def map_status(value):
+            return {
+                'pending': 'uploading',
+                'queued': 'uploading',
+                'processing': 'processing',
+                'completed': 'completed',
+                'failed': 'failed',
+                'cancelled': 'cancelled',
+            }.get(value, value)
+
+        def format_duration_value(upload, track):
+            metadata = upload.metadata or {}
+            if metadata.get('duration'):
+                return metadata['duration']
+            if track and track.duration:
+                total_seconds = int(track.duration.total_seconds())
+                hours, remainder = divmod(total_seconds, 3600)
+                minutes, seconds = divmod(remainder, 60)
+                if hours:
+                    return f"{hours}:{minutes:02d}:{seconds:02d}"
+                return f"{minutes}:{seconds:02d}"
+            return None
+
         uploads_data = []
-        for upload in uploads:
-            entity_details = None
-            if upload.entity_id and upload.entity_type == 'track':
-                try:
-                    track = Track.objects.get(id=upload.entity_id)
-                    entity_details = {
-                        'id': track.id,
-                        'title': track.title,
-                        'processing_status': track.processing_status,
-                    }
-                except Track.DoesNotExist:
-                    pass
-            
+        for upload in uploads_page:
+            metadata = upload.metadata or {}
+            track = track_map.get(upload.entity_id) if upload.entity_type == 'track' else None
+            album_title = resolve_album_title(upload)
+            artist_name = metadata.get('artist_name') or (track.artist.stage_name if track and track.artist else None)
+            title = metadata.get('title') or (track.title if track else None)
+            station_name = metadata.get('station_name')
+            duration_value = format_duration_value(upload, track)
+            file_type = resolve_upload_mime_type(upload)
+
             uploads_data.append({
+                'id': upload.upload_id,
                 'upload_id': upload.upload_id,
-                'status': upload.status,
-                'progress_percentage': upload.progress_percentage,
-                'current_step': upload.current_step,
+                'status': map_status(upload.status),
+                'raw_status': upload.status,
+                'progress': upload.progress_percentage,
                 'upload_type': upload.upload_type,
-                'original_filename': upload.original_filename,
+                'filename': upload.original_filename,
                 'file_size': upload.file_size,
-                'error_message': upload.error_message,
-                'created_at': upload.created_at.isoformat(),
-                'completed_at': upload.completed_at.isoformat() if upload.completed_at else None,
-                'entity_details': entity_details,
+                'file_type': file_type,
+                'upload_date': upload.created_at.isoformat(),
+                'error': upload.error_message or None,
+                'retry_count': upload.retry_count,
+                'duration': duration_value,
+                'artist': artist_name,
+                'album': album_title or None,
+                'title': title,
+                'station': station_name or None,
+                'entity_id': upload.entity_id,
+                'metadata': metadata,
             })
-        
+
         payload['message'] = 'Uploads retrieved successfully'
         payload['data'] = {
             'uploads': uploads_data,
@@ -328,13 +579,31 @@ def get_user_uploads(request):
                 'page': page,
                 'page_size': page_size,
                 'total_count': total_count,
-                'total_pages': (total_count + page_size - 1) // page_size,
+                'total_pages': total_pages,
                 'has_next': end_index < total_count,
-                'has_previous': page > 1
-            }
+                'has_previous': page > 1,
+            },
+            'stats': stats,
+            'filters': {
+                'albums': sorted(album_titles),
+                'status_counts': {
+                    'pending': totals_map.get('pending', 0),
+                    'queued': totals_map.get('queued', 0),
+                    'processing': totals_map.get('processing', 0),
+                    'completed': totals_map.get('completed', 0),
+                    'failed': totals_map.get('failed', 0),
+                    'cancelled': totals_map.get('cancelled', 0),
+                },
+                'frontend_status_counts': {
+                    'uploading': stats['uploading'],
+                    'processing': stats['processing'],
+                    'completed': stats['completed'],
+                    'failed': stats['failed'],
+                },
+            },
         }
         return Response(payload, status=status.HTTP_200_OK)
-        
+
     except Exception as e:
         payload['message'] = 'Failed to retrieve uploads'
         payload['errors'] = {'general': [str(e)]}
@@ -342,7 +611,100 @@ def get_user_uploads(request):
 
 
 @api_view(['POST'])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
+@permission_classes([IsAuthenticated])
+def create_album_for_uploads(request):
+    """Create or fetch an album for the authenticated artist."""
+    payload = {'message': '', 'data': {}, 'errors': {}}
+
+    try:
+        try:
+            artist = Artist.objects.get(user=request.user)
+        except Artist.DoesNotExist:
+            payload['message'] = 'User is not registered as an artist'
+            payload['errors'] = {'user': ['Only artists can create albums']}
+            return Response(payload, status=status.HTTP_403_FORBIDDEN)
+
+        title = (request.data.get('title') or '').strip()
+        if not title:
+            payload['message'] = 'Album title is required'
+            payload['errors'] = {'title': ['This field is required']}
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
+        release_date_raw = request.data.get('release_date')
+        genre_name = (request.data.get('genre') or request.data.get('genre_name') or '').strip()
+        release_date_value = _parse_release_date(release_date_raw)
+        if release_date_raw and release_date_value is None:
+            payload['message'] = 'Invalid release date'
+            payload['errors'] = {'release_date': ['Use the YYYY-MM-DD date format']}
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            genre = _resolve_genre(request.data.get('genre_id'), genre_name)
+        except Genre.DoesNotExist:
+            payload['message'] = 'Genre not found'
+            payload['errors'] = {'genre': ['The provided genre could not be found']}
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
+        album = Album.objects.filter(artist=artist, title__iexact=title).first()
+        created = False
+
+        if album and album.is_archived:
+            album.is_archived = False
+            album.active = True
+            album.save(update_fields=['is_archived', 'active', 'updated_at'])
+
+        if not album:
+            album = Album.objects.create(
+                artist=artist,
+                title=title,
+                release_date=release_date_value,
+                genre=genre,
+                active=True,
+            )
+            created = True
+        else:
+            updates = []
+            if release_date_value and album.release_date != release_date_value:
+                album.release_date = release_date_value
+                updates.append('release_date')
+            if genre and album.genre != genre:
+                album.genre = genre
+                updates.append('genre')
+            if updates:
+                album.save(update_fields=updates + ['updated_at'])
+
+        AuditLog.objects.create(
+            user=request.user,
+            action='album_created_via_uploads' if created else 'album_reused_via_uploads',
+            resource_type='album',
+            resource_id=str(album.id),
+            request_data={
+                'title': title,
+                'release_date': release_date_raw,
+                'genre': genre_name,
+            },
+            response_data={'album_id': album.id, 'created': created},
+            status_code=201 if created else 200,
+        )
+
+        payload['message'] = 'Album created successfully' if created else 'Album already exists'
+        payload['data'] = {
+            'album_id': album.id,
+            'title': album.title,
+            'release_date': album.release_date.isoformat() if album.release_date else None,
+            'genre': album.genre.name if album.genre else None,
+        }
+        return Response(payload, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    except Exception as e:
+        payload['message'] = 'Failed to create album'
+        payload['errors'] = {'general': [str(e)]}
+        return Response(payload, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @permission_classes([IsAuthenticated])
 def update_track_contributors(request, track_id):
     """
@@ -420,7 +782,7 @@ def update_track_contributors(request, track_id):
 
 
 @api_view(['DELETE'])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @permission_classes([IsAuthenticated])
 def cancel_upload(request, upload_id):
     """
@@ -477,8 +839,54 @@ def cancel_upload(request, upload_id):
             'cancelled_at': upload_status.completed_at.isoformat()
         }
         return Response(payload, status=status.HTTP_200_OK)
-        
+
     except Exception as e:
         payload['message'] = 'Failed to cancel upload'
+        payload['errors'] = {'general': [str(e)]}
+        return Response(payload, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['DELETE'])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
+@permission_classes([IsAuthenticated])
+def delete_upload(request, upload_id):
+    """Delete a completed, failed, or cancelled upload record."""
+    payload = {'message': '', 'data': {}, 'errors': {}}
+
+    try:
+        user = request.user
+
+        try:
+            upload_status = UploadProcessingStatus.objects.get(upload_id=upload_id, user=user)
+        except UploadProcessingStatus.DoesNotExist:
+            payload['message'] = 'Upload not found or access denied'
+            payload['errors'] = {'upload_id': ['Upload not found or you do not have permission to delete it']}
+            return Response(payload, status=status.HTTP_404_NOT_FOUND)
+
+        if upload_status.status not in ['completed', 'failed', 'cancelled']:
+            payload['message'] = 'Upload cannot be deleted yet'
+            payload['errors'] = {
+                'status': ['Only completed, failed, or cancelled uploads can be deleted']
+            }
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
+        upload_status.delete()
+
+        AuditLog.objects.create(
+            user=user,
+            action='upload_deleted',
+            resource_type='upload',
+            resource_id=upload_id,
+            request_data={},
+            response_data={'success': True},
+            status_code=200,
+        )
+
+        payload['message'] = 'Upload deleted successfully'
+        payload['data'] = {'upload_id': upload_id}
+        return Response(payload, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        payload['message'] = 'Failed to delete upload'
         payload['errors'] = {'general': [str(e)]}
         return Response(payload, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -1,16 +1,12 @@
-import React, { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Play,
   Heart,
   Share2,
-  Plus,
   Users,
-  DollarSign,
   TrendingUp,
   Clock,
-  Globe,
-  FileText,
   BarChart3,
   MapPin,
   Music,
@@ -20,114 +16,307 @@ import {
   RotateCcw,
   Download,
   Search,
-  Award,
-  Target,
-  Filter,
-  HelpCircle,
-  Settings,
+  AlertCircle,
   Edit,
-  Trash2,
-  Eye,
-  Album as AlbumIcon
+  Album as AlbumIcon,
+  Loader2
 } from 'lucide-react';
 
-// Mock album data - enhanced with more realistic structure
-const mockAlbumData = {
-  id: '1',
-  title: '5 Star',
-  artist_name: 'King Promise',
-  genre_name: 'Afrobeats',
-  release_date: '2023-06-15',
-  total_tracks: 12,
-  total_plays: 1247000,
-  total_revenue: 23475.50,
-  cover_art: '/albums/5-star.jpg',
-  description: 'King Promise\'s highly anticipated album featuring hit singles and collaborations with top artists.',
-  status: 'active',
-  tracks: [
-    {
-      id: '1',
-      title: 'Ghana Na Woti',
-      duration: '3:45',
-      plays: 450000,
-      revenue: 8750.00,
-      release_date: '2023-06-15'
-    },
-    {
-      id: '2',
-      title: 'Terminator',
-      duration: '3:22',
-      plays: 320000,
-      revenue: 6240.00,
-      release_date: '2023-06-15'
-    },
-    {
-      id: '3',
-      title: 'Perfect Combi',
-      duration: '3:15',
-      plays: 280000,
-      revenue: 5460.00,
-      release_date: '2023-06-15'
-    },
-    {
-      id: '4',
-      title: 'Paris',
-      duration: '3:08',
-      plays: 197000,
-      revenue: 3841.50,
-      release_date: '2023-06-15'
-    }
-  ],
-  monthly_revenue: [
-    { month: 'Jun 2023', amount: 4500.00, currency: 'GHS' },
-    { month: 'Jul 2023', amount: 5230.00, currency: 'GHS' },
-    { month: 'Aug 2023', amount: 6120.00, currency: 'GHS' },
-    { month: 'Sep 2023', amount: 3870.00, currency: 'GHS' },
-    { month: 'Oct 2023', amount: 3755.50, currency: 'GHS' }
-  ],
-  territory_revenue: [
-    { territory: 'Ghana', amount: 18760.00, currency: 'GHS', percentage: 80 },
-    { territory: 'Nigeria', amount: 2345.00, currency: 'GHS', percentage: 10 },
-    { territory: 'UK', amount: 1407.00, currency: 'GHS', percentage: 6 },
-    { territory: 'USA', amount: 938.00, currency: 'GHS', percentage: 4 }
-  ],
-  contributors: [
-    { role: 'Producer', name: 'KillBeatz', percentage: 25 },
-    { role: 'Featured Artist', name: 'Shatta Wale', percentage: 15 },
-    { role: 'Mixing Engineer', name: 'MikeMillzOnEm', percentage: 10 }
-  ],
-  top_stations: [
-    { name: "Joy FM", count: 156, region: 'Greater Accra' },
-    { name: "Peace FM", count: 134, region: 'Greater Accra' },
-    { name: "Adom FM", count: 98, region: 'Ashanti' },
-    { name: "Hitz FM", count: 87, region: 'Greater Accra' },
-    { name: "Okay FM", count: 76, region: 'Greater Accra' }
-  ],
-  plays_over_time: [
-    { month: 'Jun', plays: 245000 },
-    { month: 'Jul', plays: 389000 },
-    { month: 'Aug', plays: 567000 },
-    { month: 'Sep', plays: 723000 },
-    { month: 'Oct', plays: 1247000 }
-  ]
+import { fetchArtistAlbumDetail, type AlbumDetailPayload } from '../lib/api';
+
+interface AlbumTrackViewModel {
+  id: number;
+  title: string;
+  duration: string;
+  plays: number;
+  revenue: number;
+  release_date: string | null;
+}
+
+interface AlbumContributorViewModel {
+  name: string;
+  role: string;
+  percentage: number;
+}
+
+interface AlbumMonthlyRevenueViewModel {
+  month: string;
+  amount: number;
+  currency: string;
+  plays: number;
+}
+
+interface AlbumTerritoryRevenueViewModel {
+  territory: string;
+  amount: number;
+  currency: string;
+  percentage: number;
+  plays: number;
+}
+
+interface AlbumTopStationViewModel {
+  name: string;
+  count: number;
+  region: string;
+}
+
+interface AlbumPlaysTrendViewModel {
+  month: string;
+  plays: number;
+}
+
+interface AlbumDetailsViewModel {
+  id: number;
+  title: string;
+  artist_name: string;
+  genre_name: string;
+  release_date: string | null;
+  total_tracks: number;
+  total_plays: number;
+  total_revenue: number;
+  cover_art: string | null;
+  description: string | null;
+  status: 'active' | 'inactive' | 'draft';
+  raw_status?: string | null;
+  tracks: AlbumTrackViewModel[];
+  monthly_revenue: AlbumMonthlyRevenueViewModel[];
+  territory_revenue: AlbumTerritoryRevenueViewModel[];
+  contributors: AlbumContributorViewModel[];
+  top_stations: AlbumTopStationViewModel[];
+  plays_over_time: AlbumPlaysTrendViewModel[];
+}
+
+type AlbumTab = 'overview' | 'revenue' | 'performance' | 'contributors';
+
+const formatDuration = (seconds?: number | null): string => {
+  if (typeof seconds !== 'number' || Number.isNaN(seconds) || seconds <= 0) {
+    return '—';
+  }
+
+  const rounded = Math.round(seconds);
+  const minutes = Math.floor(rounded / 60);
+  const remaining = rounded % 60;
+  return `${minutes}:${remaining.toString().padStart(2, '0')}`;
+};
+
+const mapDetailToViewModel = (detail: AlbumDetailPayload): AlbumDetailsViewModel => {
+  const tracks = (detail.tracks ?? []).map<AlbumTrackViewModel>((track) => ({
+    id: track.id,
+    title: track.title,
+    duration: formatDuration(track.duration_seconds),
+    plays: track.plays ?? 0,
+    revenue: Number(track.revenue ?? 0),
+    release_date: track.release_date ?? null,
+  }));
+
+  const totalPlays =
+    typeof detail.stats?.total_plays === 'number'
+      ? detail.stats.total_plays
+      : tracks.reduce((sum, item) => sum + item.plays, 0);
+
+  const totalRevenue =
+    typeof detail.stats?.total_revenue === 'number'
+      ? Number(detail.stats.total_revenue)
+      : tracks.reduce((sum, item) => sum + item.revenue, 0);
+
+  const totalTracks =
+    typeof detail.stats?.total_tracks === 'number' ? detail.stats.total_tracks : tracks.length;
+
+  return {
+    id: detail.album.id,
+    title: detail.album.title,
+    artist_name: detail.album.artist,
+    genre_name: detail.album.genre ?? 'Uncategorized',
+    release_date: detail.album.release_date ?? null,
+    total_tracks: totalTracks,
+    total_plays: totalPlays,
+    total_revenue: totalRevenue,
+    cover_art: detail.album.cover_art_url ?? null,
+    description: null,
+    status: detail.album.status,
+    raw_status: detail.album.raw_status ?? null,
+    tracks,
+    monthly_revenue: (detail.revenue?.monthly ?? []).map((entry) => ({
+      month: entry.month || '—',
+      amount: Number(entry.amount ?? 0),
+      currency: entry.currency ?? 'GHS',
+      plays: entry.plays ?? 0,
+    })),
+    territory_revenue: (detail.revenue?.territories ?? []).map((entry) => ({
+      territory: entry.territory || 'Unspecified',
+      amount: Number(entry.amount ?? 0),
+      currency: entry.currency ?? 'GHS',
+      percentage: Number(entry.percentage ?? 0),
+      plays: entry.plays ?? 0,
+    })),
+    contributors: (detail.contributors ?? []).map((entry) => ({
+      name: entry.name,
+      role: entry.role,
+      percentage: Number(entry.percentage ?? 0),
+    })),
+    top_stations: (detail.performance?.top_stations ?? []).map((entry) => ({
+      name: entry.name || 'Unknown Station',
+      count: entry.count ?? 0,
+      region: entry.region || entry.country || 'Unspecified',
+    })),
+    plays_over_time: (detail.performance?.plays_over_time ?? []).map((entry) => ({
+      month: entry.label || '—',
+      plays: entry.plays ?? 0,
+    })),
+  };
+};
+
+const formatDateLabel = (value: string | null): string => {
+  if (!value) {
+    return '—';
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return '—';
+  }
+  return parsed.toLocaleDateString();
 };
 
 const AlbumDetails: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { albumId } = location.state || {};
+  const [searchParams] = useSearchParams();
+  const stateAlbumId = (location.state as { albumId?: number } | null)?.albumId;
+  const queryAlbumIdValue = searchParams.get('albumId');
+  const parsedQueryAlbumId = queryAlbumIdValue ? Number(queryAlbumIdValue) : undefined;
+  const albumId = stateAlbumId ?? (Number.isFinite(parsedQueryAlbumId) ? parsedQueryAlbumId : undefined);
 
-  // Get album data - for demo, we'll use the first album or find by ID
-  const album = albumId ? mockAlbumData : mockAlbumData;
+  const [detail, setDetail] = useState<AlbumDetailPayload | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<AlbumTab>('overview');
+  const [trackSearchTerm, setTrackSearchTerm] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'revenue' | 'performance' | 'contributors'>('overview');
+  const loadAlbumDetail = useCallback(async () => {
+    if (!albumId) {
+      setError('Album identifier is missing.');
+      setDetail(null);
+      setLoading(false);
+      return;
+    }
 
-  const tabs = [
-    { id: 'overview', label: 'Overview' },
-    { id: 'revenue', label: 'Revenue' },
-    { id: 'performance', label: 'Performance' },
-    { id: 'contributors', label: 'Contributors' }
-  ] as const;
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetchArtistAlbumDetail(albumId);
+      setDetail(response?.data ?? null);
+    } catch (err) {
+      setError('Unable to load album details. Please try again.');
+      setDetail(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [albumId]);
+
+  useEffect(() => {
+    void loadAlbumDetail();
+  }, [loadAlbumDetail]);
+
+  useEffect(() => {
+    setTrackSearchTerm('');
+  }, [albumId]);
+
+  const album = useMemo(() => (detail ? mapDetailToViewModel(detail) : null), [detail]);
+
+  const filteredTracks = useMemo(() => {
+    if (!album) {
+      return [] as AlbumTrackViewModel[];
+    }
+    const query = trackSearchTerm.trim().toLowerCase();
+    if (!query) {
+      return album.tracks;
+    }
+    return album.tracks.filter((track) => track.title.toLowerCase().includes(query));
+  }, [album, trackSearchTerm]);
+
+  const totalContributorSplit = useMemo(() => {
+    if (!album) {
+      return 0;
+    }
+    return album.contributors.reduce((sum, contributor) => sum + contributor.percentage, 0);
+  }, [album]);
+
+  const handleRefresh = useCallback(() => {
+    void loadAlbumDetail();
+  }, [loadAlbumDetail]);
+
+  const tabs = useMemo(
+    () =>
+      [
+        { id: 'overview', label: 'Overview' },
+        { id: 'revenue', label: 'Revenue' },
+        { id: 'performance', label: 'Performance' },
+        { id: 'contributors', label: 'Contributors' },
+      ] as const,
+    [],
+  );
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="flex items-center space-x-3 text-purple-600 dark:text-purple-300">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          <span className="text-sm font-medium">Loading album details…</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-3xl mx-auto">
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-red-700 dark:border-red-900/40 dark:bg-red-950/40 dark:text-red-200">
+          <div className="flex items-start space-x-3">
+            <AlertCircle className="mt-0.5 h-5 w-5" />
+            <div>
+              <h2 className="text-lg font-semibold">Unable to display album details</h2>
+              <p className="mt-1 text-sm">{error}</p>
+              <button
+                type="button"
+                onClick={handleRefresh}
+                className="mt-4 inline-flex items-center space-x-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-purple-700"
+              >
+                <RotateCcw className="h-4 w-4" />
+                <span>Retry</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!album) {
+    return (
+      <div className="max-w-3xl mx-auto">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-200">
+          <div className="flex items-start space-x-3">
+            <AlertCircle className="mt-0.5 h-5 w-5" />
+            <div>
+              <h2 className="text-lg font-semibold">Album not found</h2>
+              <p className="mt-1 text-sm">We couldn’t find the album you’re looking for.</p>
+              <button
+                type="button"
+                onClick={() => navigate('/dashboard/album-list')}
+                className="mt-4 inline-flex items-center space-x-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-purple-700"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                <span>Back to albums</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const releaseDateLabel = formatDateLabel(album.release_date);
+  const displayedTracks = filteredTracks;
 
   return (
     <>
@@ -154,7 +343,11 @@ const AlbumDetails: React.FC = () => {
         {/* Quick Actions Bar */}
         <div className="flex items-center justify-between mt-4">
           <div className="flex items-center space-x-2">
-            <button className="p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500" title="Refresh data">
+            <button
+              className="p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              title="Refresh data"
+              onClick={handleRefresh}
+            >
               <RotateCcw className="w-4 h-4" />
             </button>
             <button className="p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500" title="Export report">
@@ -172,6 +365,8 @@ const AlbumDetails: React.FC = () => {
               <input
                 type="text"
                 placeholder="Search tracks..."
+                value={trackSearchTerm}
+                onChange={(event) => setTrackSearchTerm(event.target.value)}
                 className="pl-10 pr-4 py-2 bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm border border-gray-200 dark:border-slate-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 w-48"
                 aria-label="Search album tracks"
               />
@@ -231,11 +426,17 @@ const AlbumDetails: React.FC = () => {
             {/* Enhanced Album Art with Glow */}
             <div className="relative flex-shrink-0">
               <div className="w-48 h-48 lg:w-64 lg:h-64 rounded-2xl overflow-hidden shadow-2xl group-hover:shadow-purple-500/25 transition-all duration-300">
-                <img
-                  src={album.cover_art}
-                  alt={`${album.title} cover art`}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                />
+                {album.cover_art ? (
+                  <img
+                    src={album.cover_art}
+                    alt={`${album.title} cover art`}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-purple-500 via-indigo-500 to-pink-500 text-white">
+                    <AlbumIcon className="h-14 w-14" />
+                  </div>
+                )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
               </div>
               {/* Floating Play Button */}
@@ -267,7 +468,7 @@ const AlbumDetails: React.FC = () => {
                   </span>
                   <span className="flex items-center space-x-1">
                     <Calendar className="w-4 h-4" />
-                    <span>{new Date(album.release_date).toLocaleDateString()}</span>
+                    <span>{releaseDateLabel}</span>
                   </span>
                 </div>
                 {album.description && (
@@ -416,32 +617,38 @@ const AlbumDetails: React.FC = () => {
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Album Tracks</h3>
                   <div className="space-y-3">
-                    {album.tracks.map((track, index) => (
-                      <div key={track.id} className="flex items-center justify-between p-4 bg-white/50 dark:bg-slate-800/50 rounded-lg border border-gray-200 dark:border-slate-600 hover:bg-white/70 dark:hover:bg-slate-800/70 transition-colors duration-200">
-                        <div className="flex items-center space-x-4">
-                          <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
-                            {index + 1}
-                          </div>
-                          <div>
-                            <h4 className="font-medium text-gray-900 dark:text-white">{track.title}</h4>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">{track.duration}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center space-x-4">
-                          <div className="text-right">
-                            <div className="text-sm font-bold text-gray-900 dark:text-white">{track.plays.toLocaleString()}</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400">plays</div>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-sm font-bold text-green-600 dark:text-green-400">₵{track.revenue.toLocaleString()}</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400">revenue</div>
-                          </div>
-                          <button className="p-2 text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/30">
-                            <Play className="w-4 h-4" />
-                          </button>
-                        </div>
+                    {displayedTracks.length === 0 ? (
+                      <div className="flex items-center justify-center rounded-lg border border-dashed border-gray-300 dark:border-slate-600 bg-white/40 dark:bg-slate-800/40 p-6 text-sm text-gray-500 dark:text-gray-400">
+                        No tracks match your current filters.
                       </div>
-                    ))}
+                    ) : (
+                      displayedTracks.map((track, index) => (
+                        <div key={track.id} className="flex items-center justify-between p-4 bg-white/50 dark:bg-slate-800/50 rounded-lg border border-gray-200 dark:border-slate-600 hover:bg-white/70 dark:hover:bg-slate-800/70 transition-colors duration-200">
+                          <div className="flex items-center space-x-4">
+                            <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
+                              {index + 1}
+                            </div>
+                            <div>
+                              <h4 className="font-medium text-gray-900 dark:text-white">{track.title}</h4>
+                              <p className="text-sm text-gray-500 dark:text-gray-400">{track.duration}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-4">
+                            <div className="text-right">
+                              <div className="text-sm font-bold text-gray-900 dark:text-white">{track.plays.toLocaleString()}</div>
+                              <div className="text-xs text-gray-500 dark:text-gray-400">plays</div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-sm font-bold text-green-600 dark:text-green-400">₵{track.revenue.toLocaleString()}</div>
+                              <div className="text-xs text-gray-500 dark:text-gray-400">revenue</div>
+                            </div>
+                            <button className="p-2 text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/30">
+                              <Play className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               </>
@@ -547,9 +754,7 @@ const AlbumDetails: React.FC = () => {
                   <div className="pt-4 border-t border-gray-200 dark:border-slate-600">
                     <div className="flex justify-between items-center">
                       <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Split</span>
-                      <span className="text-lg font-bold text-gray-900 dark:text-white">
-                        {album.contributors.reduce((sum, contributor) => sum + contributor.percentage, 0)}%
-                      </span>
+                      <span className="text-lg font-bold text-gray-900 dark:text-white">{totalContributorSplit}%</span>
                     </div>
                   </div>
                 </div>

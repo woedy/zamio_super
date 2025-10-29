@@ -426,3 +426,346 @@ export const resumeArtistVerification = async () => {
   );
   return data;
 };
+
+export type UploadLifecycleStatus = 'uploading' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'pending';
+
+export interface UploadManagementRecord {
+  id: string;
+  upload_id: string;
+  status: UploadLifecycleStatus;
+  raw_status?: string;
+  progress: number;
+  upload_type?: string;
+  filename: string;
+  file_size: number;
+  file_type?: string | null;
+  upload_date: string;
+  error?: string | null;
+  retry_count?: number;
+  duration?: string | null;
+  artist?: string | null;
+  album?: string | null;
+  title?: string | null;
+  station?: string | null;
+  entity_id?: number | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface UploadManagementPagination {
+  page: number;
+  page_size: number;
+  total_count: number;
+  total_pages: number;
+  has_next: boolean;
+  has_previous: boolean;
+}
+
+export interface UploadManagementStats {
+  total: number;
+  uploading: number;
+  processing: number;
+  completed: number;
+  failed: number;
+}
+
+export interface UploadManagementFilters {
+  albums: string[];
+  status_counts?: Record<string, number>;
+  frontend_status_counts?: Record<string, number>;
+}
+
+export interface UploadManagementPayload {
+  uploads?: UploadManagementRecord[];
+  pagination?: UploadManagementPagination;
+  stats?: UploadManagementStats;
+  filters?: UploadManagementFilters;
+}
+
+export interface UploadManagementParams {
+  page?: number;
+  page_size?: number;
+  status?: string;
+  upload_type?: string;
+  search?: string;
+  album?: string;
+  sort_by?: string;
+  sort_order?: string;
+}
+
+export const fetchUploadManagement = async (params: UploadManagementParams = {}) => {
+  const { data } = await authApi.get<ApiEnvelope<UploadManagementPayload>>(
+    '/api/artists/api/uploads/',
+    { params },
+  );
+  return data;
+};
+
+export const initiateUpload = async (formData: FormData) => {
+  const { data } = await authApi.post<ApiEnvelope<Record<string, unknown>>>(
+    '/api/artists/api/upload/initiate/',
+    formData,
+  );
+  return data;
+};
+
+export const fetchUploadStatusById = async (uploadId: string) => {
+  const { data } = await authApi.get<ApiEnvelope<Record<string, any>>>(
+    `/api/artists/api/upload-status/${uploadId}/`,
+  );
+  return data;
+};
+
+export const cancelUploadRequest = async (uploadId: string) => {
+  const { data } = await authApi.delete<ApiEnvelope<Record<string, unknown>>>(
+    `/api/artists/api/upload/${uploadId}/cancel/`,
+  );
+  return data;
+};
+
+export const deleteUploadRequest = async (uploadId: string) => {
+  const { data } = await authApi.delete<ApiEnvelope<Record<string, unknown>>>(
+    `/api/artists/api/upload/${uploadId}/delete/`,
+  );
+  return data;
+};
+
+export interface CreateAlbumPayload {
+  title: string;
+  release_date?: string;
+  genre?: string;
+}
+
+export const createAlbumForUploads = async (payload: CreateAlbumPayload) => {
+  const { data } = await authApi.post<ApiEnvelope<Record<string, unknown>>>(
+    '/api/artists/api/albums/create/',
+    payload,
+  );
+  return data;
+};
+
+export interface AlbumSummary {
+  id: number;
+  album_id?: string | null;
+  title: string;
+  artist: string;
+  artist_id?: string;
+  genre?: string | null;
+  release_date?: string | null;
+  track_count: number;
+  total_plays: number;
+  total_revenue: number;
+  cover_art_url?: string | null;
+  status: 'active' | 'inactive' | 'draft';
+  raw_status?: string | null;
+  is_archived: boolean;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AlbumListStats {
+  total: number;
+  active: number;
+  inactive: number;
+  draft: number;
+}
+
+export interface AlbumListPagination {
+  page: number;
+  page_size: number;
+  total_pages: number;
+  total_count: number;
+  has_next: boolean;
+  has_previous: boolean;
+}
+
+export interface AlbumListPayload {
+  albums: AlbumSummary[];
+  pagination: AlbumListPagination;
+  stats: AlbumListStats;
+}
+
+export interface AlbumListParams {
+  page?: number;
+  page_size?: number;
+  search?: string;
+  status?: string;
+  sort_by?: string;
+  sort_order?: string;
+}
+
+export const fetchArtistAlbums = async (params: AlbumListParams = {}) => {
+  const { data } = await authApi.get<ApiEnvelope<AlbumListPayload>>(
+    '/api/artists/api/albums/',
+    { params },
+  );
+  return data;
+};
+
+export interface CreateArtistAlbumPayload {
+  title: string;
+  release_date?: string;
+  genre_id?: number;
+  genre?: string;
+  cover_art?: File | null;
+}
+
+export const createArtistAlbum = async (payload: CreateArtistAlbumPayload) => {
+  const formData = new FormData();
+  formData.append('title', payload.title);
+
+  if (payload.release_date) {
+    formData.append('release_date', payload.release_date);
+  }
+  if (typeof payload.genre_id === 'number') {
+    formData.append('genre_id', String(payload.genre_id));
+  }
+  if (payload.genre) {
+    formData.append('genre', payload.genre);
+  }
+  if (payload.cover_art instanceof File) {
+    formData.append('cover_art', payload.cover_art);
+  }
+
+  const { data } = await authApi.post<ApiEnvelope<{ album: AlbumSummary }>>(
+    '/api/artists/api/albums/manage/',
+    formData,
+  );
+  return data;
+};
+
+export interface UpdateArtistAlbumPayload {
+  title?: string;
+  release_date?: string;
+  genre_id?: number;
+  genre?: string;
+  status?: string;
+  active?: boolean;
+  cover_art?: File | null;
+}
+
+const appendFormValue = (formData: FormData, key: string, value: unknown) => {
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (typeof value === 'boolean') {
+    formData.append(key, value ? 'true' : 'false');
+    return;
+  }
+  formData.append(key, String(value));
+};
+
+export const updateArtistAlbum = async (
+  albumId: number,
+  payload: UpdateArtistAlbumPayload,
+) => {
+  const { cover_art: coverArt, ...rest } = payload;
+  const hasFile = coverArt instanceof File;
+
+  if (hasFile) {
+    const formData = new FormData();
+    Object.entries(rest).forEach(([key, value]) => appendFormValue(formData, key, value));
+    formData.append('cover_art', coverArt);
+
+    const { data } = await authApi.patch<ApiEnvelope<{ album: AlbumSummary }>>(
+      `/api/artists/api/albums/${albumId}/`,
+      formData,
+    );
+    return data;
+  }
+
+  const filteredPayload = Object.fromEntries(
+    Object.entries(rest).filter(([, value]) => value !== undefined),
+  );
+
+  const { data } = await authApi.patch<ApiEnvelope<{ album: AlbumSummary }>>(
+    `/api/artists/api/albums/${albumId}/`,
+    filteredPayload,
+  );
+  return data;
+};
+
+export interface AlbumTrackDetail {
+  id: number;
+  title: string;
+  status: string;
+  release_date: string | null;
+  duration_seconds: number | null;
+  plays: number;
+  revenue: number;
+  cover_art_url: string | null;
+  active: boolean;
+}
+
+export interface AlbumDetailStats {
+  total_tracks: number;
+  active_tracks: number;
+  inactive_tracks: number;
+  total_plays: number;
+  total_revenue: number;
+  average_track_duration_seconds: number | null;
+}
+
+export interface AlbumMonthlyRevenueEntry {
+  month: string;
+  amount: number;
+  currency: string;
+  plays: number;
+}
+
+export interface AlbumTerritoryRevenueEntry {
+  territory: string;
+  amount: number;
+  currency: string;
+  percentage: number;
+  plays: number;
+}
+
+export interface AlbumPlaysOverTimeEntry {
+  label: string;
+  plays: number;
+}
+
+export interface AlbumTopStationEntry {
+  name: string;
+  count: number;
+  region?: string | null;
+  country?: string | null;
+  revenue: number;
+}
+
+export interface AlbumContributorSummary {
+  id: number;
+  name: string;
+  role: string;
+  percentage: number;
+}
+
+export interface AlbumDetailPayload {
+  album: AlbumSummary;
+  stats: AlbumDetailStats;
+  tracks: AlbumTrackDetail[];
+  revenue: {
+    monthly: AlbumMonthlyRevenueEntry[];
+    territories: AlbumTerritoryRevenueEntry[];
+  };
+  performance: {
+    plays_over_time: AlbumPlaysOverTimeEntry[];
+    top_stations: AlbumTopStationEntry[];
+  };
+  contributors: AlbumContributorSummary[];
+}
+
+export const fetchArtistAlbumDetail = async (albumId: number) => {
+  const { data } = await authApi.get<ApiEnvelope<AlbumDetailPayload>>(
+    `/api/artists/api/albums/${albumId}/detail/`,
+  );
+  return data;
+};
+
+export const deleteArtistAlbum = async (albumId: number) => {
+  const { data } = await authApi.delete<ApiEnvelope<Record<string, unknown>>>(
+    `/api/artists/api/albums/${albumId}/delete/`,
+  );
+  return data;
+};
