@@ -55,24 +55,24 @@ def get_artist_profile_view(request):
             'artist_id': artist.artist_id,
             'stage_name': artist.stage_name or '',
             'bio': artist.bio or '',
-            'profile_image': artist.profile_image or None,
-            'cover_image': None,  # Add if field exists
-            'verified': artist.verified if hasattr(artist, 'verified') else False,
+            'profile_image': None,  # Not implemented yet
+            'cover_image': None,  # Not implemented yet
+            'verified': artist.verification_status == 'verified',
             'join_date': artist.created_at.isoformat() if artist.created_at else None,
-            'location': None,  # Add if field exists
+            'location': artist.location or None,
             'genres': [],  # Will populate from tracks
         }
 
         # Contact information
         contact = {
-            'email': artist.contact_email or '',
-            'phone': None,  # Add if field exists
+            'email': artist.user.email if artist.user else '',
+            'phone': None,  # Not implemented yet
             'instagram': artist.instagram or '',
             'twitter': artist.twitter or '',
-            'facebook': None,  # Add if field exists
+            'facebook': artist.facebook or '',
             'website': artist.website or '',
-            'spotify_url': artist.spotify_url or '',
-            'shazam_url': artist.shazam_url or '',
+            'spotify_url': artist.spotify or '',
+            'shazam_url': '',  # Not implemented yet
         }
 
         # Get all tracks for this artist
@@ -257,8 +257,6 @@ def update_artist_profile_view(request):
         artist.stage_name = request.data['stage_name'].strip()
     if 'bio' in request.data:
         artist.bio = request.data['bio'].strip()
-    if 'contact_email' in request.data:
-        artist.contact_email = request.data['contact_email'].strip()
     if 'instagram' in request.data:
         artist.instagram = request.data['instagram'].strip()
     if 'twitter' in request.data:
@@ -266,9 +264,10 @@ def update_artist_profile_view(request):
     if 'website' in request.data:
         artist.website = request.data['website'].strip()
     if 'spotify_url' in request.data:
-        artist.spotify_url = request.data['spotify_url'].strip()
-    if 'shazam_url' in request.data:
-        artist.shazam_url = request.data['shazam_url'].strip()
+        artist.spotify = request.data['spotify_url'].strip()
+    if 'facebook' in request.data:
+        artist.facebook = request.data['facebook'].strip()
+    # Note: contact_email and shazam_url not implemented in Artist model
 
     artist.save()
 
