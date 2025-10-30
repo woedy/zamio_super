@@ -796,6 +796,7 @@ export const fetchArtistAlbumDetail = async (albumId: number) => {
 
 interface LegacyTrackPlayLog {
   time?: string | null;
+  played_at?: string | null;
   station?: string | null;
   region?: string | null;
   country?: string | null;
@@ -817,6 +818,7 @@ interface LegacyTrackPlaysOverTimeEntry {
 }
 
 interface LegacyTrackDetailResponse {
+  // Flat structure (legacy)
   track_id?: number | string | null;
   title?: string | null;
   artist_name?: string | null;
@@ -825,6 +827,7 @@ interface LegacyTrackDetailResponse {
   duration?: string | number | null;
   release_date?: string | null;
   plays?: number | null;
+  total_revenue?: number | null;
   cover_art?: string | null;
   audio_file_mp3?: string | null;
   audio_file_url?: string | null;
@@ -833,6 +836,23 @@ interface LegacyTrackDetailResponse {
   playLogs?: LegacyTrackPlayLog[] | null;
   playsOverTime?: LegacyTrackPlaysOverTimeEntry[] | null;
   contributors?: { role?: string | null; name?: string | null; percentage?: number | null }[] | null;
+  
+  // Nested structure (current)
+  track?: {
+    id?: number | string | null;
+    track_id?: number | string | null;
+    title?: string | null;
+    artist?: string | null;
+    album?: string | null;
+    genre?: string | null;
+    duration_seconds?: number | null;
+    release_date?: string | null;
+    plays?: number | null;
+    total_revenue?: number | null;
+    cover_art_url?: string | null;
+    audio_file_url?: string | null;
+    lyrics?: string | null;
+  } | null;
   stats?: {
     total_plays?: number | null;
     total_revenue?: number | null;
@@ -859,6 +879,7 @@ interface LegacyTrackDetailResponse {
     plays_over_time?: LegacyTrackPlaysOverTimeEntry[] | null;
     top_stations?: LegacyTrackTopStation[] | null;
   } | null;
+  play_logs?: LegacyTrackPlayLog[] | null;
 }
 
 const parseDurationToSeconds = (value: string | number | null | undefined): number | null => {
@@ -998,8 +1019,9 @@ const normalizeTrackDetail = (
   trackIdentifier: number | string,
   raw: LegacyTrackDetailResponse,
 ): TrackDetailPayload => {
-  const playLogs = ensureArray(raw.playLogs).map<TrackPlayLogEntry>((log) => ({
-    played_at: normalizeTimestamp(log.time ?? null),
+  const rawPlayLogs = raw.play_logs ?? raw.playLogs ?? [];
+  const playLogs = ensureArray(rawPlayLogs).map<TrackPlayLogEntry>((log) => ({
+    played_at: normalizeTimestamp(log.played_at ?? log.time ?? null),
     station: log.station ?? null,
     region: log.region ?? null,
     country: log.country ?? null,
@@ -1087,34 +1109,49 @@ const normalizeTrackDetail = (
         : null;
 
   const resolvedTrackKey =
-    raw.track_id ?? (typeof rawIdentifierValue === 'string' && rawIdentifierValue ? rawIdentifierValue : null);
+    raw.track?.track_id ?? raw.track_id ?? (typeof rawIdentifierValue === 'string' && rawIdentifierValue ? rawIdentifierValue : null);
 
   const resolvedTrackId: string | number =
-    typeof raw.track_id === 'number'
+    raw.track?.id ?? (typeof raw.track_id === 'number'
       ? raw.track_id
       : typeof numericIdentifier === 'number' && Number.isFinite(numericIdentifier)
         ? numericIdentifier
-        : resolvedTrackKey ?? rawIdentifierValue ?? 'unknown-track';
+        : resolvedTrackKey ?? rawIdentifierValue ?? 'unknown-track');
+
+  // Prioritize nested structure, fallback to flat structure
+  const trackTitle = raw.track?.title ?? raw.title ?? 'Untitled Track';
+  const artistName = raw.track?.artist ?? raw.artist_name ?? 'Unknown Artist';
+  const albumTitle = raw.track?.album ?? raw.album_title ?? null;
+  const genreName = raw.track?.genre ?? raw.genre_name ?? null;
+  const durationSeconds = raw.track?.duration_seconds ?? parseDurationToSeconds(raw.duration);
+  const releaseDate = raw.track?.release_date ?? raw.release_date ?? null;
+  const coverArtUrl = raw.track?.cover_art_url ?? raw.cover_art ?? null;
+  const audioFileUrl = raw.track?.audio_file_url ?? raw.audio_file_url ?? raw.audio_file_mp3 ?? null;
+  const lyrics = raw.track?.lyrics ?? raw.lyrics ?? null;
+  
+  // Use stats from nested structure or calculate from flat structure
+  const statsTotalRevenue = raw.stats?.total_revenue ?? raw.total_revenue ?? totalRevenue;
+  const finalTotalRevenue = typeof statsTotalRevenue === 'number' ? statsTotalRevenue : 0;
 
   return {
     track: {
       id: resolvedTrackId,
       track_id: resolvedTrackKey ?? (typeof resolvedTrackId === 'string' ? resolvedTrackId : null),
-      title: raw.title ?? 'Untitled Track',
-      artist: raw.artist_name ?? 'Unknown Artist',
-      album: raw.album_title ?? null,
-      genre: raw.genre_name ?? null,
-      duration_seconds: parseDurationToSeconds(raw.duration),
-      release_date: raw.release_date ?? null,
+      title: trackTitle,
+      artist: artistName,
+      album: albumTitle,
+      genre: genreName,
+      duration_seconds: durationSeconds,
+      release_date: releaseDate,
       plays: typeof totalPlays === 'number' ? totalPlays : 0,
-      total_revenue: totalRevenue,
-      cover_art_url: raw.cover_art ?? null,
-      audio_file_url: raw.audio_file_url ?? raw.audio_file_mp3 ?? null,
-      lyrics: raw.lyrics ?? null,
+      total_revenue: finalTotalRevenue,
+      cover_art_url: coverArtUrl,
+      audio_file_url: audioFileUrl,
+      lyrics: lyrics,
     },
     stats: {
       total_plays: typeof totalPlays === 'number' ? totalPlays : 0,
-      total_revenue,
+      total_revenue: finalTotalRevenue,
       average_confidence: raw.stats?.average_confidence ?? null,
       first_played_at: raw.stats?.first_played_at ?? sortedTimestamps[0] ?? null,
       last_played_at: raw.stats?.last_played_at ?? sortedTimestamps[sortedTimestamps.length - 1] ?? null,
