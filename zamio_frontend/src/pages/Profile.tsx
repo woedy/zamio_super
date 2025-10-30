@@ -397,22 +397,37 @@ const Profile: React.FC = () => {
   };
 
   const handleSaveProfile = async () => {
+    const artistId = getArtistId();
+    if (!artistId) return;
+
     setIsSaving(true);
     setSaveMessage(null);
 
     // Basic validation
-    if (!editFormData.name.trim() || !editFormData.stageName.trim() || !editFormData.bio.trim()) {
+    if (!editFormData.stageName.trim() || !editFormData.bio.trim()) {
       setSaveMessage({ type: 'error', text: 'Please fill in all required fields.' });
       setIsSaving(false);
       return;
     }
 
     try {
-      // In a real app, this would make an API call to save the profile
-      // For now, we'll simulate an API call with a delay
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const params: UpdateProfileParams = {
+        artist_id: artistId,
+        stage_name: editFormData.stageName,
+        bio: editFormData.bio,
+        contact_email: editFormData.contact.email,
+        instagram: editFormData.contact.instagram,
+        twitter: editFormData.contact.twitter,
+        website: editFormData.contact.website,
+        spotify_url: editFormData.contact.spotify_url,
+        shazam_url: editFormData.contact.shazam_url
+      };
 
-      // Simulate success
+      await updateArtistProfile(params);
+      
+      // Refresh profile data
+      await loadProfile(true);
+      
       setSaveMessage({ type: 'success', text: 'Profile updated successfully!' });
 
       // Close modal after a short delay
@@ -422,6 +437,7 @@ const Profile: React.FC = () => {
       }, 2000);
 
     } catch (error) {
+      console.error('Failed to update profile:', error);
       setSaveMessage({ type: 'error', text: 'Failed to update profile. Please try again.' });
     } finally {
       setIsSaving(false);
@@ -470,18 +486,18 @@ const Profile: React.FC = () => {
           <div>
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{song.title}</h3>
             <p className="text-sm text-gray-600 dark:text-gray-300">
-              {song.duration} • {song.album} • {song.genre}
+              {song.duration} • {song.album || 'No Album'} • {song.genre || 'Unknown'}
             </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">Released {formatDate(song.releaseDate)}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Released {song.release_date ? formatDate(song.release_date) : 'N/A'}</p>
           </div>
         </div>
         <div className="flex items-center space-x-4">
           <div className="text-right">
             <div className="text-gray-900 dark:text-white font-semibold">
-              {song.totalPlays.toLocaleString()} plays
+              {(song.total_plays || 0).toLocaleString()} plays
             </div>
             <div className="text-green-600 dark:text-green-400 text-sm">
-              {formatCurrency(song.totalEarnings)}
+              {formatCurrency(song.total_earnings)}
             </div>
           </div>
           <div className="flex items-center space-x-2">
@@ -489,10 +505,10 @@ const Profile: React.FC = () => {
               <Play className="w-4 h-4" />
             </button>
             <button
-              onClick={() => setExpandedSong(expandedSong === song.id ? null : song.id)}
+              onClick={() => setExpandedSong(expandedSong === song.track_id ? null : song.track_id)}
               className="bg-white/10 dark:bg-slate-800/60 p-2 rounded-lg hover:bg-white/20 dark:hover:bg-slate-800/80 transition-colors"
             >
-              {expandedSong === song.id ? (
+              {expandedSong === song.track_id ? (
                 <ChevronUp className="w-4 h-4 text-gray-400 dark:text-gray-500" />
               ) : (
                 <ChevronDown className="w-4 h-4 text-gray-400 dark:text-gray-500" />
@@ -502,7 +518,7 @@ const Profile: React.FC = () => {
         </div>
       </div>
 
-      {expandedSong === song.id && (
+      {expandedSong === song.track_id && (
         <div className="space-y-4 border-t border-gray-200 dark:border-slate-600 pt-4">
           {/* Contributors */}
           <div>
@@ -1136,6 +1152,7 @@ const Profile: React.FC = () => {
           )}
         </div>
       </div>
+      )}
 
       {/* Edit Profile Modal */}
       {isEditModalOpen && (
@@ -1345,7 +1362,6 @@ const Profile: React.FC = () => {
             </div>
           </div>
         </div>
-      </div>
       )}
     </>
   );
