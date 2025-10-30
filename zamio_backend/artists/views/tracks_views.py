@@ -632,9 +632,27 @@ def get_track_details_view(request):
             return None
         try:
             url = file_field.url
+            # Skip default placeholder images
+            if 'defaults/track_cover.png' in url or 'defaults/album_cover.png' in url:
+                return None
             return request.build_absolute_uri(url)
         except Exception:
             return None
+    
+    # Get cover art - prefer track cover, fallback to album cover
+    def get_cover_art_url():
+        # Try track cover art first
+        track_cover = build_absolute_uri(track.cover_art)
+        if track_cover:
+            return track_cover
+        
+        # Fallback to album cover art if track has an album
+        if track.album:
+            album_cover = build_absolute_uri(track.album.cover_art)
+            if album_cover:
+                return album_cover
+        
+        return None
 
     # Build track object with all track-specific fields
     track_data = {
@@ -649,7 +667,7 @@ def get_track_details_view(request):
         'release_date': track.release_date.isoformat() if track.release_date else None,
         'plays': int(play_count),
         'total_revenue': round(float(total_revenue_value), 2),
-        'cover_art_url': build_absolute_uri(track.cover_art),
+        'cover_art_url': get_cover_art_url(),
         'audio_file_url': build_absolute_uri(track.audio_file_mp3) or build_absolute_uri(track.audio_file),
     }
 
@@ -673,7 +691,7 @@ def get_track_details_view(request):
     data['release_date'] = track.release_date.isoformat() if track.release_date else None
     data['plays'] = int(play_count)
     data['total_revenue'] = round(float(total_revenue_value), 2)
-    data['cover_art'] = build_absolute_uri(track.cover_art)
+    data['cover_art'] = get_cover_art_url()  # Use same fallback logic
     data['audio_file_mp3'] = build_absolute_uri(track.audio_file_mp3)
     data['audio_file_url'] = track_data['audio_file_url']
 
