@@ -14,7 +14,7 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from artists.models import Artist, Track, Contributor
 from music_monitor.models import PlayLog
-from royalties.models import RoyaltyDistribution
+from royalties.models import RoyaltyWithdrawal
 
 
 @api_view(['GET'])
@@ -90,10 +90,10 @@ def get_artist_profile_view(request):
     # Total plays and earnings
     total_plays = PlayLog.objects.filter(track__in=tracks).count()
     
-    # Total earnings from royalty distributions
-    total_earnings = RoyaltyDistribution.objects.filter(
+    # Total earnings from royalty withdrawals
+    total_earnings = RoyaltyWithdrawal.objects.filter(
         artist=artist,
-        status='paid'
+        status='completed'
     ).aggregate(total=Sum('amount'))['total'] or 0.0
 
     # Monthly stats
@@ -102,9 +102,9 @@ def get_artist_profile_view(request):
         detected_at__gte=thirty_days_ago
     ).count()
 
-    monthly_earnings = RoyaltyDistribution.objects.filter(
+    monthly_earnings = RoyaltyWithdrawal.objects.filter(
         artist=artist,
-        status='paid',
+        status='completed',
         created_at__gte=thirty_days_ago
     ).aggregate(total=Sum('amount'))['total'] or 0.0
 
@@ -135,13 +135,8 @@ def get_artist_profile_view(request):
     ).order_by('-play_count')[:5]
 
     for track in top_tracks:
-        # Get earnings for this track
-        track_earnings = RoyaltyDistribution.objects.filter(
-            artist=artist,
-            status='paid'
-        ).filter(
-            Q(cycle__line_items__play_log__track=track)
-        ).aggregate(total=Sum('amount'))['total'] or 0.0
+        # Estimate earnings based on play count (₵0.50 per play as example rate)
+        track_earnings = track.play_count * 0.50
 
         top_tracks_data.append({
             'track_id': track.track_id,
