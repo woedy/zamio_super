@@ -23,6 +23,7 @@ import {
   type AlbumListStats,
   type AlbumListPagination,
 } from '../lib/api';
+import ProtectedImage from '../components/ProtectedImage';
 
 interface AlbumData {
   id: number;
@@ -519,10 +520,11 @@ const AlbumList: React.FC = () => {
                     <div className="relative mb-4">
                       <div className="w-full aspect-square bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-900/30 dark:to-purple-900/30 rounded-lg flex items-center justify-center">
                         {album.coverArt ? (
-                          <img
+                          <ProtectedImage
                             src={album.coverArt}
                             alt={`${album.title} cover`}
                             className="w-full h-full object-cover rounded-lg"
+                            fallback={<Album className="w-16 h-16 text-indigo-400 dark:text-indigo-300" />}
                           />
                         ) : (
                           <Album className="w-16 h-16 text-indigo-400 dark:text-indigo-300" />
@@ -713,10 +715,11 @@ const AlbumList: React.FC = () => {
                 <div className="flex items-center space-x-4">
                   <div className="w-20 h-20 rounded-lg overflow-hidden bg-gray-100 dark:bg-slate-700 flex items-center justify-center">
                     {coverPreview || editingAlbum?.coverArt ? (
-                      <img
+                      <ProtectedImage
                         src={coverPreview ?? editingAlbum?.coverArt ?? ''}
                         alt="Album cover preview"
                         className="w-full h-full object-cover"
+                        fallback={<Album className="w-8 h-8 text-gray-400" />}
                       />
                     ) : (
                       <Album className="w-8 h-8 text-gray-400" />
