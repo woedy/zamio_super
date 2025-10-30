@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Upload,
@@ -25,6 +25,7 @@ import {
   createAlbumForUploads,
   type UploadLifecycleStatus,
   type UploadManagementPagination,
+  resolveApiBaseUrl,
 } from '../lib/api';
 
 interface UploadData {
@@ -122,6 +123,40 @@ const UploadManagement: React.FC = () => {
   const [uploadIdentifiers, setUploadIdentifiers] = useState<Record<string, string>>({});
   const [isBulkUploading, setIsBulkUploading] = useState(false);
 
+  const apiBaseUrl = useMemo(() => resolveApiBaseUrl().replace(/\/$/, ''), []);
+
+  const resolveMediaUrl = useCallback(
+    (input?: string | null): string | null => {
+      if (!input) {
+        return null;
+      }
+
+      const value = input.trim();
+      if (!value) {
+        return null;
+      }
+
+      if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value) || value.startsWith('//')) {
+        return value;
+      }
+
+      if (/^[a-z][a-z0-9+.-]*:/i.test(value)) {
+        return value;
+      }
+
+      if (!apiBaseUrl) {
+        return value;
+      }
+
+      if (value.startsWith('/')) {
+        return `${apiBaseUrl}${value}`;
+      }
+
+      return `${apiBaseUrl}/${value}`;
+    },
+    [apiBaseUrl]
+  );
+
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(searchTerm), 400);
     return () => window.clearTimeout(timer);
@@ -167,6 +202,9 @@ const UploadManagement: React.FC = () => {
             extractString(metadata['album_cover_url']) ??
             extractString(metadata['album_cover']);
 
+          const normalizedCoverArtUrl = resolveMediaUrl(coverArtUrl);
+          const normalizedAlbumCoverUrl = resolveMediaUrl(albumCoverUrl);
+
           return {
             id: item.upload_id || item.id,
             uploadId: item.upload_id || item.id,
@@ -185,8 +223,8 @@ const UploadManagement: React.FC = () => {
             title: item.title ?? null,
             station: item.station ?? null,
             entityId: item.entity_id ?? null,
-            coverArtUrl,
-            albumCoverUrl,
+            coverArtUrl: normalizedCoverArtUrl,
+            albumCoverUrl: normalizedAlbumCoverUrl,
           };
         });
 
@@ -210,7 +248,7 @@ const UploadManagement: React.FC = () => {
         setLoading(false);
       }
     },
-    [activeTab, debouncedSearch, selectedAlbum, sortBy, sortOrder, itemsPerPage]
+    [activeTab, debouncedSearch, selectedAlbum, sortBy, sortOrder, itemsPerPage, resolveMediaUrl]
   );
 
   useEffect(() => {
