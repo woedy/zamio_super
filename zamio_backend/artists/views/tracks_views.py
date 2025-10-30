@@ -3,9 +3,12 @@ import os
 import subprocess
 import uuid
 import shutil
-from django.db.models import Sum, Count, Avg, F, Q
+from decimal import Decimal
+
+from django.db.models import Sum, Count, Avg, F, Q, Min, Max
 from django.db.models.functions import TruncDate, TruncMonth
 from django.utils import timezone
+from django.utils.timezone import localtime
 
 from click import File
 from django.conf import settings
@@ -436,46 +439,127 @@ def get_track_details_view(request):
         payload['errors'] = errors
         return Response(payload, status=status.HTTP_400_BAD_REQUEST)
     
-    playlogs = PlayLog.objects.filter(track=track)
+    playlogs = (
+        PlayLog.objects.filter(track=track)
+        .select_related('station')
+        .order_by('-played_at')
+    )
     play_count = playlogs.count()
 
-    ts_qs = playlogs.values('station__name', 'station__region').annotate(plays=Count('id')).order_by('-plays')
-   
-    _top_station = [{
-        "name": s['station__name'],
-        "count": s['plays'],
-    } for s in ts_qs[:5]]
+    aggregates = playlogs.aggregate(
+        total_revenue=Sum('royalty_amount'),
+        average_confidence=Avg('avg_confidence_score'),
+        first_played_at=Min('played_at'),
+        last_played_at=Max('played_at'),
+    )
 
-    plogs = playlogs[:5]
-    _playlogs = []
+    total_revenue_value = Decimal(aggregates.get('total_revenue') or 0)
+    average_confidence = aggregates.get('average_confidence')
+    first_played_at = aggregates.get('first_played_at')
+    last_played_at = aggregates.get('last_played_at')
 
-    for log in plogs:
-        l = {
-          "time": log.played_at, 
-                "station": log.station.name, 
-                  "region": log.station.region,  
+    def format_timestamp(value):
+        if not value:
+            return None
+        try:
+            return localtime(value).isoformat()
+        except Exception:
+            return value.isoformat() if hasattr(value, 'isoformat') else None
+
+    def format_label(value, default_label='Unknown', fmt='%b %Y'):
+        if not value:
+            return default_label
+        try:
+            return localtime(value).strftime(fmt)
+        except Exception:
+            try:
+                return value.strftime(fmt)
+            except Exception:
+                return default_label
+
+    monthly_revenue_qs = (
+        playlogs
+        .exclude(played_at__isnull=True)
+        .annotate(month=TruncMonth('played_at'))
+        .values('month')
+        .annotate(amount=Sum('royalty_amount'), plays=Count('id'))
+        .order_by('month')
+    )
+
+    monthly_revenue = [
+        {
+            'month': format_label(entry['month']),
+            'amount': round(float(entry['amount'] or 0), 2),
+            'currency': 'GHS',
         }
-        _playlogs.append(l)
+        for entry in monthly_revenue_qs
+    ]
 
+    if period in ('daily', 'weekly'):
+        truncated_field = TruncDate('played_at')
+        label_format = '%b %d'
+    else:
+        truncated_field = TruncMonth('played_at')
+        label_format = '%b %Y'
 
+    time_series_qs = (
+        playlogs
+        .exclude(played_at__isnull=True)
+        .annotate(bucket=truncated_field)
+        .values('bucket')
+        .annotate(
+            revenue=Sum('royalty_amount'),
+            plays=Count('id'),
+            stations=Count('station', distinct=True),
+        )
+        .order_by('bucket')
+    )
 
-    data['title'] = track.title
-    data['artist_name'] = getattr(track.artist, 'stage_name', None)
-    data['album_title'] = track.album.title if getattr(track, 'album', None) else None
-    data['genre_name'] = track.genre.name if getattr(track, 'genre', None) else None
-    # duration can be None for older tracks; render a safe default string
-    data['duration'] = get_duration(track.duration) if getattr(track, 'duration', None) else "00:00:00"
-    data['release_date'] = track.release_date
-    data['plays'] = int(play_count)
-    data['cover_art'] = track.cover_art.url if getattr(track.cover_art, 'url', None) else None
-    data['audio_file_mp3'] = track.audio_file_mp3.url if track.audio_file_mp3 else None
+    playsOverTime = [
+        {
+            'month': format_label(entry['bucket'], fmt=label_format),
+            'revenue': round(float(entry['revenue'] or 0), 2),
+            'plays': entry['plays'],
+            'stations': entry['stations'],
+        }
+        for entry in time_series_qs
+    ]
 
-    data['topStations'] = _top_station
-    data['playLogs'] = _playlogs
+    if not monthly_revenue and playsOverTime:
+        monthly_revenue = [
+            {'month': item['month'], 'amount': item['revenue'], 'currency': 'GHS'}
+            for item in playsOverTime
+        ]
 
+    ts_qs = (
+        playlogs
+        .values('station__name', 'station__region', 'station__country')
+        .annotate(plays=Count('id'), revenue=Sum('royalty_amount'))
+        .order_by('-plays')
+    )
 
+    top_stations = [
+        {
+            'name': entry['station__name'] or 'Unknown Station',
+            'count': entry['plays'],
+            'region': entry['station__region'],
+            'country': entry['station__country'],
+            'revenue': round(float(entry['revenue'] or 0), 2),
+        }
+        for entry in ts_qs[:5]
+    ]
 
-    # Contributors
+    latest_logs = playlogs[:25]
+    play_logs_payload = []
+    for log in latest_logs:
+        station = getattr(log, 'station', None)
+        play_logs_payload.append({
+            'time': format_timestamp(log.played_at),
+            'station': getattr(station, 'name', None),
+            'region': getattr(station, 'region', None),
+            'country': getattr(station, 'country', None),
+        })
+
     contributors = Contributor.objects.filter(track=track)
 
     _contributors = []
@@ -489,50 +573,100 @@ def get_track_details_view(request):
         con_data = {
             'role': contrib.role,
             'name': display_name,
+            'percentage': float(contrib.percent_split) if contrib.percent_split is not None else None,
         }
         _contributors.append(con_data)
 
+    territory_qs = (
+        playlogs
+        .values('station__region', 'station__country')
+        .annotate(amount=Sum('royalty_amount'), plays=Count('id'))
+        .order_by('-amount', '-plays')
+    )
 
-    # Plays/Revenue Over Time for this track
-    base_qs = playlogs
-    if period in ('daily', 'weekly'):
-        time_qs = (
-            base_qs
-            .annotate(day=TruncDate('played_at'))
-            .values('day')
-            .annotate(revenue=Sum('royalty_amount'), artists=Count('id'), stations=Count('station', distinct=True))
-            .order_by('day')
-        )
-        playsOverTime = [
-            {"month": d['day'].strftime('%b %d'), "revenue": float(d['revenue'] or 0), "artists": d['artists'], "stations": d['stations']}
-            for d in time_qs
-        ]
-    elif period in ('monthly', 'all-time'):
-        time_qs = (
-            base_qs
-            .annotate(month=TruncMonth('played_at'))
-            .values('month')
-            .annotate(revenue=Sum('royalty_amount'), artists=Count('id'), stations=Count('station', distinct=True))
-            .order_by('month')
-        )
-        playsOverTime = [
-            {"month": d['month'].strftime('%b %Y'), "revenue": float(d['revenue'] or 0), "artists": d['artists'], "stations": d['stations']}
-            for d in time_qs
-        ]
-    else:
-        playsOverTime = []
+    territory_intermediate = []
+    for entry in territory_qs:
+        territory_name = entry['station__region'] or entry['station__country'] or 'Unknown Region'
+        amount = Decimal(entry['amount'] or 0)
+        plays = entry['plays'] or 0
+        territory_intermediate.append({
+            'territory': territory_name,
+            'amount': amount,
+            'plays': plays,
+        })
 
+    total_territory_amount = sum(item['amount'] for item in territory_intermediate)
+    total_territory_amount = total_territory_amount or Decimal('0')
+    total_territory_plays = sum(item['plays'] for item in territory_intermediate)
+
+    territories = []
+    for item in territory_intermediate:
+        if total_territory_amount > 0:
+            percentage_value = (item['amount'] / total_territory_amount) * Decimal('100')
+        elif total_territory_plays > 0:
+            percentage_value = Decimal(item['plays']) / Decimal(total_territory_plays) * Decimal('100')
+        else:
+            percentage_value = Decimal('0')
+
+        territories.append({
+            'territory': item['territory'],
+            'amount': round(float(item['amount']), 2),
+            'currency': 'GHS',
+            'percentage': round(float(percentage_value), 2),
+        })
 
     radioStations = [
-        { "name": "Joy FM", "latitude": 5.5600, "longitude": -0.2100 },
-        { "name": "Peace FM", "latitude": 5.5900, "longitude": -0.2400 },
-        { "name": "YFM Accra", "latitude": 5.5800, "longitude": -0.2200 },
-        { "name": "Luv FM", "latitude": 6.6885, "longitude": -1.6244 },
-        { "name": "Skyy Power FM", "latitude": 4.9437, "longitude": -1.7587 },
-        { "name": "Cape FM", "latitude": 5.1053, "longitude": -1.2466 },
-        { "name": "Radio Central", "latitude": 5.1066, "longitude": -1.2474 },
-        { "name": "Radio Savannah", "latitude": 9.4075, "longitude": -0.8419 },
-    ];
+        {"name": "Joy FM", "latitude": 5.5600, "longitude": -0.2100},
+        {"name": "Peace FM", "latitude": 5.5900, "longitude": -0.2400},
+        {"name": "YFM Accra", "latitude": 5.5800, "longitude": -0.2200},
+        {"name": "Luv FM", "latitude": 6.6885, "longitude": -1.6244},
+        {"name": "Skyy Power FM", "latitude": 4.9437, "longitude": -1.7587},
+        {"name": "Cape FM", "latitude": 5.1053, "longitude": -1.2466},
+        {"name": "Radio Central", "latitude": 5.1066, "longitude": -1.2474},
+        {"name": "Radio Savannah", "latitude": 9.4075, "longitude": -0.8419},
+    ]
+
+    data['id'] = track.id
+    data['track_id'] = track.track_id
+    data['title'] = track.title
+    data['artist_name'] = getattr(track.artist, 'stage_name', None)
+    data['album_title'] = track.album.title if getattr(track, 'album', None) else None
+    data['genre_name'] = track.genre.name if getattr(track, 'genre', None) else None
+    data['lyrics'] = track.lyrics
+    # duration can be None for older tracks; render a safe default string
+    data['duration'] = get_duration(track.duration) if getattr(track, 'duration', None) else "00:00:00"
+    data['release_date'] = track.release_date.isoformat() if track.release_date else None
+    data['plays'] = int(play_count)
+    data['total_revenue'] = round(float(total_revenue_value), 2)
+    data['cover_art'] = track.cover_art.url if getattr(track.cover_art, 'url', None) else None
+    data['audio_file_mp3'] = track.audio_file_mp3.url if track.audio_file_mp3 else None
+    data['audio_file_url'] = (
+        data['audio_file_mp3']
+        if data['audio_file_mp3']
+        else (track.audio_file.url if getattr(track.audio_file, 'url', None) else None)
+    )
+
+    data['stats'] = {
+        'total_plays': int(play_count),
+        'total_revenue': round(float(total_revenue_value), 2),
+        'average_confidence': float(average_confidence) if average_confidence is not None else None,
+        'first_played_at': format_timestamp(first_played_at),
+        'last_played_at': format_timestamp(last_played_at),
+    }
+
+    data['revenue'] = {
+        'monthly': monthly_revenue,
+        'territories': territories,
+        'payout_history': [],
+    }
+
+    data['performance'] = {
+        'plays_over_time': playsOverTime,
+        'top_stations': top_stations,
+    }
+
+    data['topStations'] = top_stations
+    data['playLogs'] = play_logs_payload
     data['contributors'] = _contributors
     data['playsOverTime'] = playsOverTime
     data['radioStations'] = radioStations
