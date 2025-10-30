@@ -554,7 +554,7 @@ def get_track_details_view(request):
     for log in latest_logs:
         station = getattr(log, 'station', None)
         play_logs_payload.append({
-            'time': format_timestamp(log.played_at),
+            'played_at': format_timestamp(log.played_at),
             'station': getattr(station, 'name', None),
             'region': getattr(station, 'region', None),
             'country': getattr(station, 'country', None),
@@ -674,10 +674,36 @@ def get_track_details_view(request):
     data['track'] = track_data
     data['stats'] = stats_data
 
+    # Get payout history from RoyaltyWithdrawal
+    payout_history = []
+    try:
+        from royalties.models import RoyaltyWithdrawal
+        
+        # Get withdrawals for this artist
+        withdrawals = RoyaltyWithdrawal.objects.filter(
+            artist=track.artist,
+            status__in=['processed', 'approved']
+        ).order_by('-requested_at')[:10]
+        
+        for withdrawal in withdrawals:
+            # Determine period from requested_at date
+            period_date = withdrawal.requested_at
+            period_label = format_label(period_date, fmt='%B %Y')
+            
+            payout_history.append({
+                'date': withdrawal.requested_at.date().isoformat() if withdrawal.requested_at else None,
+                'amount': round(float(withdrawal.amount), 2),
+                'status': 'Paid' if withdrawal.status == 'processed' else 'Pending',
+                'period': period_label,
+            })
+    except Exception as e:
+        # If RoyaltyWithdrawal doesn't exist or other error, just use empty list
+        pass
+
     data['revenue'] = {
         'monthly': monthly_revenue,
         'territories': territories,
-        'payout_history': [],
+        'payout_history': payout_history,
     }
 
     data['performance'] = {

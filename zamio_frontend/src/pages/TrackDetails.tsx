@@ -313,17 +313,20 @@ const TrackDetails: React.FC = () => {
   });
 
   const loadTrackDetail = useCallback(async () => {
-    // Using demo data - no backend request
+    const normalizedIdentifier = sanitizeIdentifier(trackIdentifier) ?? null;
+
+    if (normalizedIdentifier === null || normalizedIdentifier === '') {
+      setError('Track identifier is missing.');
+      setDetail(null);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
-    
-    // Simulate network delay for realistic UX
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
     try {
-      const normalizedIdentifier = sanitizeIdentifier(trackIdentifier) ?? null;
-      const demoData = getDemoTrackById(normalizedIdentifier || undefined);
-      setDetail(demoData);
+      const response = await fetchArtistTrackDetail(normalizedIdentifier);
+      setDetail(response);
     } catch (err) {
       setError(resolveTrackErrorMessage(err));
       setDetail(null);
