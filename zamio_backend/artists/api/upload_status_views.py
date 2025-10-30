@@ -490,21 +490,30 @@ def get_user_uploads(request):
         user = request.user
 
         base_query = UploadProcessingStatus.objects.filter(user=user)
+        upload_type_filter = request.GET.get('upload_type')
+        excluded_cover_types = ['track_cover', 'album_cover']
 
-        status_totals = base_query.values('status').annotate(total=Count('id'))
+        if upload_type_filter == 'cover_art':
+            filtered_query = base_query.filter(upload_type__in=excluded_cover_types)
+        elif upload_type_filter:
+            filtered_query = base_query.filter(upload_type=upload_type_filter)
+        else:
+            filtered_query = base_query.exclude(upload_type__in=excluded_cover_types)
+
+        status_totals = filtered_query.values('status').annotate(total=Count('id'))
         totals_map = {entry['status']: entry['total'] for entry in status_totals}
         stats = {
-            'total': base_query.count(),
+            'total': filtered_query.count(),
             'uploading': sum(totals_map.get(status_key, 0) for status_key in ['pending', 'queued']),
             'processing': totals_map.get('processing', 0),
             'completed': totals_map.get('completed', 0),
             'failed': totals_map.get('failed', 0) + totals_map.get('cancelled', 0),
         }
 
-        albums_from_metadata = base_query.exclude(metadata__album_title__isnull=True).exclude(metadata__album_title__exact='').values_list('metadata__album_title', flat=True)
+        albums_from_metadata = filtered_query.exclude(metadata__album_title__isnull=True).exclude(metadata__album_title__exact='').values_list('metadata__album_title', flat=True)
         album_titles = {title for title in albums_from_metadata if title}
 
-        track_ids_for_albums = list(base_query.filter(entity_type='track', entity_id__isnull=False).values_list('entity_id', flat=True))
+        track_ids_for_albums = list(filtered_query.filter(entity_type='track', entity_id__isnull=False).values_list('entity_id', flat=True))
         if track_ids_for_albums:
             album_names = Track.objects.filter(id__in=track_ids_for_albums).select_related('album').values_list('album__title', flat=True)
             album_titles.update(name for name in album_names if name)
@@ -512,13 +521,12 @@ def get_user_uploads(request):
         page = max(int(request.GET.get('page', 1)), 1)
         page_size = min(max(int(request.GET.get('page_size', 20)), 1), 100)
         status_filter = request.GET.get('status')
-        upload_type_filter = request.GET.get('upload_type')
         search_term = (request.GET.get('search') or '').strip()
         album_filter = (request.GET.get('album') or '').strip()
         sort_by = request.GET.get('sort_by', 'uploadDate')
         sort_order = request.GET.get('sort_order', 'desc')
 
-        uploads_query = base_query
+        uploads_query = filtered_query
 
         status_map = {
             'uploading': ['pending', 'queued'],
@@ -531,7 +539,9 @@ def get_user_uploads(request):
         if status_filter and status_filter != 'all':
             uploads_query = uploads_query.filter(status__in=status_map.get(status_filter, [status_filter]))
 
-        if upload_type_filter:
+        if upload_type_filter == 'cover_art':
+            uploads_query = uploads_query.filter(upload_type__in=excluded_cover_types)
+        elif upload_type_filter:
             uploads_query = uploads_query.filter(upload_type=upload_type_filter)
 
         if search_term:

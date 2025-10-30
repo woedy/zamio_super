@@ -36,6 +36,17 @@ class UploadManagementAPITestCase(TestCase):
         )
         self.client.force_authenticate(user=self.user)
 
+        self.library_track = Track.objects.create(
+            artist=self.artist,
+            title='Library Track',
+            audio_file=SimpleUploadedFile(
+                'library-track.mp3',
+                b'library-audio-bytes',
+                content_type='audio/mpeg'
+            ),
+            processing_status='completed'
+        )
+
         self.pending_upload = UploadProcessingStatus.objects.create(
             upload_id='pending_upload_id',
             user=self.user,
@@ -98,6 +109,34 @@ class UploadManagementAPITestCase(TestCase):
                 'artist_name': 'Upload Tester',
             },
         )
+        self.cover_upload = UploadProcessingStatus.objects.create(
+            upload_id='cover_upload_id',
+            user=self.user,
+            upload_type='track_cover',
+            original_filename='completed-track-cover.jpg',
+            file_size=512,
+            mime_type='image/jpeg',
+            status='completed',
+            progress_percentage=100,
+            entity_type='track',
+            entity_id=self.library_track.id,
+            metadata={
+                'title': 'Completed Track',
+                'album_title': 'Album Alpha',
+                'artist_name': 'Upload Tester',
+                'track_id': self.library_track.id,
+            },
+        )
+
+    def tearDown(self):
+        if getattr(self, 'library_track', None) and self.library_track.audio_file:
+            self.library_track.audio_file.delete(save=False)
+        super().tearDown()
+
+    def _build_test_image_bytes(self, color='blue'):
+        buffer = io.BytesIO()
+        Image.new('RGB', (10, 10), color=color).save(buffer, format='JPEG')
+        return buffer.getvalue()
 
     def _build_test_image_bytes(self, color='blue'):
         buffer = io.BytesIO()
@@ -117,6 +156,7 @@ class UploadManagementAPITestCase(TestCase):
         self.assertEqual(uploads_by_id['processing_upload_id']['status'], 'processing')
         self.assertEqual(uploads_by_id['completed_upload_id']['status'], 'completed')
         self.assertEqual(uploads_by_id['failed_upload_id']['status'], 'failed')
+        self.assertNotIn('cover_upload_id', uploads_by_id)
 
         stats = payload.get('stats', {})
         self.assertEqual(stats['total'], 4)
@@ -133,6 +173,16 @@ class UploadManagementAPITestCase(TestCase):
         pagination = payload.get('pagination', {})
         self.assertEqual(pagination['page'], 1)
         self.assertEqual(pagination['total_count'], 4)
+
+    def test_cover_art_uploads_can_be_requested_via_filter(self):
+        response = self.client.get('/api/artists/api/uploads/', {'upload_type': 'cover_art'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        payload = response.data.get('data', {})
+        uploads = payload.get('uploads', [])
+        self.assertEqual(len(uploads), 1)
+        self.assertEqual(uploads[0]['upload_id'], 'cover_upload_id')
+        self.assertEqual(payload.get('stats', {}).get('total'), 1)
 
     def test_cancel_upload_marks_record_cancelled(self):
         response = self.client.delete('/api/artists/api/upload/processing_upload_id/cancel/')
