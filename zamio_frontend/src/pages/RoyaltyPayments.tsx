@@ -260,11 +260,18 @@ const RoyaltyPayments: React.FC = () => {
       <div className="space-y-8">
         {/* Payment Status Cards - Large Visual Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {paymentData.payment_status.map((status) => (
-            <div key={status.status} className={`relative bg-gradient-to-br ${status.bgColor} dark:bg-gradient-to-br dark:from-slate-800/90 dark:via-slate-700/80 dark:to-slate-800/90 rounded-2xl p-8 border border-gray-200/50 dark:border-slate-600/60 shadow-xl hover:shadow-2xl transition-all duration-300 group cursor-pointer`}>
+          {(paymentData.payment_status || []).map((status) => {
+            const statusConfig = {
+              paid: { icon: CheckCircle, color: 'from-emerald-500 to-green-500', bgColor: 'from-emerald-50 to-green-50' },
+              pending: { icon: Clock, color: 'from-amber-500 to-orange-500', bgColor: 'from-amber-50 to-orange-50' },
+              failed: { icon: XCircle, color: 'from-red-500 to-pink-500', bgColor: 'from-red-50 to-pink-50' }
+            }[status.status] || { icon: AlertCircle, color: 'from-gray-500 to-gray-500', bgColor: 'from-gray-50 to-gray-50' };
+            const StatusIcon = statusConfig.icon;
+            return (
+            <div key={status.status} className={`relative bg-gradient-to-br ${statusConfig.bgColor} dark:bg-gradient-to-br dark:from-slate-800/90 dark:via-slate-700/80 dark:to-slate-800/90 rounded-2xl p-8 border border-gray-200/50 dark:border-slate-600/60 shadow-xl hover:shadow-2xl transition-all duration-300 group cursor-pointer`}>
               <div className="flex items-center justify-between mb-6">
-                <div className={`p-4 bg-gradient-to-br ${status.color} rounded-xl shadow-lg`}>
-                  <status.icon className="w-8 h-8 text-white" />
+                <div className={`p-4 bg-gradient-to-br ${statusConfig.color} rounded-xl shadow-lg`}>
+                  <StatusIcon className="w-8 h-8 text-white" />
                 </div>
                 <div className="text-right">
                   <div className="text-3xl font-bold text-gray-900 dark:text-white">
@@ -292,10 +299,11 @@ const RoyaltyPayments: React.FC = () => {
 
               {/* Decorative elements */}
               <div className="absolute top-4 right-4 opacity-10 group-hover:opacity-20 transition-opacity duration-300">
-                <status.icon className="w-16 h-16 text-gray-400 dark:text-gray-600" />
+                <StatusIcon className="w-16 h-16 text-gray-400 dark:text-gray-600" />
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Main Content Grid */}
@@ -316,7 +324,7 @@ const RoyaltyPayments: React.FC = () => {
               </div>
 
               <div className="space-y-4">
-                {paymentData.recent_payments.map((payment) => (
+                {(paymentData.recent_payments || []).map((payment) => (
                   <div key={payment.id} className="bg-gray-50/80 dark:bg-slate-800/60 rounded-xl p-6 border border-gray-200/60 dark:border-slate-600/60 hover:bg-gray-100/50 dark:hover:bg-slate-800/80 hover:shadow-lg transition-all duration-200 group">
                     <div className="flex items-start justify-between">
                       <div className="flex items-start space-x-4">
@@ -379,25 +387,17 @@ const RoyaltyPayments: React.FC = () => {
           <div className="space-y-6">
             {/* Revenue Sources */}
             <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-2xl p-6 border border-white/20 dark:border-slate-700/30 shadow-2xl">
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-6">Revenue Sources</h3>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-6">Payment Methods</h3>
               <div className="space-y-4">
-                {paymentData.revenueBySource.map((source, index) => (
-                  <div key={source.source} className="flex items-center justify-between p-3 bg-gray-50/80 dark:bg-slate-800/60 rounded-lg hover:bg-gray-100/50 dark:hover:bg-slate-800/80 transition-colors duration-200">
+                {(paymentData.payment_methods || []).map((method, index) => (
+                  <div key={method.method} className="flex items-center justify-between p-3 bg-gray-50/80 dark:bg-slate-800/60 rounded-lg hover:bg-gray-100/50 dark:hover:bg-slate-800/80 transition-colors duration-200">
                     <div className="flex items-center space-x-3">
-                      <div className="text-2xl">{source.icon}</div>
-                      <div>
-                        <p className="font-medium text-gray-900 dark:text-white text-sm">
-                          {source.source}
-                        </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          {source.percentage}% of total
-                        </p>
-                      </div>
+                      <Building className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+                      <span className="font-medium text-gray-900 dark:text-white">{method.method}</span>
                     </div>
                     <div className="text-right">
-                      <div className="font-bold text-gray-900 dark:text-white">
-                        {formatCurrency(source.amount)}
-                      </div>
+                      <div className="font-bold text-gray-900 dark:text-white">{formatCurrency(method.total_amount)}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">{method.count} transactions</div>
                     </div>
                   </div>
                 ))}
@@ -408,7 +408,7 @@ const RoyaltyPayments: React.FC = () => {
             <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-2xl p-6 border border-white/20 dark:border-slate-700/30 shadow-2xl">
               <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-6">Top Earning Tracks</h3>
               <div className="space-y-3">
-                {paymentData.top_earning_tracks.map((track, index) => (
+                {(paymentData.top_earning_tracks || []).map((track, index) => (
                   <div key={track.title} className="flex items-center space-x-3 p-3 bg-gray-50/80 dark:bg-slate-800/60 rounded-lg hover:bg-gray-100/50 dark:hover:bg-slate-800/80 transition-colors duration-200">
                     <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-bold">
                       {index + 1}
