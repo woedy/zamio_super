@@ -626,6 +626,16 @@ def get_track_details_view(request):
         {"name": "Radio Savannah", "latitude": 9.4075, "longitude": -0.8419},
     ]
 
+    # Helper function to build absolute URI
+    def build_absolute_uri(file_field):
+        if not file_field:
+            return None
+        try:
+            url = file_field.url
+            return request.build_absolute_uri(url)
+        except Exception:
+            return None
+
     # Build track object with all track-specific fields
     track_data = {
         'id': track.id,
@@ -639,11 +649,8 @@ def get_track_details_view(request):
         'release_date': track.release_date.isoformat() if track.release_date else None,
         'plays': int(play_count),
         'total_revenue': round(float(total_revenue_value), 2),
-        'cover_art_url': track.cover_art.url if getattr(track.cover_art, 'url', None) else None,
-        'audio_file_url': (
-            track.audio_file_mp3.url if track.audio_file_mp3
-            else (track.audio_file.url if getattr(track.audio_file, 'url', None) else None)
-        ),
+        'cover_art_url': build_absolute_uri(track.cover_art),
+        'audio_file_url': build_absolute_uri(track.audio_file_mp3) or build_absolute_uri(track.audio_file),
     }
 
     stats_data = {
@@ -666,8 +673,8 @@ def get_track_details_view(request):
     data['release_date'] = track.release_date.isoformat() if track.release_date else None
     data['plays'] = int(play_count)
     data['total_revenue'] = round(float(total_revenue_value), 2)
-    data['cover_art'] = track.cover_art.url if getattr(track.cover_art, 'url', None) else None
-    data['audio_file_mp3'] = track.audio_file_mp3.url if track.audio_file_mp3 else None
+    data['cover_art'] = build_absolute_uri(track.cover_art)
+    data['audio_file_mp3'] = build_absolute_uri(track.audio_file_mp3)
     data['audio_file_url'] = track_data['audio_file_url']
 
     # Nested structure matching frontend expectations
