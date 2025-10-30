@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   DollarSign,
   TrendingUp,
@@ -41,135 +41,94 @@ import {
   PiggyBank,
   Music
 } from 'lucide-react';
+import { fetchArtistPayments, type PaymentsData } from '../lib/paymentsApi';
+import { getArtistId } from '../lib/auth';
 
-// Mock payment data with enhanced structure
-const paymentData = {
+// Default empty payment data
+const defaultPaymentData: PaymentsData = {
+  time_range: '12months',
   overview: {
-    totalEarnings: 23475.50,
-    pendingPayments: 3450.25,
-    paidThisMonth: 1890.75,
-    totalTransactions: 156,
-    averagePayment: 150.48,
-    growthRate: 8.3,
-    nextPayoutDate: '2024-02-15',
-    nextPayoutAmount: 2340.50
+    total_earnings: 0,
+    pending_payments: 0,
+    paid_this_month: 0,
+    total_transactions: 0,
+    average_payment: 0,
+    growth_rate: 0,
+    next_payout_date: null,
+    next_payout_amount: 0
   },
-  paymentStatus: [
-    {
-      status: 'paid',
-      amount: 18750.00,
-      count: 124,
-      percentage: 79.5,
-      color: 'from-emerald-500 to-green-500',
-      bgColor: 'from-emerald-50 to-green-50',
-      icon: CheckCircle,
-      description: 'Successfully processed payments'
-    },
-    {
-      status: 'pending',
-      amount: 3450.25,
-      count: 23,
-      percentage: 14.7,
-      color: 'from-amber-500 to-orange-500',
-      bgColor: 'from-amber-50 to-orange-50',
-      icon: Clock,
-      description: 'Awaiting verification and processing'
-    },
-    {
-      status: 'failed',
-      amount: 1275.25,
-      count: 9,
-      percentage: 5.8,
-      color: 'from-red-500 to-pink-500',
-      bgColor: 'from-red-50 to-pink-50',
-      icon: XCircle,
-      description: 'Failed transactions requiring attention'
-    }
+  payment_status: [
   ],
-  recentPayments: [
-    {
-      id: '1',
-      date: '2024-01-15',
-      amount: 1890.75,
-      status: 'paid',
-      source: 'Radio Stations',
-      period: 'Dec 2023',
-      tracks: 12,
-      description: 'Monthly radio broadcast royalties',
-      paymentMethod: 'Bank Transfer',
-      reference: 'RPY-2024-001'
-    },
-    {
-      id: '2',
-      date: '2024-01-10',
-      amount: 2340.50,
-      status: 'pending',
-      source: 'Streaming Platforms',
-      period: 'Dec 2023',
-      tracks: 8,
-      description: 'Digital streaming platform royalties',
-      paymentMethod: 'Mobile Money',
-      reference: 'RPY-2024-002'
-    },
-    {
-      id: '3',
-      date: '2023-12-15',
-      amount: 2156.20,
-      status: 'paid',
-      source: 'Public Performance',
-      period: 'Nov 2023',
-      tracks: 15,
-      description: 'Live performance and venue royalties',
-      paymentMethod: 'Bank Transfer',
-      reference: 'RPY-2023-156'
-    },
-    {
-      id: '4',
-      date: '2023-12-01',
-      amount: 1875.30,
-      status: 'paid',
-      source: 'Radio Stations',
-      period: 'Nov 2023',
-      tracks: 10,
-      description: 'Monthly radio broadcast royalties',
-      paymentMethod: 'Bank Transfer',
-      reference: 'RPY-2023-145'
-    }
-  ],
-  monthlyTrends: [
-    { month: 'Jul', amount: 1450.00, status: 'paid' },
-    { month: 'Aug', amount: 1680.00, status: 'paid' },
-    { month: 'Sep', amount: 1920.00, status: 'paid' },
-    { month: 'Oct', amount: 2150.00, status: 'paid' },
-    { month: 'Nov', amount: 2340.00, status: 'paid' },
-    { month: 'Dec', amount: 1890.75, status: 'paid' },
-    { month: 'Jan', amount: 2340.50, status: 'pending' }
-  ],
-  topEarningTracks: [
-    { title: 'Ghana Na Woti', earnings: 8750.00, plays: 450000, trend: 15.2 },
-    { title: 'Terminator', earnings: 6240.00, plays: 320000, trend: -3.1 },
-    { title: 'Perfect Combi', earnings: 5460.00, plays: 280000, trend: 8.7 },
-    { title: 'Paris', earnings: 3841.50, plays: 197000, trend: 12.3 }
-  ],
-  revenueBySource: [
-    { source: 'Radio Broadcast', amount: 18750.00, percentage: 80.0, icon: '📻', color: 'blue' },
-    { source: 'Digital Streaming', amount: 3750.00, percentage: 16.0, icon: '🎵', color: 'green' },
-    { source: 'Live Performance', amount: 975.50, percentage: 4.0, icon: '🎤', color: 'purple' }
-  ]
+  recent_payments: [],
+  monthly_trends: [],
+  top_earning_tracks: [],
+  payment_methods: []
 };
 
 const RoyaltyPayments: React.FC = () => {
-  const [selectedPeriod, setSelectedPeriod] = useState('all');
+  const [selectedPeriod, setSelectedPeriod] = useState<'7days' | '30days' | '3months' | '12months'>('12months');
   const [selectedView, setSelectedView] = useState('overview');
   const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
+  const [paymentData, setPaymentData] = useState<PaymentsData>(defaultPaymentData);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [payoutFormData, setPayoutFormData] = useState({
-    amount: paymentData.overview.pendingPayments.toString(),
+    amount: '0',
     paymentMethod: 'bank_transfer',
     notes: ''
   });
 
-  const formatCurrency = (amount: number) => {
-    return `₵${amount.toLocaleString()}`;
+  const formatCurrency = (amount: number | undefined) => {
+    if (amount === undefined || amount === null) return '₵0.00';
+    return `₵${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  // Fetch payments data
+  const loadPayments = useCallback(async (showRefreshing = false) => {
+    const artistId = getArtistId();
+    if (!artistId) {
+      setError('Artist ID not found. Please log in again.');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      if (showRefreshing) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      setError(null);
+
+      const data = await fetchArtistPayments({
+        artist_id: artistId,
+        time_range: selectedPeriod,
+      });
+
+      setPaymentData(data);
+      // Update payout form with pending amount
+      setPayoutFormData(prev => ({
+        ...prev,
+        amount: data.overview.pending_payments.toString()
+      }));
+    } catch (err) {
+      console.error('Failed to load payments:', err);
+      setError('Failed to load payments data. Please try again.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [selectedPeriod]);
+
+  // Load payments on mount and when period changes
+  useEffect(() => {
+    loadPayments();
+  }, [loadPayments]);
+
+  // Handle refresh
+  const handleRefresh = () => {
+    loadPayments(true);
   };
 
   const formatDate = (dateString: string) => {
@@ -222,19 +181,19 @@ const RoyaltyPayments: React.FC = () => {
               <div className="flex items-center space-x-6 pt-2">
                 <div className="text-center">
                   <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                    {formatCurrency(paymentData.overview.totalEarnings)}
+                    {formatCurrency(paymentData.overview.total_earnings)}
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">Total Earnings</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">
-                    {formatCurrency(paymentData.overview.pendingPayments)}
+                    {formatCurrency(paymentData.overview.pending_payments)}
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">Pending</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                    {paymentData.overview.totalTransactions}
+                    {paymentData.overview.total_transactions}
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">Transactions</div>
                 </div>
@@ -267,11 +226,41 @@ const RoyaltyPayments: React.FC = () => {
         </div>
       </div>
 
+      {/* Loading State */}
+      {loading && (
+        <div className="flex items-center justify-center py-20">
+          <div className="text-center">
+            <RefreshCw className="w-12 h-12 text-indigo-600 dark:text-indigo-400 animate-spin mx-auto mb-4" />
+            <p className="text-gray-600 dark:text-gray-400">Loading payments data...</p>
+          </div>
+        </div>
+      )}
+
+      {/* Error State */}
+      {error && !loading && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6">
+          <div className="flex items-center space-x-3">
+            <XCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
+            <div>
+              <h3 className="text-lg font-semibold text-red-900 dark:text-red-200">Error Loading Payments</h3>
+              <p className="text-red-700 dark:text-red-300">{error}</p>
+            </div>
+          </div>
+          <button
+            onClick={handleRefresh}
+            className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+          >
+            Try Again
+          </button>
+        </div>
+      )}
+
       {/* Content */}
+      {!loading && !error && (
       <div className="space-y-8">
         {/* Payment Status Cards - Large Visual Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {paymentData.paymentStatus.map((status) => (
+          {paymentData.payment_status.map((status) => (
             <div key={status.status} className={`relative bg-gradient-to-br ${status.bgColor} dark:bg-gradient-to-br dark:from-slate-800/90 dark:via-slate-700/80 dark:to-slate-800/90 rounded-2xl p-8 border border-gray-200/50 dark:border-slate-600/60 shadow-xl hover:shadow-2xl transition-all duration-300 group cursor-pointer`}>
               <div className="flex items-center justify-between mb-6">
                 <div className={`p-4 bg-gradient-to-br ${status.color} rounded-xl shadow-lg`}>
@@ -327,7 +316,7 @@ const RoyaltyPayments: React.FC = () => {
               </div>
 
               <div className="space-y-4">
-                {paymentData.recentPayments.map((payment) => (
+                {paymentData.recent_payments.map((payment) => (
                   <div key={payment.id} className="bg-gray-50/80 dark:bg-slate-800/60 rounded-xl p-6 border border-gray-200/60 dark:border-slate-600/60 hover:bg-gray-100/50 dark:hover:bg-slate-800/80 hover:shadow-lg transition-all duration-200 group">
                     <div className="flex items-start justify-between">
                       <div className="flex items-start space-x-4">
@@ -419,7 +408,7 @@ const RoyaltyPayments: React.FC = () => {
             <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-2xl p-6 border border-white/20 dark:border-slate-700/30 shadow-2xl">
               <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-6">Top Earning Tracks</h3>
               <div className="space-y-3">
-                {paymentData.topEarningTracks.map((track, index) => (
+                {paymentData.top_earning_tracks.map((track, index) => (
                   <div key={track.title} className="flex items-center space-x-3 p-3 bg-gray-50/80 dark:bg-slate-800/60 rounded-lg hover:bg-gray-100/50 dark:hover:bg-slate-800/80 transition-colors duration-200">
                     <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-bold">
                       {index + 1}
@@ -479,7 +468,7 @@ const RoyaltyPayments: React.FC = () => {
                 Next Payout Scheduled
               </h3>
               <p className="text-blue-700 dark:text-blue-300">
-                Your next payment of <span className="font-bold">{formatCurrency(paymentData.overview.nextPayoutAmount)}</span> is scheduled for <span className="font-bold">{formatDate(paymentData.overview.nextPayoutDate)}</span>
+                Your next payment of <span className="font-bold">{formatCurrency(paymentData.overview.next_payout_amount)}</span> is scheduled for <span className="font-bold">{paymentData.overview.next_payout_date ? formatDate(paymentData.overview.next_payout_date) : 'TBD'}</span>
               </p>
             </div>
             <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200 shadow-lg hover:shadow-xl">
@@ -515,6 +504,7 @@ const RoyaltyPayments: React.FC = () => {
           </div>
         </div>
       </div>
+      )}
 
       {/* Request Payout Modal */}
       {isPayoutModalOpen && (
@@ -542,7 +532,7 @@ const RoyaltyPayments: React.FC = () => {
                   <div>
                     <p className="text-sm text-gray-600 dark:text-gray-400">Available Balance</p>
                     <p className="text-xl font-bold text-green-600 dark:text-green-400">
-                      {formatCurrency(paymentData.overview.pendingPayments)}
+                      {formatCurrency(paymentData.overview.pending_payments)}
                     </p>
                   </div>
                 </div>
@@ -562,12 +552,12 @@ const RoyaltyPayments: React.FC = () => {
                     placeholder="Enter amount"
                     className="w-full pl-8 pr-4 py-3 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500"
                     min="1"
-                    max={paymentData.overview.pendingPayments}
+                    max={paymentData.overview.pending_payments}
                     step="0.01"
                   />
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Maximum: {formatCurrency(paymentData.overview.pendingPayments)}
+                  Maximum: {formatCurrency(paymentData.overview.pending_payments)}
                 </p>
               </div>
 
@@ -629,7 +619,7 @@ const RoyaltyPayments: React.FC = () => {
                     // In a real app, this would make an API call to request payout
                     alert(`Payout request for ${formatCurrency(parseFloat(payoutFormData.amount))} submitted successfully!`);
                     setPayoutFormData({
-                      amount: paymentData.overview.pendingPayments.toString(),
+                      amount: paymentData.overview.pending_payments.toString(),
                       paymentMethod: 'bank_transfer',
                       notes: ''
                     });

@@ -2,6 +2,7 @@ from django.urls import path, include
 
 from artists.views.albums_views import add_album, archive_album, delete_album, edit_album, get_album_details_view, get_all_albums_view, get_all_archived_albums_view, unarchive_album, get_edit_album_support_data_view, get_album_edit_history_view
 from artists.views.artist_analytics_view import get_artist_analytics_view
+from artists.views.artist_payments_view import get_artist_payments_view
 from artists.views.artist_hompage import get_artist_homedata
 from artists.views.artist_playlog_views import get_all_track_playlog_view
 from artists.views.artist_views import add_artist, archive_artist, edit_artist, get_all_archived_artists_view, get_all_artists_view, get_artist_details_view, get_artist_profile_view, unarchive_artist
@@ -92,6 +93,7 @@ urlpatterns = [
     path('dashboard/', get_artist_homedata, name='get_artist_homedata'),
     path('playlogs/', get_all_track_playlog_view, name='get_all_track_playlog_view'),
     path('analytics/', get_artist_analytics_view, name='get_artist_analytics_view'),
+    path('payments/', get_artist_payments_view, name='get_artist_payments_view'),
     
     # Enhanced secure media file endpoints
     path('api/', include('artists.api.media_urls')),
