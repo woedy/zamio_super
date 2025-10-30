@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Bell,
   BellRing,
@@ -47,9 +47,36 @@ import {
   TrendingDown,
   AlertCircle as AlertCircleIcon
 } from 'lucide-react';
+import {
+  fetchNotifications,
+  markNotificationRead,
+  markAllNotificationsRead,
+  deleteNotification,
+  type NotificationItem,
+  type NotificationsData
+} from '../lib/notificationsApi';
+import { getArtistId } from '../lib/auth';
 
-// Mock notification data
-const notificationsData = [
+// Default empty notifications data
+const defaultNotificationsData: NotificationsData = {
+  notifications: [],
+  stats: {
+    total_count: 0,
+    unread_count: 0,
+    read_count: 0
+  },
+  pagination: {
+    page_number: 1,
+    total_pages: 1,
+    next: null,
+    previous: null,
+    has_next: false,
+    has_previous: false
+  }
+};
+
+// Mock notification data for reference (not used)
+const notificationsDataMock = [
   {
     id: '1',
     type: 'payment',
@@ -163,10 +190,13 @@ const notificationsData = [
 ];
 
 const Notifications: React.FC = () => {
-  const [notifications, setNotifications] = useState(notificationsData);
-  const [selectedFilter, setSelectedFilter] = useState<'all' | 'unread' | 'payment' | 'performance' | 'system' | 'social'>('all');
-  const [selectedPriority, setSelectedPriority] = useState<'all' | 'high' | 'medium' | 'low'>('all');
+  const [notificationsData, setNotificationsData] = useState<NotificationsData>(defaultNotificationsData);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [selectedFilter, setSelectedFilter] = useState<'all' | 'unread' | 'Summary' | 'Compliance' | 'Update'>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -186,8 +216,61 @@ const Notifications: React.FC = () => {
     });
   };
 
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amount: number | undefined) => {
+    if (amount === undefined || amount === null) return '₵0.00';
     return `₵${amount.toLocaleString()}`;
+  };
+
+  // Fetch notifications
+  const loadNotifications = useCallback(async (showRefreshing = false) => {
+    const artistId = getArtistId();
+    if (!artistId) {
+      setError('Artist ID not found. Please log in again.');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      if (showRefreshing) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      setError(null);
+
+      const params: any = {
+        artist_id: artistId,
+        page: currentPage,
+      };
+
+      if (searchTerm) params.search = searchTerm;
+      if (selectedFilter !== 'all') {
+        if (selectedFilter === 'unread') {
+          params.filter_read = 'unread';
+        } else {
+          params.filter_type = selectedFilter;
+        }
+      }
+
+      const data = await fetchNotifications(params);
+      setNotificationsData(data);
+    } catch (err) {
+      console.error('Failed to load notifications:', err);
+      setError('Failed to load notifications. Please try again.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [currentPage, searchTerm, selectedFilter]);
+
+  // Load notifications on mount and when filters change
+  useEffect(() => {
+    loadNotifications();
+  }, [loadNotifications]);
+
+  // Handle refresh
+  const handleRefresh = () => {
+    loadNotifications(true);
   };
 
   const getNotificationIcon = (type: string, priority: string) => {
@@ -224,36 +307,60 @@ const Notifications: React.FC = () => {
     }
   };
 
-  const filteredNotifications = notifications.filter(notification => {
-    const matchesFilter = selectedFilter === 'all' || notification.type === selectedFilter ||
-                         (selectedFilter === 'unread' && !notification.read);
-    const matchesPriority = selectedPriority === 'all' || notification.priority === selectedPriority;
-    const matchesSearch = searchTerm === '' ||
-                         notification.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         notification.message.toLowerCase().includes(searchTerm.toLowerCase());
-
-    return matchesFilter && matchesPriority && matchesSearch;
-  });
-
-  const markAsRead = (id: string) => {
-    setNotifications(prev =>
-      prev.map(notif =>
-        notif.id === id ? { ...notif, read: true } : notif
-      )
-    );
+  // Mark single notification as read
+  const markAsRead = async (id: number) => {
+    try {
+      await markNotificationRead({ notification_id: id });
+      // Update local state
+      setNotificationsData(prev => ({
+        ...prev,
+        notifications: prev.notifications.map(notif =>
+          notif.id === id ? { ...notif, read: true } : notif
+        ),
+        stats: {
+          ...prev.stats,
+          unread_count: Math.max(0, prev.stats.unread_count - 1),
+          read_count: prev.stats.read_count + 1
+        }
+      }));
+    } catch (err) {
+      console.error('Failed to mark notification as read:', err);
+    }
   };
 
-  const markAllAsRead = () => {
-    setNotifications(prev =>
-      prev.map(notif => ({ ...notif, read: true }))
-    );
+  // Mark all notifications as read
+  const markAllAsRead = async () => {
+    const artistId = getArtistId();
+    if (!artistId) return;
+
+    try {
+      await markAllNotificationsRead({ artist_id: artistId });
+      // Refresh notifications
+      loadNotifications(true);
+    } catch (err) {
+      console.error('Failed to mark all as read:', err);
+    }
   };
 
-  const deleteNotification = (id: string) => {
-    setNotifications(prev => prev.filter(notif => notif.id !== id));
+  // Delete notification
+  const handleDeleteNotification = async (id: number) => {
+    try {
+      await deleteNotification({ notification_id: id });
+      // Remove from local state
+      setNotificationsData(prev => ({
+        ...prev,
+        notifications: prev.notifications.filter(notif => notif.id !== id),
+        stats: {
+          ...prev.stats,
+          total_count: prev.stats.total_count - 1
+        }
+      }));
+    } catch (err) {
+      console.error('Failed to delete notification:', err);
+    }
   };
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const unreadCount = notificationsData.stats.unread_count;
 
   return (
     <>
@@ -278,21 +385,21 @@ const Notifications: React.FC = () => {
               <div className="flex items-center space-x-6 pt-2">
                 <div className="text-center">
                   <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
-                    {notifications.length}
+                    {notificationsData.stats.total_count}
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">Total</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-red-600 dark:text-red-400">
+                  <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">
                     {unreadCount}
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">Unread</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                    {notifications.filter(n => n.priority === 'high').length}
+                    {notificationsData.stats.read_count}
                   </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">High Priority</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">Read</div>
                 </div>
               </div>
             </div>
@@ -348,47 +455,70 @@ const Notifications: React.FC = () => {
               </select>
             </div>
 
-            {/* Priority Filter */}
-            <select
-              value={selectedPriority}
-              onChange={(e) => setSelectedPriority(e.target.value as any)}
-              className="px-4 py-3 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            {/* Refresh Button */}
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="flex items-center space-x-2 px-4 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50"
             >
-              <option value="all">All Priorities</option>
-              <option value="high">High Priority</option>
-              <option value="medium">Medium Priority</option>
-              <option value="low">Low Priority</option>
-            </select>
+              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+              <span>{refreshing ? 'Refreshing...' : 'Refresh'}</span>
+            </button>
           </div>
         </div>
 
         {/* Notifications List */}
+        {/* Loading State */}
+        {loading && (
+          <div className="flex items-center justify-center py-20">
+            <div className="text-center">
+              <RefreshCw className="w-12 h-12 text-indigo-600 dark:text-indigo-400 animate-spin mx-auto mb-4" />
+              <p className="text-gray-600 dark:text-gray-400">Loading notifications...</p>
+            </div>
+          </div>
+        )}
+
+        {/* Error State */}
+        {error && !loading && (
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6">
+            <div className="flex items-center space-x-3">
+              <XCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
+              <div>
+                <h3 className="text-lg font-semibold text-red-900 dark:text-red-200">Error Loading Notifications</h3>
+                <p className="text-red-700 dark:text-red-300">{error}</p>
+              </div>
+            </div>
+            <button
+              onClick={handleRefresh}
+              className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+            >
+              Try Again
+            </button>
+          </div>
+        )}
+
+        {/* Content */}
+        {!loading && !error && (
         <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-2xl p-6 border border-white/20 dark:border-slate-700/30 shadow-2xl">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-              {filteredNotifications.length} Notification{filteredNotifications.length !== 1 ? 's' : ''}
+              {notificationsData.notifications.length} Notification{notificationsData.notifications.length !== 1 ? 's' : ''}
             </h2>
-            {filteredNotifications.length > 0 && (
-              <button className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200">
-                <RefreshCw className="w-4 h-4" />
-                <span>Refresh</span>
-              </button>
-            )}
           </div>
 
-          {filteredNotifications.length === 0 ? (
+          {notificationsData.notifications.length === 0 ? (
             <div className="text-center py-12">
               <Bell className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
               <p className="text-gray-500 dark:text-gray-400 text-lg mb-2">No notifications found</p>
               <p className="text-gray-400 dark:text-gray-500 text-sm">
-                {searchTerm || selectedFilter !== 'all' || selectedPriority !== 'all'
+                {searchTerm || selectedFilter !== 'all'
                   ? 'Try adjusting your filters to see more notifications.'
                   : 'You\'re all caught up! Check back later for updates.'}
               </p>
             </div>
           ) : (
             <div className="space-y-4">
-              {filteredNotifications.map((notification) => (
+              {(notificationsData.notifications || []).map((notification) => (
                 <div
                   key={notification.id}
                   className={`relative p-6 border-l-4 rounded-r-xl transition-all duration-200 hover:shadow-lg ${getPriorityColor(notification.priority)} ${
@@ -505,6 +635,7 @@ const Notifications: React.FC = () => {
             </div>
           )}
         </div>
+        )}
 
         {/* Summary Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -530,10 +661,10 @@ const Notifications: React.FC = () => {
               <div>
                 <p className="text-sm font-normal text-gray-700 dark:text-slate-300">High Priority</p>
                 <p className="text-2xl font-bold text-gray-900 dark:text-slate-100">
-                  {notifications.filter(n => n.priority === 'high').length}
+                  {notificationsData.stats.high_priority_count}
                 </p>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Require immediate action
+                  Require immediate attention
                 </p>
               </div>
               <div className="w-12 h-12 bg-gradient-to-br from-red-100 to-pink-100 dark:from-red-900/60 dark:to-pink-900/60 rounded-lg flex items-center justify-center">
@@ -547,7 +678,7 @@ const Notifications: React.FC = () => {
               <div>
                 <p className="text-sm font-normal text-gray-700 dark:text-slate-300">Payments</p>
                 <p className="text-2xl font-bold text-gray-900 dark:text-slate-100">
-                  {notifications.filter(n => n.type === 'payment').length}
+                  {notificationsData.notifications.filter(n => n.type === 'Summary').length}
                 </p>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                   Financial notifications
@@ -564,7 +695,7 @@ const Notifications: React.FC = () => {
               <div>
                 <p className="text-sm font-normal text-gray-700 dark:text-slate-300">Performance</p>
                 <p className="text-2xl font-bold text-gray-900 dark:text-slate-100">
-                  {notifications.filter(n => n.type === 'performance').length}
+                  {notificationsData.notifications.filter(n => n.type === 'Update').length}
                 </p>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                   Track & milestone updates
