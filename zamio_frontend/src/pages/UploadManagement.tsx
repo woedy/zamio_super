@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import type { AxiosError } from 'axios';
 import {
   Upload,
   FileAudio,
@@ -22,9 +23,12 @@ import {
   fetchUploadStatusById,
   cancelUploadRequest,
   deleteUploadRequest,
+  deleteArtistAlbum,
+  deleteArtistTrack,
   createAlbumForUploads,
   type UploadLifecycleStatus,
   type UploadManagementPagination,
+  type ApiEnvelope,
   resolveApiBaseUrl,
 } from '../lib/api';
 import ProtectedImage from '../components/ProtectedImage';
@@ -48,9 +52,54 @@ interface UploadData {
   title?: string | null;
   station?: string | null;
   entityId?: number | null;
+  uploadType?: string | null;
+  entityType?: string | null;
   coverArtUrl?: string | null;
   albumCoverUrl?: string | null;
 }
+
+const extractApiErrorMessage = (error: unknown, fallback: string): string => {
+  if (typeof error === 'string' && error.trim()) {
+    return error;
+  }
+
+  if (error && typeof error === 'object') {
+    const axiosError = error as AxiosError<ApiEnvelope>;
+    const responseData = axiosError.response?.data;
+
+    if (responseData) {
+      const message = typeof responseData.message === 'string' ? responseData.message.trim() : '';
+      if (message) {
+        return message;
+      }
+
+      const errors = responseData.errors;
+      if (errors && typeof errors === 'object') {
+        for (const key of Object.keys(errors)) {
+          const value = errors[key];
+          if (Array.isArray(value)) {
+            const text = value.find((item) => typeof item === 'string' && item.trim());
+            if (text) {
+              return text;
+            }
+          } else if (typeof value === 'string' && value.trim()) {
+            return value;
+          }
+        }
+      }
+    }
+
+    if (axiosError.message) {
+      return axiosError.message;
+    }
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return fallback;
+};
 
 const mapBackendStatus = (status?: string): UploadLifecycleStatus => {
   switch (status) {
@@ -98,6 +147,9 @@ const UploadManagement: React.FC = () => {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [isCreatingAlbum, setIsCreatingAlbum] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<UploadData | null>(null);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Bulk Upload State Management
   const [bulkUploadStep, setBulkUploadStep] = useState(1);
@@ -186,41 +238,90 @@ const UploadManagement: React.FC = () => {
         const payload = response?.data;
         const remoteUploads = payload?.uploads ?? [];
         const normalizedUploads: UploadData[] = remoteUploads.map((item) => {
-          const metadata = (item.metadata ?? {}) as Record<string, unknown>;
+          const metadata = (item?.metadata ?? {}) as Record<string, unknown>;
           const extractString = (value: unknown) =>
             typeof value === 'string' && value.trim().length > 0 ? value : null;
 
           const coverArtUrl =
-            extractString(item.cover_art_url) ??
+            extractString(item?.cover_art_url) ??
             extractString(metadata['cover_art_url']) ??
             extractString(metadata['cover_url']);
 
           const albumCoverUrl =
-            extractString(item.album_cover_url) ??
+            extractString(item?.album_cover_url) ??
             extractString(metadata['album_cover_url']) ??
             extractString(metadata['album_cover']);
 
           const normalizedCoverArtUrl = resolveMediaUrl(coverArtUrl);
           const normalizedAlbumCoverUrl = resolveMediaUrl(albumCoverUrl);
 
+          const normalizeIdValue = (value: unknown): string | null => {
+            if (typeof value === 'number' && Number.isFinite(value)) {
+              return value.toString();
+            }
+            if (typeof value === 'string' && value.trim().length > 0) {
+              return value.trim();
+            }
+            return null;
+          };
+
+          const uploadIdValue =
+            normalizeIdValue(item?.upload_id) ??
+            normalizeIdValue(item?.id) ??
+            normalizeIdValue(metadata['upload_id']) ??
+            '';
+          const rawStatusValue = extractString(item?.raw_status) ?? extractString(item?.status);
+          const progressValue =
+            typeof item?.progress === 'number'
+              ? item.progress
+              : typeof item?.progress_percentage === 'number'
+                ? item.progress_percentage
+                : typeof item?.progressPercentage === 'number'
+                  ? item.progressPercentage
+                  : 0;
+
+          const fileSizeValue = Number(
+            item?.file_size ?? metadata['file_size_bytes'] ?? metadata['file_size'] ?? 0,
+          );
+
+          const uploadDateValue =
+            extractString(item?.upload_date) ?? extractString(item?.created_at) ?? new Date().toISOString();
+
+          const entityIdValue = (() => {
+            if (typeof item?.entity_id === 'number') {
+              return item.entity_id;
+            }
+            if (typeof item?.entity_id === 'string') {
+              const parsed = Number(item.entity_id);
+              return Number.isFinite(parsed) ? parsed : null;
+            }
+            return null;
+          })();
+
           return {
-            id: item.upload_id || item.id,
-            uploadId: item.upload_id || item.id,
-            status: mapBackendStatus(item.status || item.raw_status),
-            rawStatus: item.raw_status,
-            progress: typeof item.progress === 'number' ? item.progress : 0,
-            filename: item.filename,
-            fileSize: item.file_size,
-            fileType: item.file_type ?? null,
-            uploadDate: item.upload_date,
-            error: item.error ?? null,
-            retryCount: item.retry_count ?? 0,
-            duration: item.duration ?? null,
-            artist: item.artist ?? null,
-            album: item.album ?? null,
-            title: item.title ?? null,
-            station: item.station ?? null,
-            entityId: item.entity_id ?? null,
+            id: uploadIdValue || '',
+            uploadId: uploadIdValue || '',
+            status: mapBackendStatus(rawStatusValue ?? item?.status),
+            rawStatus: rawStatusValue ?? undefined,
+            progress: progressValue,
+            filename:
+              extractString(item?.filename) ??
+              extractString(item?.original_filename) ??
+              extractString(metadata['filename']) ??
+              'Unknown file',
+            fileSize: fileSizeValue,
+            fileType: extractString(item?.file_type) ?? extractString(metadata['file_type']),
+            uploadDate: uploadDateValue,
+            error: extractString(item?.error) ?? extractString(metadata['error_message']),
+            retryCount: typeof item?.retry_count === 'number' ? item.retry_count : undefined,
+            duration: extractString(item?.duration) ?? extractString(metadata['duration']),
+            artist: extractString(item?.artist) ?? extractString(metadata['artist_name']) ?? extractString(metadata['artist']),
+            album: extractString(item?.album) ?? extractString(metadata['album_title']) ?? extractString(metadata['album']),
+            title: extractString(item?.title) ?? extractString(metadata['title']),
+            station: extractString(item?.station) ?? extractString(metadata['station_name']),
+            entityId: entityIdValue,
+            uploadType: extractString(item?.upload_type),
+            entityType: extractString(item?.entity_type),
             coverArtUrl: normalizedCoverArtUrl,
             albumCoverUrl: normalizedAlbumCoverUrl,
           };
@@ -442,16 +543,74 @@ const UploadManagement: React.FC = () => {
     }
   };
 
-  const handleDeleteUpload = async (upload: UploadData) => {
-    try {
-      await deleteUploadRequest(upload.uploadId);
-      setActionMessage('Upload removed successfully.');
-      setSelectedUploads((prev) => prev.filter((id) => id !== upload.id));
-      await fetchUploads(currentPage);
-    } catch (err) {
-      setActionMessage('Unable to delete upload.');
-    }
+  const handleDeleteUpload = (upload: UploadData) => {
+    setPendingDelete(upload);
+    setIsDeleteConfirmOpen(true);
   };
+
+  const resolveEntityKind = useCallback((upload: UploadData | null): 'album' | 'track' | 'upload' => {
+    if (!upload) {
+      return 'upload';
+    }
+
+    const normalizedType = (upload.entityType ?? '').toLowerCase();
+    if (normalizedType === 'album' || normalizedType === 'track') {
+      return normalizedType;
+    }
+
+    const uploadType = (upload.uploadType ?? '').toLowerCase();
+    if (uploadType.includes('album')) {
+      return 'album';
+    }
+    if (uploadType.includes('track')) {
+      return 'track';
+    }
+    return 'upload';
+  }, []);
+
+  const confirmDeleteUpload = useCallback(async () => {
+    if (!pendingDelete) {
+      return;
+    }
+
+    setActionMessage(null);
+    setIsDeleting(true);
+    let succeeded = false;
+
+    try {
+      const entityKind = resolveEntityKind(pendingDelete);
+      if (pendingDelete.entityId && entityKind === 'album') {
+        await deleteArtistAlbum(pendingDelete.entityId);
+      } else if (pendingDelete.entityId && entityKind === 'track') {
+        await deleteArtistTrack(pendingDelete.entityId);
+      }
+
+      await deleteUploadRequest(pendingDelete.uploadId);
+      setActionMessage('Upload removed successfully.');
+      setSelectedUploads((prev) => prev.filter((id) => id !== pendingDelete.id));
+      await fetchUploads(currentPage);
+      succeeded = true;
+    } catch (err) {
+      const message = extractApiErrorMessage(err, 'Unable to delete upload.');
+      setActionMessage(message);
+    } finally {
+      setIsDeleting(false);
+      if (succeeded) {
+        setIsDeleteConfirmOpen(false);
+        setPendingDelete(null);
+      }
+    }
+  }, [currentPage, fetchUploads, pendingDelete, resolveEntityKind]);
+
+  const cancelDeleteUpload = useCallback(() => {
+    if (isDeleting) {
+      return;
+    }
+    setIsDeleteConfirmOpen(false);
+    setPendingDelete(null);
+  }, [isDeleting]);
+
+  const pendingDeleteKind = resolveEntityKind(pendingDelete);
 
   const handleViewTrack = (upload: UploadData) => {
     if (upload.entityId) {
@@ -1105,6 +1264,64 @@ const UploadManagement: React.FC = () => {
           )}
         </div>
       </div>
+
+      {isDeleteConfirmOpen && pendingDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-800">
+            <div className="flex items-center space-x-3">
+              <div className="rounded-full bg-red-100 p-2 text-red-600 dark:bg-red-500/10 dark:text-red-400">
+                <Trash2 className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Confirm deletion</h3>
+                <p className="text-sm text-gray-600 dark:text-gray-300">
+                  {pendingDeleteKind === 'album'
+                    ? 'This will archive the album and remove the associated upload record.'
+                    : pendingDeleteKind === 'track'
+                      ? 'This will permanently delete the track and remove the associated upload record.'
+                      : 'This will remove the upload record from your history.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-lg bg-gray-50 p-4 text-sm text-gray-700 dark:bg-slate-900 dark:text-gray-300">
+              <p className="font-medium">{pendingDelete.title ?? pendingDelete.filename}</p>
+              {pendingDelete.album && (
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Album: {pendingDelete.album}</p>
+              )}
+              {pendingDelete.artist && (
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Artist: {pendingDelete.artist}</p>
+              )}
+              {pendingDelete.error && (
+                <p className="mt-2 text-xs text-red-600 dark:text-red-400">{pendingDelete.error}</p>
+              )}
+            </div>
+
+            <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">
+              This action cannot be undone. Please confirm you want to continue.
+            </p>
+
+            <div className="mt-6 flex justify-end space-x-3">
+              <button
+                type="button"
+                onClick={cancelDeleteUpload}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:text-gray-300 dark:hover:bg-slate-700"
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteUpload}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:cursor-not-allowed disabled:bg-red-400"
+                disabled={isDeleting}
+              >
+                {isDeleting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add Album Modal */}
       {isAddAlbumModalOpen && (

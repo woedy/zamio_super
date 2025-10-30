@@ -407,15 +407,28 @@ def get_track_details_view(request):
     errors = {}
     data = {}
 
-    track_id = request.query_params.get('track_id')
+    track_identifier = request.query_params.get('track_id')
     period = request.query_params.get('period', 'all-time')
 
-    if not track_id:
+    if track_identifier in (None, ''):
         errors['track_id'] = ['Track ID is required.']
 
-    try:
-        track = Track.objects.get(track_id=track_id)
-    except Track.DoesNotExist:
+    track = None
+    if track_identifier not in (None, ''):
+        lookup_value = str(track_identifier).strip()
+        if not lookup_value:
+            errors['track_id'] = ['Track ID is required.']
+        else:
+            track = Track.objects.filter(track_id=lookup_value).first()
+            if not track:
+                try:
+                    pk_value = int(lookup_value)
+                except (TypeError, ValueError):
+                    pk_value = None
+                if pk_value is not None:
+                    track = Track.objects.filter(id=pk_value).first()
+
+    if not track and 'track_id' not in errors:
         errors['track'] = ['Track not found.']
 
     if errors:
