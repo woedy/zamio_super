@@ -54,6 +54,7 @@ interface UploadData {
   entityId?: number | null;
   uploadType?: string | null;
   entityType?: string | null;
+  entityTrackId?: string | null;
   coverArtUrl?: string | null;
   albumCoverUrl?: string | null;
 }
@@ -298,6 +299,14 @@ const UploadManagement: React.FC = () => {
             return null;
           })();
 
+          const entityTrackIdValue =
+            extractString(metadata['track_id']) ??
+            extractString(metadata['track_identifier']) ??
+            extractString(metadata['trackId']) ??
+            (typeof item?.entity_id === 'string' && item.entity_id.trim().length > 0
+              ? item.entity_id.trim()
+              : null);
+
           return {
             id: uploadIdValue || '',
             uploadId: uploadIdValue || '',
@@ -322,6 +331,7 @@ const UploadManagement: React.FC = () => {
             entityId: entityIdValue,
             uploadType: extractString(item?.upload_type),
             entityType: extractString(item?.entity_type),
+            entityTrackId: entityTrackIdValue,
             coverArtUrl: normalizedCoverArtUrl,
             albumCoverUrl: normalizedAlbumCoverUrl,
           };
@@ -613,8 +623,26 @@ const UploadManagement: React.FC = () => {
   const pendingDeleteKind = resolveEntityKind(pendingDelete);
 
   const handleViewTrack = (upload: UploadData) => {
-    if (upload.entityId) {
-      navigate('/dashboard/track-details', { state: { trackId: upload.entityId } });
+    const normalizedEntityTrackId = upload.entityTrackId?.trim();
+    const fallbackTrackId =
+      typeof upload.entityId === 'number' && Number.isFinite(upload.entityId)
+        ? String(upload.entityId)
+        : null;
+
+    const preferredIdentifier = normalizedEntityTrackId && normalizedEntityTrackId.length > 0
+      ? normalizedEntityTrackId
+      : fallbackTrackId;
+
+    if (preferredIdentifier) {
+      const searchParams = new URLSearchParams({ trackId: preferredIdentifier });
+      navigate(`/dashboard/track-details?${searchParams.toString()}`, {
+        state: {
+          trackId: typeof upload.entityId === 'number' && Number.isFinite(upload.entityId)
+            ? upload.entityId
+            : undefined,
+          trackKey: preferredIdentifier,
+        },
+      });
     } else {
       setActionMessage('Track details will be available once processing completes.');
     }
