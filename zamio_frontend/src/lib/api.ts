@@ -786,3 +786,410 @@ export const deleteArtistAlbum = async (albumId: number) => {
   );
   return data;
 };
+
+interface LegacyTrackPlayLog {
+  time?: string | null;
+  station?: string | null;
+  region?: string | null;
+  country?: string | null;
+}
+
+interface LegacyTrackTopStation {
+  name?: string | null;
+  count?: number | null;
+  region?: string | null;
+  country?: string | null;
+}
+
+interface LegacyTrackPlaysOverTimeEntry {
+  month?: string | null;
+  revenue?: number | string | null;
+  artists?: number | null;
+  stations?: number | null;
+  plays?: number | null;
+}
+
+interface LegacyTrackDetailResponse {
+  track_id?: number | string | null;
+  title?: string | null;
+  artist_name?: string | null;
+  album_title?: string | null;
+  genre_name?: string | null;
+  duration?: string | number | null;
+  release_date?: string | null;
+  plays?: number | null;
+  cover_art?: string | null;
+  audio_file_mp3?: string | null;
+  audio_file_url?: string | null;
+  lyrics?: string | null;
+  topStations?: LegacyTrackTopStation[] | null;
+  playLogs?: LegacyTrackPlayLog[] | null;
+  playsOverTime?: LegacyTrackPlaysOverTimeEntry[] | null;
+  contributors?: { role?: string | null; name?: string | null; percentage?: number | null }[] | null;
+  stats?: {
+    total_plays?: number | null;
+    total_revenue?: number | null;
+    average_confidence?: number | null;
+    first_played_at?: string | null;
+    last_played_at?: string | null;
+  } | null;
+  revenue?: {
+    monthly?: { month?: string | null; amount?: number | string | null; currency?: string | null }[] | null;
+    territories?: {
+      territory?: string | null;
+      amount?: number | string | null;
+      currency?: string | null;
+      percentage?: number | null;
+    }[] | null;
+    payout_history?: {
+      date?: string | null;
+      amount?: number | string | null;
+      status?: string | null;
+      period?: string | null;
+    }[] | null;
+  } | null;
+  performance?: {
+    plays_over_time?: LegacyTrackPlaysOverTimeEntry[] | null;
+    top_stations?: LegacyTrackTopStation[] | null;
+  } | null;
+}
+
+const parseDurationToSeconds = (value: string | number | null | undefined): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const parts = value.split(':').map((segment) => Number.parseInt(segment, 10));
+  if (parts.some((segment) => Number.isNaN(segment))) {
+    return null;
+  }
+
+  if (parts.length === 3) {
+    const [hours, minutes, seconds] = parts;
+    return hours * 3600 + minutes * 60 + seconds;
+  }
+
+  if (parts.length === 2) {
+    const [minutes, seconds] = parts;
+    return minutes * 60 + seconds;
+  }
+
+  if (parts.length === 1) {
+    return parts[0];
+  }
+
+  return null;
+};
+
+const ensureArray = <T>(value: T[] | null | undefined): T[] => (Array.isArray(value) ? value : []);
+
+const normalizeTimestamp = (value: string | null | undefined): string | null => {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed.toISOString();
+};
+
+export interface TrackDetailTrack {
+  id: number;
+  track_id?: string | number | null;
+  title: string;
+  artist: string;
+  album?: string | null;
+  genre?: string | null;
+  duration_seconds?: number | null;
+  release_date?: string | null;
+  plays?: number;
+  total_revenue?: number;
+  cover_art_url?: string | null;
+  audio_file_url?: string | null;
+  lyrics?: string | null;
+}
+
+export interface TrackDetailStats {
+  total_plays: number;
+  total_revenue: number;
+  average_confidence: number | null;
+  first_played_at: string | null;
+  last_played_at: string | null;
+}
+
+export interface TrackRevenueMonthlyEntry {
+  month: string;
+  amount: number;
+  currency: string;
+}
+
+export interface TrackRevenueTerritoryEntry {
+  territory: string;
+  amount: number;
+  currency: string;
+  percentage: number;
+}
+
+export interface TrackRevenuePayoutEntry {
+  date: string;
+  amount: number;
+  status: string;
+  period: string;
+}
+
+export interface TrackPerformanceSeriesEntry {
+  label: string;
+  plays?: number;
+  revenue?: number;
+  stations?: number;
+}
+
+export interface TrackPerformanceTopStationEntry {
+  name: string;
+  count?: number;
+  region?: string | null;
+  country?: string | null;
+}
+
+export interface TrackPlayLogEntry {
+  played_at: string | null;
+  station: string | null;
+  region: string | null;
+  country: string | null;
+}
+
+export interface TrackContributorEntry {
+  role: string;
+  name: string;
+  percentage?: number | null;
+}
+
+export interface TrackDetailPayload {
+  track: TrackDetailTrack;
+  stats: TrackDetailStats;
+  revenue: {
+    monthly: TrackRevenueMonthlyEntry[];
+    territories: TrackRevenueTerritoryEntry[];
+    payout_history: TrackRevenuePayoutEntry[];
+  };
+  performance: {
+    plays_over_time: TrackPerformanceSeriesEntry[];
+    top_stations: TrackPerformanceTopStationEntry[];
+  };
+  play_logs: TrackPlayLogEntry[];
+  contributors: TrackContributorEntry[];
+}
+
+const normalizeTrackDetail = (trackId: number, raw: LegacyTrackDetailResponse): TrackDetailPayload => {
+  const playLogs = ensureArray(raw.playLogs).map<TrackPlayLogEntry>((log) => ({
+    played_at: normalizeTimestamp(log.time ?? null),
+    station: log.station ?? null,
+    region: log.region ?? null,
+    country: log.country ?? null,
+  }));
+
+  const sortedTimestamps = playLogs
+    .map((log) => log.played_at)
+    .filter((timestamp): timestamp is string => Boolean(timestamp))
+    .sort();
+
+  const playsOverTimeEntries = ensureArray(
+    raw.performance?.plays_over_time ?? raw.playsOverTime,
+  ).map<TrackPerformanceSeriesEntry>((entry) => ({
+    label: entry.month ?? 'Period',
+    plays: typeof entry.plays === 'number' ? entry.plays : entry.artists ?? undefined,
+    revenue: entry.revenue != null ? Number(entry.revenue) || 0 : undefined,
+    stations: entry.stations ?? undefined,
+  }));
+
+  const monthlyRevenueEntries = ensureArray(raw.revenue?.monthly).map<TrackRevenueMonthlyEntry>((entry) => ({
+    month: entry.month ?? 'Period',
+    amount: entry.amount != null ? Number(entry.amount) || 0 : 0,
+    currency: entry.currency ?? 'GHS',
+  }));
+
+  const inferredMonthlyRevenue = monthlyRevenueEntries.length
+    ? monthlyRevenueEntries
+    : playsOverTimeEntries.map<TrackRevenueMonthlyEntry>((entry) => ({
+        month: entry.label,
+        amount: entry.revenue ?? 0,
+        currency: 'GHS',
+      }));
+
+  const topStations = ensureArray(raw.performance?.top_stations ?? raw.topStations).map<TrackPerformanceTopStationEntry>(
+    (station) => ({
+      name: station.name ?? 'Unknown Station',
+      count: station.count ?? undefined,
+      region: station.region ?? null,
+      country: station.country ?? null,
+    }),
+  );
+
+  const totalStationPlays = topStations.reduce((sum, station) => sum + (station.count ?? 0), 0);
+
+  const territoryBreakdown = ensureArray(raw.revenue?.territories).length
+    ? ensureArray(raw.revenue?.territories).map<TrackRevenueTerritoryEntry>((entry) => ({
+        territory: entry.territory ?? 'Territory',
+        amount: entry.amount != null ? Number(entry.amount) || 0 : 0,
+        currency: entry.currency ?? 'GHS',
+        percentage: entry.percentage ?? 0,
+      }))
+    : topStations.map<TrackRevenueTerritoryEntry>((station) => ({
+        territory: station.region ?? station.country ?? station.name,
+        amount: 0,
+        currency: 'GHS',
+        percentage:
+          totalStationPlays > 0 && station.count
+            ? Number(((station.count / totalStationPlays) * 100).toFixed(2))
+            : 0,
+      }));
+
+  const payoutHistoryEntries = ensureArray(raw.revenue?.payout_history).map<TrackRevenuePayoutEntry>((entry) => ({
+    date: entry.date ?? new Date().toISOString().slice(0, 10),
+    amount: entry.amount != null ? Number(entry.amount) || 0 : 0,
+    status: entry.status ?? 'Pending',
+    period: entry.period ?? 'Period',
+  }));
+
+  const totalRevenue = inferredMonthlyRevenue.reduce((sum, entry) => sum + entry.amount, 0);
+  const totalPlaysFromSeries = playsOverTimeEntries.reduce((sum, entry) => sum + (entry.plays ?? 0), 0);
+  const totalPlays = raw.stats?.total_plays ?? raw.plays ?? totalPlaysFromSeries;
+
+  return {
+    track: {
+      id: trackId,
+      track_id: raw.track_id ?? trackId,
+      title: raw.title ?? 'Untitled Track',
+      artist: raw.artist_name ?? 'Unknown Artist',
+      album: raw.album_title ?? null,
+      genre: raw.genre_name ?? null,
+      duration_seconds: parseDurationToSeconds(raw.duration),
+      release_date: raw.release_date ?? null,
+      plays: typeof totalPlays === 'number' ? totalPlays : 0,
+      total_revenue: totalRevenue,
+      cover_art_url: raw.cover_art ?? null,
+      audio_file_url: raw.audio_file_url ?? raw.audio_file_mp3 ?? null,
+      lyrics: raw.lyrics ?? null,
+    },
+    stats: {
+      total_plays: typeof totalPlays === 'number' ? totalPlays : 0,
+      total_revenue,
+      average_confidence: raw.stats?.average_confidence ?? null,
+      first_played_at: raw.stats?.first_played_at ?? sortedTimestamps[0] ?? null,
+      last_played_at: raw.stats?.last_played_at ?? sortedTimestamps[sortedTimestamps.length - 1] ?? null,
+    },
+    revenue: {
+      monthly: inferredMonthlyRevenue,
+      territories: territoryBreakdown,
+      payout_history: payoutHistoryEntries,
+    },
+    performance: {
+      plays_over_time: playsOverTimeEntries,
+      top_stations: topStations,
+    },
+    play_logs: playLogs,
+    contributors: ensureArray(raw.contributors).map<TrackContributorEntry>((entry) => ({
+      role: entry.role ?? 'Contributor',
+      name: entry.name ?? 'Unknown',
+      percentage: entry.percentage ?? null,
+    })),
+  };
+};
+
+export interface TrackDetailRequestOptions {
+  period?: 'daily' | 'weekly' | 'monthly' | 'all-time';
+}
+
+export const fetchArtistTrackDetail = async (
+  trackId: number,
+  options: TrackDetailRequestOptions = {},
+) => {
+  const params = {
+    track_id: trackId,
+    period: options.period ?? 'all-time',
+  };
+
+  const { data } = await authApi.get<ApiEnvelope<LegacyTrackDetailResponse>>(
+    '/api/artists/get-track-details/',
+    { params },
+  );
+
+  if (!data?.data) {
+    return data as ApiEnvelope<TrackDetailPayload | undefined>;
+  }
+
+  const normalized = normalizeTrackDetail(trackId, data.data);
+  return {
+    ...data,
+    data: normalized,
+  } as ApiEnvelope<TrackDetailPayload>;
+};
+
+export interface UpdateArtistTrackPayload {
+  title?: string;
+  release_date?: string;
+  lyrics?: string;
+  explicit?: boolean;
+  genre_id?: number;
+  genre?: string;
+  album_id?: number | string | null;
+  album_title?: string;
+  artist_id?: string;
+  cover_art?: File | null;
+  edit_reason?: string;
+}
+
+const appendTrackField = (formData: FormData, key: string, value: unknown) => {
+  if (value === undefined || value === null) {
+    return;
+  }
+
+  if (value instanceof File) {
+    formData.append(key, value);
+    return;
+  }
+
+  if (typeof value === 'boolean') {
+    formData.append(key, value ? 'true' : 'false');
+    return;
+  }
+
+  formData.append(key, String(value));
+};
+
+export const updateArtistTrack = async (
+  trackId: number,
+  payload: UpdateArtistTrackPayload,
+) => {
+  const formData = new FormData();
+  formData.append('track_id', String(trackId));
+
+  Object.entries(payload).forEach(([key, value]) => {
+    if (key === 'cover_art') {
+      if (value instanceof File) {
+        formData.append(key, value);
+      }
+      return;
+    }
+
+    if (key === 'album_id' && value === null) {
+      formData.append(key, '');
+      return;
+    }
+
+    appendTrackField(formData, key, value);
+  });
+
+  const { data } = await authApi.post<ApiEnvelope<Record<string, unknown>>>(
+    '/api/artists/edit-track/',
+    formData,
+  );
+  return data;
+};
