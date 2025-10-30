@@ -27,6 +27,7 @@ import {
   type UploadManagementPagination,
   resolveApiBaseUrl,
 } from '../lib/api';
+import ProtectedImage from '../components/ProtectedImage';
 
 interface UploadData {
   id: string;
@@ -926,19 +927,18 @@ const UploadManagement: React.FC = () => {
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center space-x-4">
-                              {coverImageUrl ? (
-                                <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 dark:bg-slate-800 flex-shrink-0">
-                                  <img
+                              <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 dark:bg-slate-800 flex items-center justify-center text-gray-400 dark:text-gray-500 flex-shrink-0">
+                                {coverImageUrl ? (
+                                  <ProtectedImage
                                     src={coverImageUrl}
                                     alt={coverAlt}
                                     className="w-full h-full object-cover"
+                                    fallback={<FileAudio className="w-5 h-5" aria-hidden="true" />}
                                   />
-                                </div>
-                              ) : (
-                                <div className="w-12 h-12 rounded-lg bg-gray-100 dark:bg-slate-800 flex items-center justify-center text-gray-400 dark:text-gray-500 flex-shrink-0">
+                                ) : (
                                   <FileAudio className="w-5 h-5" aria-hidden="true" />
-                                </div>
-                              )}
+                                )}
+                              </div>
                               <div className="flex flex-col">
                                 <span className="text-gray-900 dark:text-white font-medium text-sm truncate max-w-[200px]">
                                   {upload.filename}
