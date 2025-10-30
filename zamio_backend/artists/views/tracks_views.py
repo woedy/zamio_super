@@ -626,6 +626,35 @@ def get_track_details_view(request):
         {"name": "Radio Savannah", "latitude": 9.4075, "longitude": -0.8419},
     ]
 
+    # Build track object with all track-specific fields
+    track_data = {
+        'id': track.id,
+        'track_id': track.track_id,
+        'title': track.title,
+        'artist': getattr(track.artist, 'stage_name', None),
+        'album': track.album.title if getattr(track, 'album', None) else None,
+        'genre': track.genre.name if getattr(track, 'genre', None) else None,
+        'lyrics': track.lyrics,
+        'duration_seconds': track.duration.total_seconds() if getattr(track, 'duration', None) else None,
+        'release_date': track.release_date.isoformat() if track.release_date else None,
+        'plays': int(play_count),
+        'total_revenue': round(float(total_revenue_value), 2),
+        'cover_art_url': track.cover_art.url if getattr(track.cover_art, 'url', None) else None,
+        'audio_file_url': (
+            track.audio_file_mp3.url if track.audio_file_mp3
+            else (track.audio_file.url if getattr(track.audio_file, 'url', None) else None)
+        ),
+    }
+
+    stats_data = {
+        'total_plays': int(play_count),
+        'total_revenue': round(float(total_revenue_value), 2),
+        'average_confidence': float(average_confidence) if average_confidence is not None else None,
+        'first_played_at': format_timestamp(first_played_at),
+        'last_played_at': format_timestamp(last_played_at),
+    }
+
+    # Legacy flat structure for backward compatibility
     data['id'] = track.id
     data['track_id'] = track.track_id
     data['title'] = track.title
@@ -633,26 +662,17 @@ def get_track_details_view(request):
     data['album_title'] = track.album.title if getattr(track, 'album', None) else None
     data['genre_name'] = track.genre.name if getattr(track, 'genre', None) else None
     data['lyrics'] = track.lyrics
-    # duration can be None for older tracks; render a safe default string
     data['duration'] = get_duration(track.duration) if getattr(track, 'duration', None) else "00:00:00"
     data['release_date'] = track.release_date.isoformat() if track.release_date else None
     data['plays'] = int(play_count)
     data['total_revenue'] = round(float(total_revenue_value), 2)
     data['cover_art'] = track.cover_art.url if getattr(track.cover_art, 'url', None) else None
     data['audio_file_mp3'] = track.audio_file_mp3.url if track.audio_file_mp3 else None
-    data['audio_file_url'] = (
-        data['audio_file_mp3']
-        if data['audio_file_mp3']
-        else (track.audio_file.url if getattr(track.audio_file, 'url', None) else None)
-    )
+    data['audio_file_url'] = track_data['audio_file_url']
 
-    data['stats'] = {
-        'total_plays': int(play_count),
-        'total_revenue': round(float(total_revenue_value), 2),
-        'average_confidence': float(average_confidence) if average_confidence is not None else None,
-        'first_played_at': format_timestamp(first_played_at),
-        'last_played_at': format_timestamp(last_played_at),
-    }
+    # Nested structure matching frontend expectations
+    data['track'] = track_data
+    data['stats'] = stats_data
 
     data['revenue'] = {
         'monthly': monthly_revenue,
@@ -665,9 +685,13 @@ def get_track_details_view(request):
         'top_stations': top_stations,
     }
 
+    # Nested structure for frontend
+    data['play_logs'] = play_logs_payload
+    data['contributors'] = _contributors
+
+    # Legacy flat structure for backward compatibility
     data['topStations'] = top_stations
     data['playLogs'] = play_logs_payload
-    data['contributors'] = _contributors
     data['playsOverTime'] = playsOverTime
     data['radioStations'] = radioStations
 
