@@ -1,10 +1,9 @@
 from django.contrib.auth import get_user_model
 import json
-import os
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from django.conf import settings
+from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from rest_framework import status
@@ -244,14 +243,20 @@ class UploadManagementAPITestCase(TestCase):
 
         mocked_delay.assert_called_once()
         kwargs = mocked_delay.call_args.kwargs
-        temp_file_path = kwargs['temp_file_path']
-        self.assertTrue(temp_file_path.startswith(os.path.join(settings.MEDIA_ROOT, 'temp')))
-        self.assertTrue(temp_file_path.endswith('.mp3'))
-        self.assertTrue(os.path.exists(temp_file_path))
+        stored_file_path = kwargs['source_file_path']
+        self.assertTrue(stored_file_path.startswith('temp/'))
+        self.assertTrue(stored_file_path.endswith('.mp3'))
+        self.assertTrue(default_storage.exists(stored_file_path))
+        with default_storage.open(stored_file_path, 'rb') as stored_file:
+            self.assertEqual(stored_file.read(), audio_bytes)
 
         upload_status = UploadProcessingStatus.objects.get(upload_id=upload_id)
         self.assertEqual(upload_status.status, 'queued')
         self.assertEqual(upload_status.metadata.get('title'), 'Sunrise Jam')
+        self.assertEqual(
+            upload_status.metadata.get('internal_temp_storage_path'),
+            stored_file_path,
+        )
         stored_contributors = upload_status.metadata.get('contributors', [])
         self.assertEqual(len(stored_contributors), 1)
         self.assertEqual(stored_contributors[0]['name'], 'Upload Tester')
@@ -262,7 +267,7 @@ class UploadManagementAPITestCase(TestCase):
         self.assertEqual(track.title, 'Sunrise Jam')
 
         # Clean up temporary file created during the test
-        os.remove(temp_file_path)
+        default_storage.delete(stored_file_path)
 
     def test_upload_support_data_accepts_jwt_bearer_auth(self):
         genre = Genre.objects.create(name='Highlife Supreme')

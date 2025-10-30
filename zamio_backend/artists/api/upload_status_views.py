@@ -14,6 +14,7 @@ from django.utils import timezone
 from django.conf import settings
 from django.db.models import Q, Count
 from django.utils.dateparse import parse_date
+from django.core.files.storage import default_storage
 from accounts.models import AuditLog
 from artists.models import Track, Album, Artist, UploadProcessingStatus, Contributor, Genre
 from .album_management_views import _parse_release_date, _resolve_genre
@@ -281,47 +282,51 @@ def initiate_non_blocking_upload(request):
             metadata['title'] = track.title
             metadata['artist_name'] = track.artist.stage_name
 
+        # Save file to temporary location
+        original_name = os.path.basename(uploaded_file.name)
+        original_filename = original_name
+        file_size = uploaded_file.size
+        mime_type = uploaded_file.content_type or ''
+        _, original_ext = os.path.splitext(original_name)
+        sanitized_name = f"{upload_id}_{uuid.uuid4().hex}{original_ext.lower()}" if original_ext else f"{upload_id}_{uuid.uuid4().hex}"
+        storage_subdir = 'temp'
+        if hasattr(default_storage, 'path'):
+            os.makedirs(os.path.join(settings.MEDIA_ROOT, storage_subdir), exist_ok=True)
+        storage_key = os.path.join(storage_subdir, sanitized_name).replace('\\', '/')
+        if hasattr(uploaded_file, 'seek'):
+            uploaded_file.seek(0)
+        stored_file_path = default_storage.save(storage_key, uploaded_file)
+        metadata['internal_temp_storage_path'] = stored_file_path
+
         # Create upload processing status record
         upload_status = UploadProcessingStatus.objects.create(
             upload_id=upload_id,
             user=user,
             upload_type=upload_type,
-            original_filename=uploaded_file.name,
-            file_size=uploaded_file.size,
-            mime_type=uploaded_file.content_type or '',
+            original_filename=original_filename,
+            file_size=file_size,
+            mime_type=mime_type,
             status='queued',
             entity_id=track.id if track else None,
             entity_type='track' if track else None,
             metadata=metadata
         )
-        
-        # Save file to temporary location
-        temp_dir = os.path.join(settings.MEDIA_ROOT, 'temp')
-        os.makedirs(temp_dir, exist_ok=True)
-        original_name = os.path.basename(uploaded_file.name)
-        _, original_ext = os.path.splitext(original_name)
-        sanitized_name = f"{upload_id}_{uuid.uuid4().hex}{original_ext.lower()}" if original_ext else f"{upload_id}_{uuid.uuid4().hex}"
-        temp_file_path = os.path.join(temp_dir, sanitized_name)
-        
-        with open(temp_file_path, 'wb') as temp_file:
-            for chunk in uploaded_file.chunks():
-                temp_file.write(chunk)
-        
+
         # Queue appropriate background task
         if upload_type == 'track_audio':
             process_track_upload.delay(
                 upload_id=upload_id,
                 track_id=track.id,
-                temp_file_path=temp_file_path,
-                original_filename=uploaded_file.name,
+                source_file_path=stored_file_path,
+                original_filename=original_filename,
                 user_id=user.id
             )
         elif upload_type in ['track_cover', 'album_cover']:
             process_cover_art_upload.delay(
                 upload_id=upload_id,
                 track_id=track.id if track else None,
-                temp_file_path=temp_file_path,
-                original_filename=uploaded_file.name,
+                source_file_path=stored_file_path,
+                original_filename=original_filename,
                 user_id=user.id
             )
         
@@ -333,8 +338,8 @@ def initiate_non_blocking_upload(request):
             resource_id=upload_id,
             request_data={
                 'upload_type': upload_type,
-                'filename': uploaded_file.name,
-                'file_size': uploaded_file.size,
+                'filename': original_filename,
+                'file_size': file_size,
                 'track_id': track.id if track else None,
                 'metadata': metadata
             },
