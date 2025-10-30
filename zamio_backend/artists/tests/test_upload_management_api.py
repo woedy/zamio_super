@@ -138,11 +138,6 @@ class UploadManagementAPITestCase(TestCase):
         Image.new('RGB', (10, 10), color=color).save(buffer, format='JPEG')
         return buffer.getvalue()
 
-    def _build_test_image_bytes(self, color='blue'):
-        buffer = io.BytesIO()
-        Image.new('RGB', (10, 10), color=color).save(buffer, format='JPEG')
-        return buffer.getvalue()
-
     def test_get_user_uploads_returns_expected_payload(self):
         response = self.client.get('/api/artists/api/uploads/', {'page': 1, 'page_size': 10})
         self.assertEqual(response.status_code, status.HTTP_200_OK)

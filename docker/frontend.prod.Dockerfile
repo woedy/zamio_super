@@ -23,7 +23,7 @@ RUN npm install --workspaces --include-workspace-root \
     esac \
  && if [ -n "$PKG" ]; then npm install --ignore-scripts --no-save "$PKG"; fi
 ENV VITE_API_URL=${VITE_API_URL}
-RUN npm --prefix ${WORKSPACE_DIR} run build
+RUN npm run build --workspace ${WORKSPACE_NAME}
 
 FROM nginx:1.27-alpine
 ARG WORKSPACE_DIR
