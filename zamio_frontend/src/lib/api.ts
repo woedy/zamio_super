@@ -449,6 +449,8 @@ export interface UploadManagementRecord {
   station?: string | null;
   entity_id?: number | null;
   metadata?: Record<string, unknown>;
+  cover_art_url?: string | null;
+  album_cover_url?: string | null;
 }
 
 export interface UploadManagementPagination {
@@ -481,6 +483,11 @@ export interface UploadManagementPayload {
   filters?: UploadManagementFilters;
 }
 
+export interface TrackUploadSupportData {
+  genres: { id: number; name: string }[];
+  albums: { id: number; title: string; artist_name?: string | null }[];
+}
+
 export interface UploadManagementParams {
   page?: number;
   page_size?: number;
@@ -504,6 +511,16 @@ export const initiateUpload = async (formData: FormData) => {
   const { data } = await authApi.post<ApiEnvelope<Record<string, unknown>>>(
     '/api/artists/api/upload/initiate/',
     formData,
+  );
+  return data;
+};
+
+export const fetchTrackUploadSupportData = async (artistId: string) => {
+  const { data } = await authApi.get<ApiEnvelope<TrackUploadSupportData>>(
+    '/api/artists/get-upload-track-support-data/',
+    {
+      params: { artist_id: artistId },
+    },
   );
   return data;
 };

@@ -7,6 +7,8 @@ import {
   fetchUploadStatusById,
 } from '../../lib/api';
 
+const resolveApiBaseUrlMock = vi.hoisted(() => vi.fn(() => 'https://api.zamio.test'));
+
 vi.mock('../../lib/api', () => ({
   fetchUploadManagement: vi.fn(),
   initiateUpload: vi.fn(),
@@ -14,6 +16,7 @@ vi.mock('../../lib/api', () => ({
   cancelUploadRequest: vi.fn(),
   deleteUploadRequest: vi.fn(),
   createAlbumForUploads: vi.fn(),
+  resolveApiBaseUrl: resolveApiBaseUrlMock,
 }));
 
 const mockedFetchUploadManagement = vi.mocked(fetchUploadManagement);
@@ -21,6 +24,8 @@ const mockedFetchUploadStatusById = vi.mocked(fetchUploadStatusById);
 
 describe('UploadManagement', () => {
   beforeEach(() => {
+    resolveApiBaseUrlMock.mockReturnValue('https://api.zamio.test');
+
     mockedFetchUploadManagement.mockResolvedValue({
       data: {
         uploads: [
@@ -44,6 +49,8 @@ describe('UploadManagement', () => {
             station: 'Station A',
             entity_id: 42,
             metadata: {},
+            cover_art_url: '/media/song-one-cover.jpg',
+            album_cover_url: '/media/album-alpha-cover.jpg',
           },
         ],
         pagination: {
@@ -78,6 +85,7 @@ describe('UploadManagement', () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    resolveApiBaseUrlMock.mockReset();
   });
 
   it('renders data from the upload management API', async () => {
@@ -88,6 +96,9 @@ describe('UploadManagement', () => {
     );
 
     expect(screen.getByText(/Loading uploads/i)).toBeInTheDocument();
+
+    const coverImage = await screen.findByAltText('Song One cover art');
+    expect(coverImage).toHaveAttribute('src', 'https://api.zamio.test/media/song-one-cover.jpg');
 
     const filenameCell = await screen.findByText('song_one.mp3');
     expect(filenameCell).toBeInTheDocument();

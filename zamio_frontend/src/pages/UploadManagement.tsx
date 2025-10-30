@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Upload,
@@ -25,6 +25,7 @@ import {
   createAlbumForUploads,
   type UploadLifecycleStatus,
   type UploadManagementPagination,
+  resolveApiBaseUrl,
 } from '../lib/api';
 
 interface UploadData {
@@ -45,6 +46,8 @@ interface UploadData {
   title?: string | null;
   station?: string | null;
   entityId?: number | null;
+  coverArtUrl?: string | null;
+  albumCoverUrl?: string | null;
 }
 
 const mapBackendStatus = (status?: string): UploadLifecycleStatus => {
@@ -120,6 +123,40 @@ const UploadManagement: React.FC = () => {
   const [uploadIdentifiers, setUploadIdentifiers] = useState<Record<string, string>>({});
   const [isBulkUploading, setIsBulkUploading] = useState(false);
 
+  const apiBaseUrl = useMemo(() => resolveApiBaseUrl().replace(/\/$/, ''), []);
+
+  const resolveMediaUrl = useCallback(
+    (input?: string | null): string | null => {
+      if (!input) {
+        return null;
+      }
+
+      const value = input.trim();
+      if (!value) {
+        return null;
+      }
+
+      if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value) || value.startsWith('//')) {
+        return value;
+      }
+
+      if (/^[a-z][a-z0-9+.-]*:/i.test(value)) {
+        return value;
+      }
+
+      if (!apiBaseUrl) {
+        return value;
+      }
+
+      if (value.startsWith('/')) {
+        return `${apiBaseUrl}${value}`;
+      }
+
+      return `${apiBaseUrl}/${value}`;
+    },
+    [apiBaseUrl]
+  );
+
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(searchTerm), 400);
     return () => window.clearTimeout(timer);
@@ -150,25 +187,46 @@ const UploadManagement: React.FC = () => {
 
         const payload = response?.data;
         const remoteUploads = payload?.uploads ?? [];
-        const normalizedUploads: UploadData[] = remoteUploads.map((item) => ({
-          id: item.upload_id || item.id,
-          uploadId: item.upload_id || item.id,
-          status: mapBackendStatus(item.status || item.raw_status),
-          rawStatus: item.raw_status,
-          progress: typeof item.progress === 'number' ? item.progress : 0,
-          filename: item.filename,
-          fileSize: item.file_size,
-          fileType: item.file_type ?? null,
-          uploadDate: item.upload_date,
-          error: item.error ?? null,
-          retryCount: item.retry_count ?? 0,
-          duration: item.duration ?? null,
-          artist: item.artist ?? null,
-          album: item.album ?? null,
-          title: item.title ?? null,
-          station: item.station ?? null,
-          entityId: item.entity_id ?? null,
-        }));
+        const normalizedUploads: UploadData[] = remoteUploads.map((item) => {
+          const metadata = (item.metadata ?? {}) as Record<string, unknown>;
+          const extractString = (value: unknown) =>
+            typeof value === 'string' && value.trim().length > 0 ? value : null;
+
+          const coverArtUrl =
+            extractString(item.cover_art_url) ??
+            extractString(metadata['cover_art_url']) ??
+            extractString(metadata['cover_url']);
+
+          const albumCoverUrl =
+            extractString(item.album_cover_url) ??
+            extractString(metadata['album_cover_url']) ??
+            extractString(metadata['album_cover']);
+
+          const normalizedCoverArtUrl = resolveMediaUrl(coverArtUrl);
+          const normalizedAlbumCoverUrl = resolveMediaUrl(albumCoverUrl);
+
+          return {
+            id: item.upload_id || item.id,
+            uploadId: item.upload_id || item.id,
+            status: mapBackendStatus(item.status || item.raw_status),
+            rawStatus: item.raw_status,
+            progress: typeof item.progress === 'number' ? item.progress : 0,
+            filename: item.filename,
+            fileSize: item.file_size,
+            fileType: item.file_type ?? null,
+            uploadDate: item.upload_date,
+            error: item.error ?? null,
+            retryCount: item.retry_count ?? 0,
+            duration: item.duration ?? null,
+            artist: item.artist ?? null,
+            album: item.album ?? null,
+            title: item.title ?? null,
+            station: item.station ?? null,
+            entityId: item.entity_id ?? null,
+            coverArtUrl: normalizedCoverArtUrl,
+            albumCoverUrl: normalizedAlbumCoverUrl,
+          };
+        });
 
         setUploads(normalizedUploads);
         setStats(payload?.stats ?? { total: 0, uploading: 0, processing: 0, completed: 0, failed: 0 });
@@ -190,7 +248,7 @@ const UploadManagement: React.FC = () => {
         setLoading(false);
       }
     },
-    [activeTab, debouncedSearch, selectedAlbum, sortBy, sortOrder, itemsPerPage]
+    [activeTab, debouncedSearch, selectedAlbum, sortBy, sortOrder, itemsPerPage, resolveMediaUrl]
   );
 
   useEffect(() => {
@@ -852,107 +910,127 @@ const UploadManagement: React.FC = () => {
                       </td>
                     </tr>
                   ) : paginatedData.length > 0 ? (
-                    paginatedData.map((upload) => (
-                      <tr key={upload.id} className="hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors duration-200">
-                        <td className="px-6 py-4">
-                          <input
-                            type="checkbox"
-                            checked={selectedUploads.includes(upload.id)}
-                            onChange={(e) => handleToggleSelectUpload(upload.id, e.target.checked)}
-                            className="rounded border-gray-300 dark:border-slate-600"
-                          />
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex flex-col">
-                            <span className="text-gray-900 dark:text-white font-medium text-sm truncate max-w-[200px]">
-                              {upload.filename}
-                            </span>
-                            {upload.artist && upload.album && upload.title && (
-                              <span className="text-gray-500 dark:text-gray-400 text-xs truncate">
-                                {upload.artist} - {upload.album} - {upload.title}
-                              </span>
-                            )}
-                            {upload.station && (
-                              <span className="text-blue-600 dark:text-blue-400 text-xs">
-                                Station: {upload.station}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 text-gray-600 dark:text-gray-300 text-sm hidden md:table-cell truncate max-w-[150px]">
-                          {upload.album || '-'}
-                        </td>
-                        <td className="px-6 py-4 text-gray-600 dark:text-gray-300 text-sm hidden sm:table-cell">
-                          {formatFileSize(upload.fileSize)}
-                        </td>
-                        <td className="px-6 py-4 text-gray-600 dark:text-gray-300 text-sm hidden md:table-cell">
-                          {new Date(upload.uploadDate).toLocaleDateString()}
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center space-x-3">
-                            <div className="flex-1 bg-gray-200 dark:bg-slate-700 rounded-full h-2">
-                              <div
-                                className={`h-2 rounded-full transition-all duration-300 ${
-                                  upload.status === 'completed' ? 'bg-emerald-500' :
-                                  upload.status === 'processing' ? 'bg-blue-500' :
-                                  upload.status === 'uploading' ? 'bg-amber-500' :
-                                  upload.status === 'failed' || upload.status === 'cancelled' ? 'bg-red-500' : 'bg-gray-500'
-                                }`}
-                                style={{ width: `${upload.progress}%` }}
-                              />
+                    paginatedData.map((upload) => {
+                      const coverImageUrl = upload.coverArtUrl ?? upload.albumCoverUrl ?? null;
+                      const coverAlt = upload.title ? `${upload.title} cover art` : 'Upload cover art';
+
+                      return (
+                        <tr key={upload.id} className="hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors duration-200">
+                          <td className="px-6 py-4">
+                            <input
+                              type="checkbox"
+                              checked={selectedUploads.includes(upload.id)}
+                              onChange={(e) => handleToggleSelectUpload(upload.id, e.target.checked)}
+                              className="rounded border-gray-300 dark:border-slate-600"
+                            />
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center space-x-4">
+                              {coverImageUrl ? (
+                                <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 dark:bg-slate-800 flex-shrink-0">
+                                  <img
+                                    src={coverImageUrl}
+                                    alt={coverAlt}
+                                    className="w-full h-full object-cover"
+                                  />
+                                </div>
+                              ) : (
+                                <div className="w-12 h-12 rounded-lg bg-gray-100 dark:bg-slate-800 flex items-center justify-center text-gray-400 dark:text-gray-500 flex-shrink-0">
+                                  <FileAudio className="w-5 h-5" aria-hidden="true" />
+                                </div>
+                              )}
+                              <div className="flex flex-col">
+                                <span className="text-gray-900 dark:text-white font-medium text-sm truncate max-w-[200px]">
+                                  {upload.filename}
+                                </span>
+                                {upload.artist && upload.album && upload.title && (
+                                  <span className="text-gray-500 dark:text-gray-400 text-xs truncate">
+                                    {upload.artist} - {upload.album} - {upload.title}
+                                  </span>
+                                )}
+                                {upload.station && (
+                                  <span className="text-blue-600 dark:text-blue-400 text-xs">
+                                    Station: {upload.station}
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                            <span className="text-sm text-gray-600 dark:text-gray-300 w-12">
-                              {upload.progress}%
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className={`inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-full ${getStatusColor(upload.status)}`}>
-                            {getStatusIcon(upload.status)}
-                            <span className="ml-1 capitalize">{upload.status}</span>
-                          </span>
-                          {upload.error && (
-                            <div className="mt-1 text-xs text-red-600 dark:text-red-400">
-                              {upload.error}
+                          </td>
+                          <td className="px-6 py-4 text-gray-600 dark:text-gray-300 text-sm hidden md:table-cell truncate max-w-[150px]">
+                            {upload.album || '-'}
+                          </td>
+                          <td className="px-6 py-4 text-gray-600 dark:text-gray-300 text-sm hidden sm:table-cell">
+                            {formatFileSize(upload.fileSize)}
+                          </td>
+                          <td className="px-6 py-4 text-gray-600 dark:text-gray-300 text-sm hidden md:table-cell">
+                            {new Date(upload.uploadDate).toLocaleDateString()}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center space-x-3">
+                              <div className="flex-1 bg-gray-200 dark:bg-slate-700 rounded-full h-2">
+                                <div
+                                  className={`h-2 rounded-full transition-all duration-300 ${
+                                    upload.status === 'completed' ? 'bg-emerald-500' :
+                                    upload.status === 'processing' ? 'bg-blue-500' :
+                                    upload.status === 'uploading' ? 'bg-amber-500' :
+                                    upload.status === 'failed' || upload.status === 'cancelled' ? 'bg-red-500' : 'bg-gray-500'
+                                  }`}
+                                  style={{ width: `${upload.progress}%` }}
+                                />
+                              </div>
+                              <span className="text-sm text-gray-600 dark:text-gray-300 w-12">
+                                {upload.progress}%
+                              </span>
                             </div>
-                          )}
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center space-x-2">
-                            {upload.status === 'uploading' && (
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-full ${getStatusColor(upload.status)}`}>
+                              {getStatusIcon(upload.status)}
+                              <span className="ml-1 capitalize">{upload.status}</span>
+                            </span>
+                            {upload.error && (
+                              <div className="mt-1 text-xs text-red-600 dark:text-red-400">
+                                {upload.error}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center space-x-2">
+                              {upload.status === 'uploading' && (
+                                <button
+                                  onClick={() => handlePauseUpload(upload)}
+                                  className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                                  aria-label="Cancel upload"
+                                >
+                                  <Pause className="w-4 h-4" />
+                                </button>
+                              )}
                               <button
-                                onClick={() => handlePauseUpload(upload)}
+                                onClick={() => handleRefreshUpload(upload)}
                                 className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                                aria-label="Cancel upload"
+                                aria-label="Refresh status"
                               >
-                                <Pause className="w-4 h-4" />
+                                <RefreshCw className="w-4 h-4" />
                               </button>
-                            )}
-                            <button
-                              onClick={() => handleRefreshUpload(upload)}
-                              className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                              aria-label="Refresh status"
-                            >
-                              <RefreshCw className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleViewTrack(upload)}
-                              className="p-1 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
-                              aria-label="View track details"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteUpload(upload)}
-                              className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400"
-                              aria-label="Delete upload"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
+                              <button
+                                onClick={() => handleViewTrack(upload)}
+                                className="p-1 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                                aria-label="View track details"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteUpload(upload)}
+                                className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400"
+                                aria-label="Delete upload"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
                   ) : (
                     <tr>
                       <td colSpan={8} className="px-6 py-16 text-center text-gray-500 dark:text-gray-400">

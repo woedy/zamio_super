@@ -15,6 +15,7 @@ from django.db.models import Q
 import librosa
 from rest_framework import status
 from rest_framework.authentication import TokenAuthentication
+from accounts.api.custom_jwt import CustomJWTAuthentication
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -28,6 +29,8 @@ from django.core.files.base import ContentFile
 from artists.utils.fingerprint_tracks import simple_fingerprint
 from datetime import timedelta
 
+AUTHENTICATION_CLASSES = [TokenAuthentication, CustomJWTAuthentication]
+
 from core.utils import get_duration
 from music_monitor.models import PlayLog
 
@@ -40,7 +43,7 @@ User = get_user_model()
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes(AUTHENTICATION_CLASSES)
 def add_track(request):
     data = {}
     errors = {}
@@ -248,7 +251,7 @@ def add_track(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes(AUTHENTICATION_CLASSES)
 def get_all_tracks_view(request):
     payload = {}
     data = {}
@@ -325,7 +328,7 @@ def get_all_tracks_view(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes(AUTHENTICATION_CLASSES)
 def get_all_tracks_admin_view(request):
     payload = {}
     data = {}
@@ -398,7 +401,7 @@ def get_all_tracks_admin_view(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes(AUTHENTICATION_CLASSES)
 def get_track_details_view(request):
     payload = {}
     errors = {}
@@ -531,7 +534,7 @@ def get_track_details_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes(AUTHENTICATION_CLASSES)
 def edit_track(request):
     payload = {}
     data = {}
@@ -678,14 +681,14 @@ def edit_track(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes(AUTHENTICATION_CLASSES)
 def archive_track(request):
     return toggle_track_archive_state(request, True)
 
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes(AUTHENTICATION_CLASSES)
 def unarchive_track(request):
     return toggle_track_archive_state(request, False)
 
@@ -720,7 +723,7 @@ def toggle_track_archive_state(request, state):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes(AUTHENTICATION_CLASSES)
 def delete_track(request):
     payload = {}
     errors = {}
@@ -749,7 +752,7 @@ def delete_track(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes(AUTHENTICATION_CLASSES)
 def get_all_archived_tracks_view(request):
     payload = {}
     data = {}
@@ -796,7 +799,7 @@ def get_all_archived_tracks_view(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes(AUTHENTICATION_CLASSES)
 def get_upload_track_support_data_view(request):
     payload = {}
     data = {}
@@ -834,7 +837,7 @@ def get_upload_track_support_data_view(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes(AUTHENTICATION_CLASSES)
 def get_edit_track_support_data_view(request):
     payload = {}
     data = {}
@@ -885,7 +888,7 @@ def get_edit_track_support_data_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes(AUTHENTICATION_CLASSES)
 def upload_track_cover_view(request):
     payload = {}
     data = {}
@@ -922,7 +925,7 @@ def upload_track_cover_view(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes(AUTHENTICATION_CLASSES)
 def get_track_edit_history_view(request):
     payload = {}
     data = {}
