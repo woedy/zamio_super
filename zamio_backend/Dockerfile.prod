@@ -17,10 +17,10 @@ COPY requirements.txt ./requirements.txt
 RUN pip install --upgrade pip setuptools wheel \
     && pip install --no-cache-dir -r requirements.txt
 COPY . .
-RUN sed -i 's/\r$//' entrypoint.sh \
-    && cp entrypoint.sh /entrypoint.sh \
-    && chmod +x /entrypoint.sh \
-    && mkdir -p /app/static_cdn /app/media
+RUN set -e; \
+    tr -d '\r' < entrypoint.sh > /entrypoint.sh; \
+    chmod +x /entrypoint.sh; \
+    mkdir -p /app/static_cdn /app/media
 RUN python manage.py collectstatic --noinput
 
 FROM python:3.11-slim
