@@ -449,6 +449,8 @@ export interface UploadManagementRecord {
   station?: string | null;
   entity_id?: number | null;
   metadata?: Record<string, unknown>;
+  cover_art_url?: string | null;
+  album_cover_url?: string | null;
 }
 
 export interface UploadManagementPagination {

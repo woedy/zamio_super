@@ -594,6 +594,26 @@ def get_user_uploads(request):
         tracks = Track.objects.filter(id__in=track_ids).select_related('artist', 'album')
         track_map = {track.id: track for track in tracks}
 
+        album_ids = set()
+        for track in tracks:
+            if track.album_id:
+                album_ids.add(track.album_id)
+
+        for upload in uploads_list:
+            metadata = upload.metadata or {}
+            album_identifier = metadata.get('album_id')
+            if album_identifier is None:
+                continue
+            try:
+                album_ids.add(int(album_identifier))
+            except (TypeError, ValueError):
+                continue
+
+        album_map = {
+            album.id: album
+            for album in Album.objects.filter(id__in=album_ids).select_related('artist')
+        }
+
         def resolve_album_title(upload):
             if upload.entity_type == 'track' and upload.entity_id in track_map:
                 album_obj = track_map[upload.entity_id].album
@@ -655,6 +675,34 @@ def get_user_uploads(request):
             duration_value = format_duration_value(upload, track)
             file_type = resolve_upload_mime_type(upload)
 
+            cover_art_url = None
+            if track and getattr(track, 'cover_art', None):
+                try:
+                    cover_art_url = track.cover_art.url
+                except ValueError:
+                    cover_art_url = track.cover_art.name or None
+            if not cover_art_url:
+                cover_art_url = metadata.get('cover_art_url') or metadata.get('cover_url') or None
+
+            album_cover_url = None
+            album_obj = None
+            if track and track.album_id:
+                album_obj = track.album or album_map.get(track.album_id)
+            if not album_obj:
+                album_identifier = metadata.get('album_id')
+                if album_identifier is not None:
+                    try:
+                        album_obj = album_map.get(int(album_identifier))
+                    except (TypeError, ValueError):
+                        album_obj = None
+            if album_obj and getattr(album_obj, 'cover_art', None):
+                try:
+                    album_cover_url = album_obj.cover_art.url
+                except ValueError:
+                    album_cover_url = album_obj.cover_art.name or None
+            if not album_cover_url:
+                album_cover_url = metadata.get('album_cover_url') or None
+
             uploads_data.append({
                 'id': upload.upload_id,
                 'upload_id': upload.upload_id,
@@ -675,6 +723,8 @@ def get_user_uploads(request):
                 'station': station_name or None,
                 'entity_id': upload.entity_id,
                 'metadata': metadata,
+                'cover_art_url': cover_art_url,
+                'album_cover_url': album_cover_url,
             })
 
         payload['message'] = 'Uploads retrieved successfully'

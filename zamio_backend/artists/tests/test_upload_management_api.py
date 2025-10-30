@@ -36,9 +36,28 @@ class UploadManagementAPITestCase(TestCase):
         )
         self.client.force_authenticate(user=self.user)
 
+        album_cover_file = SimpleUploadedFile(
+            'album-cover.jpg',
+            self._build_test_image_bytes(color='purple'),
+            content_type='image/jpeg',
+        )
+        self.album = Album.objects.create(
+            artist=self.artist,
+            title='Album Alpha',
+            cover_art=album_cover_file,
+            active=True,
+        )
+
+        track_cover_file = SimpleUploadedFile(
+            'track-cover.jpg',
+            self._build_test_image_bytes(color='orange'),
+            content_type='image/jpeg',
+        )
         self.library_track = Track.objects.create(
             artist=self.artist,
             title='Library Track',
+            album=self.album,
+            cover_art=track_cover_file,
             audio_file=SimpleUploadedFile(
                 'library-track.mp3',
                 b'library-audio-bytes',
@@ -87,6 +106,7 @@ class UploadManagementAPITestCase(TestCase):
             status='completed',
             progress_percentage=100,
             entity_type='track',
+            entity_id=self.library_track.id,
             metadata={
                 'title': 'Completed Track',
                 'album_title': 'Album Alpha',
@@ -125,12 +145,18 @@ class UploadManagementAPITestCase(TestCase):
                 'album_title': 'Album Alpha',
                 'artist_name': 'Upload Tester',
                 'track_id': self.library_track.id,
+                'album_id': self.album.id,
             },
         )
 
     def tearDown(self):
-        if getattr(self, 'library_track', None) and self.library_track.audio_file:
-            self.library_track.audio_file.delete(save=False)
+        if getattr(self, 'library_track', None):
+            if self.library_track.audio_file:
+                self.library_track.audio_file.delete(save=False)
+            if self.library_track.cover_art:
+                self.library_track.cover_art.delete(save=False)
+        if getattr(self, 'album', None) and self.album.cover_art:
+            self.album.cover_art.delete(save=False)
         super().tearDown()
 
     def _build_test_image_bytes(self, color='blue'):
@@ -152,6 +178,10 @@ class UploadManagementAPITestCase(TestCase):
         self.assertEqual(uploads_by_id['completed_upload_id']['status'], 'completed')
         self.assertEqual(uploads_by_id['failed_upload_id']['status'], 'failed')
         self.assertNotIn('cover_upload_id', uploads_by_id)
+
+        completed_payload = uploads_by_id['completed_upload_id']
+        self.assertEqual(completed_payload['cover_art_url'], self.library_track.cover_art.url)
+        self.assertEqual(completed_payload['album_cover_url'], self.album.cover_art.url)
 
         stats = payload.get('stats', {})
         self.assertEqual(stats['total'], 4)
@@ -177,6 +207,8 @@ class UploadManagementAPITestCase(TestCase):
         uploads = payload.get('uploads', [])
         self.assertEqual(len(uploads), 1)
         self.assertEqual(uploads[0]['upload_id'], 'cover_upload_id')
+        self.assertEqual(uploads[0]['cover_art_url'], self.library_track.cover_art.url)
+        self.assertEqual(uploads[0]['album_cover_url'], self.album.cover_art.url)
         self.assertEqual(payload.get('stats', {}).get('total'), 1)
 
     def test_cancel_upload_marks_record_cancelled(self):

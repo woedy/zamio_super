@@ -44,6 +44,8 @@ describe('UploadManagement', () => {
             station: 'Station A',
             entity_id: 42,
             metadata: {},
+            cover_art_url: 'https://cdn.zamio.test/song-one-cover.jpg',
+            album_cover_url: 'https://cdn.zamio.test/album-alpha-cover.jpg',
           },
         ],
         pagination: {
@@ -88,6 +90,9 @@ describe('UploadManagement', () => {
     );
 
     expect(screen.getByText(/Loading uploads/i)).toBeInTheDocument();
+
+    const coverImage = await screen.findByAltText('Song One cover art');
+    expect(coverImage).toHaveAttribute('src', 'https://cdn.zamio.test/song-one-cover.jpg');
 
     const filenameCell = await screen.findByText('song_one.mp3');
     expect(filenameCell).toBeInTheDocument();
