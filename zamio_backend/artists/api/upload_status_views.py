@@ -2,6 +2,7 @@
 import uuid
 import os
 import math
+import json
 import mimetypes
 from rest_framework import status
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
@@ -13,6 +14,7 @@ from django.utils import timezone
 from django.conf import settings
 from django.db.models import Q, Count
 from django.utils.dateparse import parse_date
+from django.core.files.storage import default_storage
 from accounts.models import AuditLog
 from artists.models import Track, Album, Artist, UploadProcessingStatus, Contributor, Genre
 from .album_management_views import _parse_release_date, _resolve_genre
@@ -36,6 +38,21 @@ def resolve_upload_mime_type(upload):
             return guess
 
     return ""
+
+
+def _normalize_identifier(value, field_name):
+    """Return an integer identifier or None, raising ValueError for invalid input."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        value = stripped
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid {field_name} supplied") from exc
 
 
 @api_view(['POST'])
@@ -94,6 +111,37 @@ def initiate_non_blocking_upload(request):
             'station_name': (request.data.get('station_name') or '').strip(),
         }
 
+        contributors_payload = request.data.get('contributors')
+        contributors_data = []
+        if contributors_payload:
+            try:
+                if isinstance(contributors_payload, str):
+                    parsed_contributors = json.loads(contributors_payload)
+                else:
+                    parsed_contributors = contributors_payload
+            except (TypeError, json.JSONDecodeError):
+                parsed_contributors = []
+
+            if isinstance(parsed_contributors, (list, tuple)):
+                for entry in parsed_contributors:
+                    if not isinstance(entry, dict):
+                        continue
+                    contributor_record = {
+                        'name': str(entry.get('name', '')).strip(),
+                        'email': str(entry.get('email', '')).strip(),
+                        'role': str(entry.get('role', '')).strip(),
+                        'percent_split': float(
+                            entry.get('percent_split', entry.get('royaltyPercentage', 0)) or 0
+                        ),
+                    }
+                    phone_value = entry.get('phone')
+                    if phone_value:
+                        contributor_record['phone'] = str(phone_value).strip()
+                    contributors_data.append(contributor_record)
+
+        if contributors_data:
+            metadata['contributors'] = contributors_data
+
         tags_payload = []
         if hasattr(request.data, 'getlist'):
             tags_payload = request.data.getlist('tags') or request.data.getlist('tags[]')
@@ -105,33 +153,70 @@ def initiate_non_blocking_upload(request):
                 tags_payload = [tag.strip() for tag in tags_value.split(',') if tag.strip()]
 
         metadata['tags'] = [tag for tag in tags_payload if tag]
-        metadata['file_type'] = uploaded_file.content_type
-        metadata['file_size_bytes'] = uploaded_file.size
-        
+
+        if uploaded_file:
+            metadata['file_type'] = uploaded_file.content_type
+            metadata['file_size_bytes'] = uploaded_file.size
+        else:
+            metadata['file_type'] = ''
+            metadata['file_size_bytes'] = 0
+
         # Validate required fields
         if not uploaded_file:
             payload['message'] = 'File is required'
             payload['errors'] = {'file': ['This field is required']}
             return Response(payload, status=status.HTTP_400_BAD_REQUEST)
-        
+
         if not upload_type:
             payload['message'] = 'Upload type is required'
             payload['errors'] = {'upload_type': ['This field is required']}
             return Response(payload, status=status.HTTP_400_BAD_REQUEST)
-        
+
         # Validate upload type
         valid_upload_types = ['track_audio', 'track_cover', 'album_cover']
         if upload_type not in valid_upload_types:
             payload['message'] = 'Invalid upload type'
             payload['errors'] = {'upload_type': [f'Must be one of: {", ".join(valid_upload_types)}']}
             return Response(payload, status=status.HTTP_400_BAD_REQUEST)
-        
+
+        # Normalize identifiers to integers where applicable
+        try:
+            metadata['track_id'] = _normalize_identifier(metadata.get('track_id'), 'track ID')
+        except ValueError as exc:
+            payload['message'] = 'Track identifier is invalid'
+            payload['errors'] = {'track_id': [str(exc)]}
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            metadata['album_id'] = _normalize_identifier(metadata.get('album_id'), 'album ID')
+        except ValueError as exc:
+            payload['message'] = 'Album identifier is invalid'
+            payload['errors'] = {'album_id': [str(exc)]}
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            metadata['genre_id'] = _normalize_identifier(metadata.get('genre_id'), 'genre ID')
+        except ValueError as exc:
+            payload['message'] = 'Genre identifier is invalid'
+            payload['errors'] = {'genre_id': [str(exc)]}
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
         # For track uploads, title is required
         if upload_type == 'track_audio' and not metadata['title']:
             payload['message'] = 'Track title is required'
             payload['errors'] = {'title': ['This field is required for track uploads']}
             return Response(payload, status=status.HTTP_400_BAD_REQUEST)
-        
+
+        if upload_type == 'track_cover' and not metadata['track_id']:
+            payload['message'] = 'Track ID is required for cover uploads'
+            payload['errors'] = {'track_id': ['Track ID must be provided when uploading track cover art']}
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
+        if upload_type == 'album_cover' and not metadata['album_id']:
+            payload['message'] = 'Album ID is required for album cover uploads'
+            payload['errors'] = {'album_id': ['Album ID must be provided when uploading album cover art']}
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
         # Validate track ownership if updating existing track
         track = None
         if metadata['track_id']:
@@ -217,7 +302,7 @@ def initiate_non_blocking_upload(request):
                     release_date=release_date_obj,
                     explicit=metadata['explicit'],
                     lyrics=metadata['lyrics'],
-                    processing_status='pending'
+                    processing_status='queued'
                 )
             else:
                 track_updates = []
@@ -230,6 +315,9 @@ def initiate_non_blocking_upload(request):
                 if release_date_obj and track.release_date != release_date_obj:
                     track.release_date = release_date_obj
                     track_updates.append('release_date')
+                if track.processing_status != 'queued':
+                    track.processing_status = 'queued'
+                    track_updates.append('processing_status')
                 if track_updates:
                     track.save(update_fields=track_updates)
 
@@ -241,44 +329,51 @@ def initiate_non_blocking_upload(request):
             metadata['title'] = track.title
             metadata['artist_name'] = track.artist.stage_name
 
+        # Save file to temporary location
+        original_name = os.path.basename(uploaded_file.name)
+        original_filename = original_name
+        file_size = uploaded_file.size
+        mime_type = uploaded_file.content_type or ''
+        _, original_ext = os.path.splitext(original_name)
+        sanitized_name = f"{upload_id}_{uuid.uuid4().hex}{original_ext.lower()}" if original_ext else f"{upload_id}_{uuid.uuid4().hex}"
+        storage_subdir = 'temp'
+        if hasattr(default_storage, 'path'):
+            os.makedirs(os.path.join(settings.MEDIA_ROOT, storage_subdir), exist_ok=True)
+        storage_key = os.path.join(storage_subdir, sanitized_name).replace('\\', '/')
+        if hasattr(uploaded_file, 'seek'):
+            uploaded_file.seek(0)
+        stored_file_path = default_storage.save(storage_key, uploaded_file)
+        metadata['internal_temp_storage_path'] = stored_file_path
+
         # Create upload processing status record
         upload_status = UploadProcessingStatus.objects.create(
             upload_id=upload_id,
             user=user,
             upload_type=upload_type,
-            original_filename=uploaded_file.name,
-            file_size=uploaded_file.size,
-            mime_type=uploaded_file.content_type or '',
+            original_filename=original_filename,
+            file_size=file_size,
+            mime_type=mime_type,
             status='queued',
             entity_id=track.id if track else None,
             entity_type='track' if track else None,
             metadata=metadata
         )
-        
-        # Save file to temporary location
-        temp_dir = os.path.join(settings.MEDIA_ROOT, 'temp')
-        os.makedirs(temp_dir, exist_ok=True)
-        temp_file_path = os.path.join(temp_dir, f"{upload_id}_{uploaded_file.name}")
-        
-        with open(temp_file_path, 'wb') as temp_file:
-            for chunk in uploaded_file.chunks():
-                temp_file.write(chunk)
-        
+
         # Queue appropriate background task
         if upload_type == 'track_audio':
             process_track_upload.delay(
                 upload_id=upload_id,
                 track_id=track.id,
-                temp_file_path=temp_file_path,
-                original_filename=uploaded_file.name,
+                source_file_path=stored_file_path,
+                original_filename=original_filename,
                 user_id=user.id
             )
         elif upload_type in ['track_cover', 'album_cover']:
             process_cover_art_upload.delay(
                 upload_id=upload_id,
                 track_id=track.id if track else None,
-                temp_file_path=temp_file_path,
-                original_filename=uploaded_file.name,
+                source_file_path=stored_file_path,
+                original_filename=original_filename,
                 user_id=user.id
             )
         
@@ -290,8 +385,8 @@ def initiate_non_blocking_upload(request):
             resource_id=upload_id,
             request_data={
                 'upload_type': upload_type,
-                'filename': uploaded_file.name,
-                'file_size': uploaded_file.size,
+                'filename': original_filename,
+                'file_size': file_size,
                 'track_id': track.id if track else None,
                 'metadata': metadata
             },
@@ -395,21 +490,30 @@ def get_user_uploads(request):
         user = request.user
 
         base_query = UploadProcessingStatus.objects.filter(user=user)
+        upload_type_filter = request.GET.get('upload_type')
+        excluded_cover_types = ['track_cover', 'album_cover']
 
-        status_totals = base_query.values('status').annotate(total=Count('id'))
+        if upload_type_filter == 'cover_art':
+            filtered_query = base_query.filter(upload_type__in=excluded_cover_types)
+        elif upload_type_filter:
+            filtered_query = base_query.filter(upload_type=upload_type_filter)
+        else:
+            filtered_query = base_query.exclude(upload_type__in=excluded_cover_types)
+
+        status_totals = filtered_query.values('status').annotate(total=Count('id'))
         totals_map = {entry['status']: entry['total'] for entry in status_totals}
         stats = {
-            'total': base_query.count(),
+            'total': filtered_query.count(),
             'uploading': sum(totals_map.get(status_key, 0) for status_key in ['pending', 'queued']),
             'processing': totals_map.get('processing', 0),
             'completed': totals_map.get('completed', 0),
             'failed': totals_map.get('failed', 0) + totals_map.get('cancelled', 0),
         }
 
-        albums_from_metadata = base_query.exclude(metadata__album_title__isnull=True).exclude(metadata__album_title__exact='').values_list('metadata__album_title', flat=True)
+        albums_from_metadata = filtered_query.exclude(metadata__album_title__isnull=True).exclude(metadata__album_title__exact='').values_list('metadata__album_title', flat=True)
         album_titles = {title for title in albums_from_metadata if title}
 
-        track_ids_for_albums = list(base_query.filter(entity_type='track', entity_id__isnull=False).values_list('entity_id', flat=True))
+        track_ids_for_albums = list(filtered_query.filter(entity_type='track', entity_id__isnull=False).values_list('entity_id', flat=True))
         if track_ids_for_albums:
             album_names = Track.objects.filter(id__in=track_ids_for_albums).select_related('album').values_list('album__title', flat=True)
             album_titles.update(name for name in album_names if name)
@@ -417,13 +521,12 @@ def get_user_uploads(request):
         page = max(int(request.GET.get('page', 1)), 1)
         page_size = min(max(int(request.GET.get('page_size', 20)), 1), 100)
         status_filter = request.GET.get('status')
-        upload_type_filter = request.GET.get('upload_type')
         search_term = (request.GET.get('search') or '').strip()
         album_filter = (request.GET.get('album') or '').strip()
         sort_by = request.GET.get('sort_by', 'uploadDate')
         sort_order = request.GET.get('sort_order', 'desc')
 
-        uploads_query = base_query
+        uploads_query = filtered_query
 
         status_map = {
             'uploading': ['pending', 'queued'],
@@ -436,7 +539,9 @@ def get_user_uploads(request):
         if status_filter and status_filter != 'all':
             uploads_query = uploads_query.filter(status__in=status_map.get(status_filter, [status_filter]))
 
-        if upload_type_filter:
+        if upload_type_filter == 'cover_art':
+            uploads_query = uploads_query.filter(upload_type__in=excluded_cover_types)
+        elif upload_type_filter:
             uploads_query = uploads_query.filter(upload_type=upload_type_filter)
 
         if search_term:

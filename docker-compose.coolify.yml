@@ -27,6 +27,9 @@ services:
     build:
       context: ./zamio_backend
       dockerfile: Dockerfile.prod
+    volumes:
+      - backend_static:/app/static_cdn
+      - backend_media:/app/media
     environment:
       SECRET_KEY: ${SECRET_KEY}
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
@@ -52,6 +55,9 @@ services:
     build:
       context: ./zamio_backend
       dockerfile: Dockerfile.prod
+    volumes:
+      - backend_static:/app/static_cdn
+      - backend_media:/app/media
     command: celery -A core worker -l info
     environment:
       SECRET_KEY: ${SECRET_KEY}
@@ -74,6 +80,9 @@ services:
     build:
       context: ./zamio_backend
       dockerfile: Dockerfile.prod
+    volumes:
+      - backend_static:/app/static_cdn
+      - backend_media:/app/media
     command: celery -A core beat -l info --scheduler=django_celery_beat.schedulers:DatabaseScheduler
     environment:
       SECRET_KEY: ${SECRET_KEY}
@@ -161,3 +170,5 @@ services:
 
 volumes:
   postgres_data:
+  backend_static:
+  backend_media:
