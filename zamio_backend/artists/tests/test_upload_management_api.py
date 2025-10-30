@@ -9,6 +9,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from artists.models import Artist, UploadProcessingStatus, Album, Genre, Track
 
@@ -262,3 +263,24 @@ class UploadManagementAPITestCase(TestCase):
 
         # Clean up temporary file created during the test
         os.remove(temp_file_path)
+
+    def test_upload_support_data_accepts_jwt_bearer_auth(self):
+        genre = Genre.objects.create(name='Highlife Supreme')
+        Album.objects.create(artist=self.artist, title='Support Album', genre=genre)
+
+        jwt_client = APIClient()
+        refresh = RefreshToken.for_user(self.user)
+        jwt_client.credentials(HTTP_AUTHORIZATION=f'Bearer {refresh.access_token}')
+
+        response = jwt_client.get(
+            '/api/artists/get-upload-track-support-data/',
+            {'artist_id': self.artist.artist_id},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.data.get('data', {})
+        genres = payload.get('genres', [])
+        albums = payload.get('albums', [])
+
+        self.assertTrue(any(item['id'] == genre.id for item in genres))
+        self.assertTrue(any(item['title'] == 'Support Album' for item in albums))
