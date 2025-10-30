@@ -139,4 +139,63 @@ describe('UploadManagement', () => {
       expect(mockedFetchUploadStatusById).toHaveBeenCalledWith('upload_1');
     });
   });
+
+  it('falls back to the album cover when the track cover is missing', async () => {
+    mockedFetchUploadManagement.mockResolvedValueOnce({
+      data: {
+        uploads: [
+          {
+            id: 'upload_1',
+            upload_id: 'upload_1',
+            status: 'completed',
+            raw_status: 'completed',
+            progress: 100,
+            upload_type: 'track_audio',
+            filename: 'song_one.mp3',
+            file_size: 1048576,
+            file_type: 'audio/mpeg',
+            upload_date: '2024-01-01T00:00:00Z',
+            error: null,
+            retry_count: 0,
+            duration: '3:30',
+            artist: 'Artist One',
+            album: 'Album Alpha',
+            title: 'Song One',
+            station: 'Station A',
+            entity_id: 42,
+            metadata: {},
+            cover_art_url: '/media/defaults/track_cover.png',
+            album_cover_url: '/media/album-alpha-cover.jpg',
+          },
+        ],
+        pagination: {
+          page: 1,
+          page_size: 5,
+          total_count: 1,
+          total_pages: 1,
+          has_next: false,
+          has_previous: false,
+        },
+        stats: {
+          total: 1,
+          uploading: 0,
+          processing: 0,
+          completed: 1,
+          failed: 0,
+        },
+        filters: {
+          albums: ['Album Alpha'],
+        },
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <UploadManagement />
+      </MemoryRouter>,
+    );
+
+    const coverImage = await screen.findByAltText('Song One cover art');
+    expect(coverImage).toHaveAttribute('src', 'https://api.zamio.test/media/album-alpha-cover.jpg');
+  });
 });

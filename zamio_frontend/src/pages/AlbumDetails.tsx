@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 
 import { fetchArtistAlbumDetail, type AlbumDetailPayload } from '../lib/api';
+import ProtectedImage from '../components/ProtectedImage';
 
 interface AlbumTrackViewModel {
   id: number;
@@ -427,10 +428,15 @@ const AlbumDetails: React.FC = () => {
             <div className="relative flex-shrink-0">
               <div className="w-48 h-48 lg:w-64 lg:h-64 rounded-2xl overflow-hidden shadow-2xl group-hover:shadow-purple-500/25 transition-all duration-300">
                 {album.cover_art ? (
-                  <img
+                  <ProtectedImage
                     src={album.cover_art}
                     alt={`${album.title} cover art`}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    fallback={
+                      <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-purple-500 via-indigo-500 to-pink-500 text-white">
+                        <AlbumIcon className="h-14 w-14" />
+                      </div>
+                    }
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-purple-500 via-indigo-500 to-pink-500 text-white">
