@@ -794,13 +794,6 @@ export const fetchArtistAlbumDetail = async (albumId: number) => {
   return data;
 };
 
-export const deleteArtistAlbum = async (albumId: number) => {
-  const { data } = await authApi.delete<ApiEnvelope<Record<string, unknown>>>(
-    `/api/artists/api/albums/${albumId}/delete/`,
-  );
-  return data;
-};
-
 interface LegacyTrackPlayLog {
   time?: string | null;
   station?: string | null;
