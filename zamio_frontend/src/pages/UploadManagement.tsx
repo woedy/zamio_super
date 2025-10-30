@@ -28,6 +28,7 @@ import {
   resolveApiBaseUrl,
 } from '../lib/api';
 import ProtectedImage from '../components/ProtectedImage';
+import { sanitizeMediaUrl } from '../utils/media';
 
 interface UploadData {
   id: string;
@@ -128,32 +129,28 @@ const UploadManagement: React.FC = () => {
 
   const resolveMediaUrl = useCallback(
     (input?: string | null): string | null => {
-      if (!input) {
+      const sanitizedInput = sanitizeMediaUrl(input);
+      if (!sanitizedInput) {
         return null;
       }
 
-      const value = input.trim();
-      if (!value) {
-        return null;
+      if (/^[a-z][a-z0-9+.-]*:\/\//i.test(sanitizedInput) || sanitizedInput.startsWith('//')) {
+        return sanitizeMediaUrl(sanitizedInput);
       }
 
-      if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value) || value.startsWith('//')) {
-        return value;
-      }
-
-      if (/^[a-z][a-z0-9+.-]*:/i.test(value)) {
-        return value;
+      if (/^[a-z][a-z0-9+.-]*:/i.test(sanitizedInput)) {
+        return sanitizeMediaUrl(sanitizedInput);
       }
 
       if (!apiBaseUrl) {
-        return value;
+        return sanitizeMediaUrl(sanitizedInput);
       }
 
-      if (value.startsWith('/')) {
-        return `${apiBaseUrl}${value}`;
+      if (sanitizedInput.startsWith('/')) {
+        return sanitizeMediaUrl(`${apiBaseUrl}${sanitizedInput}`);
       }
 
-      return `${apiBaseUrl}/${value}`;
+      return sanitizeMediaUrl(`${apiBaseUrl}/${sanitizedInput}`);
     },
     [apiBaseUrl]
   );

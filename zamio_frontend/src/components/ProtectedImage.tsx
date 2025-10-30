@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { authApi } from '../lib/api';
+import { shouldSuppressProtectedImageFetch } from '../utils/media';
 
 export interface ProtectedImageProps extends React.ImgHTMLAttributes<HTMLImageElement> {
   src?: string | null;
@@ -36,14 +37,7 @@ const ProtectedImage: React.FC<ProtectedImageProps> = ({ src: inputSrc, fallback
   const isTestEnv = envMode === 'test';
   const isBrowser = typeof window !== 'undefined';
 
-  const shouldSuppressRequest = useMemo(() => {
-    if (!normalizedSrc) {
-      return false;
-    }
-
-    const suppressedFragments = ['/media/defaults/track_cover.png'];
-    return suppressedFragments.some((fragment) => normalizedSrc.includes(fragment));
-  }, [normalizedSrc]);
+  const shouldSuppressRequest = useMemo(() => shouldSuppressProtectedImageFetch(normalizedSrc), [normalizedSrc]);
 
   useEffect(() => {
     if (!normalizedSrc || shouldSuppressRequest) {
