@@ -40,6 +40,21 @@ def resolve_upload_mime_type(upload):
     return ""
 
 
+def _normalize_identifier(value, field_name):
+    """Return an integer identifier or None, raising ValueError for invalid input."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        value = stripped
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid {field_name} supplied") from exc
+
+
 @api_view(['POST'])
 @authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @permission_classes([IsAuthenticated])
@@ -145,31 +160,63 @@ def initiate_non_blocking_upload(request):
         else:
             metadata['file_type'] = ''
             metadata['file_size_bytes'] = 0
-        
+
         # Validate required fields
         if not uploaded_file:
             payload['message'] = 'File is required'
             payload['errors'] = {'file': ['This field is required']}
             return Response(payload, status=status.HTTP_400_BAD_REQUEST)
-        
+
         if not upload_type:
             payload['message'] = 'Upload type is required'
             payload['errors'] = {'upload_type': ['This field is required']}
             return Response(payload, status=status.HTTP_400_BAD_REQUEST)
-        
+
         # Validate upload type
         valid_upload_types = ['track_audio', 'track_cover', 'album_cover']
         if upload_type not in valid_upload_types:
             payload['message'] = 'Invalid upload type'
             payload['errors'] = {'upload_type': [f'Must be one of: {", ".join(valid_upload_types)}']}
             return Response(payload, status=status.HTTP_400_BAD_REQUEST)
-        
+
+        # Normalize identifiers to integers where applicable
+        try:
+            metadata['track_id'] = _normalize_identifier(metadata.get('track_id'), 'track ID')
+        except ValueError as exc:
+            payload['message'] = 'Track identifier is invalid'
+            payload['errors'] = {'track_id': [str(exc)]}
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            metadata['album_id'] = _normalize_identifier(metadata.get('album_id'), 'album ID')
+        except ValueError as exc:
+            payload['message'] = 'Album identifier is invalid'
+            payload['errors'] = {'album_id': [str(exc)]}
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            metadata['genre_id'] = _normalize_identifier(metadata.get('genre_id'), 'genre ID')
+        except ValueError as exc:
+            payload['message'] = 'Genre identifier is invalid'
+            payload['errors'] = {'genre_id': [str(exc)]}
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
         # For track uploads, title is required
         if upload_type == 'track_audio' and not metadata['title']:
             payload['message'] = 'Track title is required'
             payload['errors'] = {'title': ['This field is required for track uploads']}
             return Response(payload, status=status.HTTP_400_BAD_REQUEST)
-        
+
+        if upload_type == 'track_cover' and not metadata['track_id']:
+            payload['message'] = 'Track ID is required for cover uploads'
+            payload['errors'] = {'track_id': ['Track ID must be provided when uploading track cover art']}
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
+        if upload_type == 'album_cover' and not metadata['album_id']:
+            payload['message'] = 'Album ID is required for album cover uploads'
+            payload['errors'] = {'album_id': ['Album ID must be provided when uploading album cover art']}
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
         # Validate track ownership if updating existing track
         track = None
         if metadata['track_id']:

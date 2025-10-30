@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+import io
 import json
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -9,8 +10,10 @@ from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
+from PIL import Image
 
 from artists.models import Artist, UploadProcessingStatus, Album, Genre, Track
+from artists.tasks import process_track_upload
 
 
 User = get_user_model()
@@ -95,6 +98,11 @@ class UploadManagementAPITestCase(TestCase):
                 'artist_name': 'Upload Tester',
             },
         )
+
+    def _build_test_image_bytes(self, color='blue'):
+        buffer = io.BytesIO()
+        Image.new('RGB', (10, 10), color=color).save(buffer, format='JPEG')
+        return buffer.getvalue()
 
     def test_get_user_uploads_returns_expected_payload(self):
         response = self.client.get('/api/artists/api/uploads/', {'page': 1, 'page_size': 10})
@@ -268,6 +276,161 @@ class UploadManagementAPITestCase(TestCase):
 
         # Clean up temporary file created during the test
         default_storage.delete(stored_file_path)
+
+    def test_initiate_upload_rejects_invalid_track_identifier(self):
+        audio_file = SimpleUploadedFile(
+            'demo-track.mp3',
+            b'ID3' + b'\x00' * 64,
+            content_type='audio/mpeg',
+        )
+
+        response = self.client.post(
+            '/api/artists/api/upload/initiate/',
+            {
+                'upload_type': 'track_audio',
+                'title': 'Invalid Track ID',
+                'track_id': 'abc123',
+                'file': audio_file,
+            },
+            format='multipart',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('track_id', response.data.get('errors', {}))
+
+    @patch('artists.api.upload_status_views.process_cover_art_upload.delay')
+    def test_initiate_track_cover_requires_track_id(self, mocked_delay):
+        cover_file = SimpleUploadedFile(
+            'cover.jpg',
+            self._build_test_image_bytes(),
+            content_type='image/jpeg',
+        )
+
+        response = self.client.post(
+            '/api/artists/api/upload/initiate/',
+            {
+                'upload_type': 'track_cover',
+                'title': 'Artwork Only',
+                'file': cover_file,
+            },
+            format='multipart',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('track_id', response.data.get('errors', {}))
+        mocked_delay.assert_not_called()
+
+    @patch('artists.api.upload_status_views.process_cover_art_upload.delay')
+    def test_initiate_album_cover_requires_album_id(self, mocked_delay):
+        cover_file = SimpleUploadedFile(
+            'album-cover.jpg',
+            self._build_test_image_bytes('red'),
+            content_type='image/jpeg',
+        )
+
+        response = self.client.post(
+            '/api/artists/api/upload/initiate/',
+            {
+                'upload_type': 'album_cover',
+                'title': 'Album Artwork',
+                'file': cover_file,
+            },
+            format='multipart',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('album_id', response.data.get('errors', {}))
+        mocked_delay.assert_not_called()
+
+    @patch('artists.api.upload_status_views.process_track_upload.delay')
+    def test_initiate_upload_casts_track_identifier_to_int(self, mocked_delay):
+        mocked_delay.return_value = SimpleNamespace(id='task-456')
+        existing_audio = SimpleUploadedFile(
+            'existing.mp3',
+            b'ID3' + b'\x00' * 64,
+            content_type='audio/mpeg',
+        )
+        existing_track = Track.objects.create(
+            artist=self.artist,
+            title='Existing Track',
+            audio_file=existing_audio,
+            processing_status='pending',
+        )
+
+        audio_file = SimpleUploadedFile(
+            'new-upload.mp3',
+            b'ID3' + b'\x00' * 64,
+            content_type='audio/mpeg',
+        )
+
+        response = self.client.post(
+            '/api/artists/api/upload/initiate/',
+            {
+                'upload_type': 'track_audio',
+                'title': 'Existing Track',
+                'track_id': str(existing_track.id),
+                'file': audio_file,
+            },
+            format='multipart',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        upload_id = response.data['data']['upload_id']
+        upload_status = UploadProcessingStatus.objects.get(upload_id=upload_id)
+        self.assertEqual(upload_status.metadata.get('track_id'), existing_track.id)
+        self.assertIsInstance(upload_status.metadata.get('track_id'), int)
+
+        mocked_delay.assert_called_once()
+        stored_file_path = mocked_delay.call_args.kwargs['source_file_path']
+        if default_storage.exists(stored_file_path):
+            default_storage.delete(stored_file_path)
+
+        existing_track.audio_file.delete(save=False)
+
+    def test_process_track_upload_marks_track_failed_when_source_missing(self):
+        existing_audio = SimpleUploadedFile(
+            'existing.mp3',
+            b'ID3' + b'\x00' * 64,
+            content_type='audio/mpeg',
+        )
+        track = Track.objects.create(
+            artist=self.artist,
+            title='Missing Source Track',
+            audio_file=existing_audio,
+            processing_status='queued',
+        )
+
+        upload_status = UploadProcessingStatus.objects.create(
+            upload_id='missing_source_upload',
+            user=self.user,
+            upload_type='track_audio',
+            original_filename='missing.mp3',
+            file_size=1024,
+            mime_type='audio/mpeg',
+            status='queued',
+            entity_id=track.id,
+            entity_type='track',
+        )
+
+        result = process_track_upload.run(
+            upload_id='missing_source_upload',
+            track_id=track.id,
+            source_file_path='temp/non-existent-file.mp3',
+            original_filename='missing.mp3',
+            user_id=self.user.id,
+        )
+
+        self.assertFalse(result['success'])
+        self.assertEqual(result['error_type'], 'missing_source_file')
+
+        upload_status.refresh_from_db()
+        self.assertEqual(upload_status.status, 'failed')
+
+        track.refresh_from_db()
+        self.assertEqual(track.processing_status, 'failed')
+        self.assertIn('could not be located', track.processing_error)
+
+        track.audio_file.delete(save=False)
 
     def test_upload_support_data_accepts_jwt_bearer_auth(self):
         genre = Genre.objects.create(name='Highlife Supreme')

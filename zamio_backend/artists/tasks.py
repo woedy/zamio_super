@@ -31,10 +31,16 @@ def _handle_processing_error(upload_id: str, track_id: int, user_id: int, error_
         # Update processing status
         status = UploadProcessingStatus.objects.get(upload_id=upload_id)
         status.mark_failed(error_msg)
-        
-        # Get track for audit logging
+
+        # Get track for audit logging and flag as failed
         track = Track.objects.get(id=track_id)
         user = User.objects.get(id=user_id)
+
+        track.processing_status = 'failed'
+        track.processing_error = error_msg
+        track.processed_at = timezone.now()
+        track.fingerprinted = False
+        track.save(update_fields=['processing_status', 'processing_error', 'processed_at', 'fingerprinted'])
         
         # Create audit log
         AuditLog.objects.create(
