@@ -619,6 +619,20 @@ export const fetchArtistAlbums = async (params: AlbumListParams = {}) => {
   return data;
 };
 
+export const deleteArtistAlbum = async (albumId: number | string) => {
+  const { data } = await authApi.delete<ApiEnvelope<Record<string, unknown>>>(
+    `/api/artists/api/albums/${albumId}/delete/`,
+  );
+  return data;
+};
+
+export const deleteArtistTrack = async (trackId: number | string) => {
+  const { data } = await authApi.delete<ApiEnvelope<Record<string, unknown>>>(
+    `/api/artists/api/tracks/${trackId}/delete/`,
+  );
+  return data;
+};
+
 export interface CreateArtistAlbumPayload {
   title: string;
   release_date?: string;
@@ -776,13 +790,6 @@ export interface AlbumDetailPayload {
 export const fetchArtistAlbumDetail = async (albumId: number) => {
   const { data } = await authApi.get<ApiEnvelope<AlbumDetailPayload>>(
     `/api/artists/api/albums/${albumId}/detail/`,
-  );
-  return data;
-};
-
-export const deleteArtistAlbum = async (albumId: number) => {
-  const { data } = await authApi.delete<ApiEnvelope<Record<string, unknown>>>(
-    `/api/artists/api/albums/${albumId}/delete/`,
   );
   return data;
 };
