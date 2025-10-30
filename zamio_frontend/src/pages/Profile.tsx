@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   User,
   Music,
@@ -45,11 +45,60 @@ import {
   Gem,
   Shield,
   Zap,
-  Target as TargetIcon
+  Target as TargetIcon,
+  RefreshCw,
+  XCircle
 } from 'lucide-react';
+import {
+  fetchArtistProfile,
+  updateArtistProfile,
+  type ProfileData,
+  type ArtistProfile,
+  type UpdateProfileParams
+} from '../lib/profileApi';
+import { getArtistId } from '../lib/auth';
 
-// Mock artist data with enhanced structure
-const artistData = {
+// Default empty profile data
+const defaultProfileData: ProfileData = {
+  profile: {
+    artist_id: '',
+    stage_name: '',
+    bio: '',
+    profile_image: null,
+    cover_image: null,
+    verified: false,
+    join_date: null,
+    location: null,
+    genres: []
+  },
+  contact: {
+    email: '',
+    phone: null,
+    instagram: '',
+    twitter: '',
+    facebook: null,
+    website: '',
+    spotify_url: '',
+    shazam_url: ''
+  },
+  stats: {
+    total_plays: 0,
+    total_earnings: 0,
+    monthly_plays: 0,
+    monthly_earnings: 0,
+    new_followers: 0,
+    radio_coverage: 0,
+    avg_rating: 0,
+    total_songs: 0,
+    followers: 0
+  },
+  top_tracks: [],
+  recent_activity: [],
+  achievements: []
+};
+
+// Mock artist data for reference (not used)
+const artistDataMock = {
   name: 'Kofi Mensah',
   stageName: 'K-Mensah',
   bio: "Award-winning Ghanaian artist blending traditional highlife with modern Afrobeats. Known for hits like 'Ghana Na Woti' and 'Terminator'. With over 2.8 million plays and earnings exceeding ₵15,000, K-Mensah represents the new generation of Ghanaian music excellence.",
@@ -219,6 +268,10 @@ const royaltyHistoryData = [
 ];
 
 const Profile: React.FC = () => {
+  const [profileData, setProfileData] = useState<ProfileData>(defaultProfileData);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const [isEditing, setIsEditing] = useState(false);
   const [expandedSong, setExpandedSong] = useState<number | null>(null);
@@ -226,22 +279,80 @@ const Profile: React.FC = () => {
 
   // Edit form state
   const [editFormData, setEditFormData] = useState({
-    name: artistData.name,
-    stageName: artistData.stageName,
-    bio: artistData.bio,
-    location: artistData.location,
-    genres: artistData.genres,
+    stageName: '',
+    bio: '',
+    location: '',
+    genres: [] as string[],
     contact: {
-      email: artistData.contact.email,
-      phone: artistData.contact.phone,
-      instagram: artistData.contact.instagram,
-      twitter: artistData.contact.twitter,
-      facebook: artistData.contact.facebook,
+      email: '',
+      phone: '',
+      instagram: '',
+      twitter: '',
+      facebook: '',
+      website: '',
+      spotify_url: '',
+      shazam_url: ''
     }
   });
 
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Fetch profile data
+  const loadProfile = useCallback(async (showRefreshing = false) => {
+    const artistId = getArtistId();
+    if (!artistId) {
+      setError('Artist ID not found. Please log in again.');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      if (showRefreshing) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      setError(null);
+
+      const data = await fetchArtistProfile(artistId);
+      setProfileData(data);
+
+      // Update edit form with fetched data
+      setEditFormData({
+        stageName: data.profile.stage_name || '',
+        bio: data.profile.bio || '',
+        location: data.profile.location || '',
+        genres: data.profile.genres || [],
+        contact: {
+          email: data.contact.email || '',
+          phone: data.contact.phone || '',
+          instagram: data.contact.instagram || '',
+          twitter: data.contact.twitter || '',
+          facebook: data.contact.facebook || '',
+          website: data.contact.website || '',
+          spotify_url: data.contact.spotify_url || '',
+          shazam_url: data.contact.shazam_url || ''
+        }
+      });
+    } catch (err) {
+      console.error('Failed to load profile:', err);
+      setError('Failed to load profile. Please try again.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  // Load profile on mount
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
+
+  // Handle refresh
+  const handleRefresh = () => {
+    loadProfile(true);
+  };
 
   // Handle input changes
   const handleInputChange = (field: string, value: string) => {
@@ -511,25 +622,25 @@ const Profile: React.FC = () => {
               <div className="flex items-center space-x-6 pt-2">
                 <div className="text-center">
                   <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
-                    {artistData.totalPlays.toLocaleString()}
+                    {(profileData.stats.total_plays || 0).toLocaleString()}
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">Total Plays</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                    {formatCurrency(artistData.totalEarnings)}
+                    {formatCurrency(profileData.stats.total_earnings)}
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">Total Earnings</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                    {songsData.length}
+                    {profileData.stats.total_songs || 0}
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">Songs</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                    {artistData.followers.toLocaleString()}
+                    {(profileData.stats.followers || 0).toLocaleString()}
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">Followers</div>
                 </div>
@@ -543,14 +654,6 @@ const Profile: React.FC = () => {
               </button>
               <button
                 onClick={() => {
-                  setEditFormData({
-                    name: artistData.name,
-                    stageName: artistData.stageName,
-                    bio: artistData.bio,
-                    location: artistData.location,
-                    genres: [...artistData.genres],
-                    contact: { ...artistData.contact }
-                  });
                   setIsEditModalOpen(true);
                 }}
                 className="flex items-center space-x-2 px-4 py-2 bg-white/60 dark:bg-slate-800/60 text-gray-700 dark:text-gray-300 rounded-lg border border-gray-200/60 dark:border-slate-600/60 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors duration-200"
@@ -563,7 +666,37 @@ const Profile: React.FC = () => {
         </div>
       </div>
 
+      {/* Loading State */}
+      {loading && (
+        <div className="flex items-center justify-center py-20">
+          <div className="text-center">
+            <RefreshCw className="w-12 h-12 text-indigo-600 dark:text-indigo-400 animate-spin mx-auto mb-4" />
+            <p className="text-gray-600 dark:text-gray-400">Loading profile...</p>
+          </div>
+        </div>
+      )}
+
+      {/* Error State */}
+      {error && !loading && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6">
+          <div className="flex items-center space-x-3">
+            <XCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
+            <div>
+              <h3 className="text-lg font-semibold text-red-900 dark:text-red-200">Error Loading Profile</h3>
+              <p className="text-red-700 dark:text-red-300">{error}</p>
+            </div>
+          </div>
+          <button
+            onClick={handleRefresh}
+            className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+          >
+            Try Again
+          </button>
+        </div>
+      )}
+
       {/* Content */}
+      {!loading && !error && (
       <div className="space-y-8">
         {/* Artist Header Card */}
         <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-2xl p-8 border border-white/20 dark:border-slate-700/30 shadow-2xl">
@@ -572,10 +705,10 @@ const Profile: React.FC = () => {
               <div className="relative">
                 <div className="w-24 h-24 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg">
                   <span className="text-2xl font-bold text-white">
-                    {artistData.name.split(' ').map(n => n[0]).join('')}
+                    {(profileData.profile.stage_name || 'A').split(' ').map(n => n[0]).join('')}
                   </span>
                 </div>
-                {artistData.verified && (
+                {profileData.profile.verified && (
                   <div className="absolute -top-2 -right-2 bg-blue-500 p-1 rounded-full">
                     <Verified className="w-4 h-4 text-white" />
                   </div>
@@ -584,27 +717,32 @@ const Profile: React.FC = () => {
               <div>
                 <div className="flex items-center space-x-3 mb-2">
                   <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-                    {artistData.name}
+                    {profileData.profile.stage_name || 'Artist'}
                   </h1>
-                  <span className="text-lg text-gray-600 dark:text-gray-300">
-                    ({artistData.stageName})
-                  </span>
                 </div>
-                <p className="text-gray-600 dark:text-gray-300 mb-3 max-w-2xl leading-relaxed">{artistData.bio}</p>
+                <p className="text-gray-600 dark:text-gray-300 mb-3 max-w-2xl leading-relaxed">{profileData.profile.bio || 'No bio available'}</p>
                 <div className="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400">
-                  <div className="flex items-center space-x-1">
-                    <MapPin className="w-4 h-4" />
-                    <span>{artistData.location}</span>
-                  </div>
-                  <span>•</span>
-                  <span>Joined {formatDate(artistData.joinDate)}</span>
-                  <span>•</span>
+                  {profileData.profile.location && (
+                    <>
+                      <div className="flex items-center space-x-1">
+                        <MapPin className="w-4 h-4" />
+                        <span>{profileData.profile.location}</span>
+                      </div>
+                      <span>•</span>
+                    </>
+                  )}
+                  {profileData.profile.join_date && (
+                    <>
+                      <span>Joined {formatDate(profileData.profile.join_date)}</span>
+                      <span>•</span>
+                    </>
+                  )}
                   <span>
-                    {artistData.followers.toLocaleString()} followers
+                    {(profileData.stats.followers || 0).toLocaleString()} followers
                   </span>
                 </div>
                 <div className="flex items-center space-x-2 mt-3">
-                  {artistData.genres.map((genre, idx) => (
+                  {(profileData.profile.genres || []).map((genre, idx) => (
                     <span
                       key={idx}
                       className="bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 px-3 py-1 rounded-full text-sm font-medium"
@@ -625,7 +763,7 @@ const Profile: React.FC = () => {
               </div>
               <div>
                 <p className="text-xs text-gray-500 dark:text-gray-400">Email</p>
-                <p className="text-sm font-medium text-gray-900 dark:text-white">{artistData.contact.email}</p>
+                <p className="text-sm font-medium text-gray-900 dark:text-white">{profileData.contact.email || 'Not provided'}</p>
               </div>
             </div>
             <div className="flex items-center space-x-3 p-3 bg-gray-50/80 dark:bg-slate-800/60 rounded-lg">
@@ -634,7 +772,7 @@ const Profile: React.FC = () => {
               </div>
               <div>
                 <p className="text-xs text-gray-500 dark:text-gray-400">Phone</p>
-                <p className="text-sm font-medium text-gray-900 dark:text-white">{artistData.contact.phone}</p>
+                <p className="text-sm font-medium text-gray-900 dark:text-white">{profileData.contact.phone || 'Not provided'}</p>
               </div>
             </div>
             <div className="flex items-center space-x-3 p-3 bg-gray-50/80 dark:bg-slate-800/60 rounded-lg">
@@ -643,7 +781,7 @@ const Profile: React.FC = () => {
               </div>
               <div>
                 <p className="text-xs text-gray-500 dark:text-gray-400">Instagram</p>
-                <p className="text-sm font-medium text-gray-900 dark:text-white">{artistData.contact.instagram}</p>
+                <p className="text-sm font-medium text-gray-900 dark:text-white">{profileData.contact.instagram || 'Not provided'}</p>
               </div>
             </div>
             <div className="flex items-center space-x-3 p-3 bg-gray-50/80 dark:bg-slate-800/60 rounded-lg">
@@ -652,24 +790,28 @@ const Profile: React.FC = () => {
               </div>
               <div>
                 <p className="text-xs text-gray-500 dark:text-gray-400">Twitter</p>
-                <p className="text-sm font-medium text-gray-900 dark:text-white">{artistData.contact.twitter}</p>
+                <p className="text-sm font-medium text-gray-900 dark:text-white">{profileData.contact.twitter || 'Not provided'}</p>
               </div>
             </div>
           </div>
 
           {/* Achievements */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {artistData.achievements.map((achievement, idx) => (
+            {(profileData.achievements || []).map((achievement, idx) => {
+              // Map icon name to component
+              const IconComponent = achievement.icon === 'Crown' ? Crown : achievement.icon === 'Star' ? Star : Radio;
+              return (
               <div key={idx} className="flex items-center space-x-3 p-4 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-lg border border-indigo-200 dark:border-indigo-800/50">
-                <div className={`p-2 rounded-lg ${achievement.color.replace('text-', 'bg-').replace('-500', '-100 dark:bg-').replace('-400', '-900/30')}`}>
-                  <achievement.icon className={`w-5 h-5 ${achievement.color}`} />
+                <div className="p-2 rounded-lg bg-indigo-100 dark:bg-indigo-900/30">
+                  <IconComponent className={`w-5 h-5 ${achievement.color}`} />
                 </div>
                 <div>
                   <h4 className="font-semibold text-gray-900 dark:text-white text-sm">{achievement.title}</h4>
                   <p className="text-xs text-gray-600 dark:text-gray-300">{achievement.description}</p>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -758,22 +900,22 @@ const Profile: React.FC = () => {
                 <div className="space-y-4">
                   <div className="flex justify-between items-center p-3 bg-gray-50/80 dark:bg-slate-800/60 rounded-lg">
                     <span className="text-gray-600 dark:text-gray-300">Total Plays</span>
-                    <span className="text-gray-900 dark:text-white font-semibold">{artistData.stats.monthlyPlays}</span>
+                    <span className="text-gray-900 dark:text-white font-semibold">{(profileData.stats.monthly_plays || 0).toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between items-center p-3 bg-gray-50/80 dark:bg-slate-800/60 rounded-lg">
                     <span className="text-gray-600 dark:text-gray-300">Total Earnings</span>
                     <span className="text-green-600 dark:text-green-400 font-semibold">
-                      {formatCurrency(artistData.stats.monthlyEarnings)}
+                      {formatCurrency(profileData.stats.monthly_earnings)}
                     </span>
                   </div>
                   <div className="flex justify-between items-center p-3 bg-gray-50/80 dark:bg-slate-800/60 rounded-lg">
                     <span className="text-gray-600 dark:text-gray-300">New Followers</span>
-                    <span className="text-purple-600 dark:text-purple-400 font-semibold">+{artistData.stats.newFollowers}</span>
+                    <span className="text-purple-600 dark:text-purple-400 font-semibold">+{(profileData.stats.new_followers || 0).toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between items-center p-3 bg-gray-50/80 dark:bg-slate-800/60 rounded-lg">
                     <span className="text-gray-600 dark:text-gray-300">Radio Coverage</span>
                     <span className="text-blue-600 dark:text-blue-400 font-semibold">
-                      {artistData.stats.radioCoverage} stations
+                      {profileData.stats.radio_coverage || 0} stations
                     </span>
                   </div>
                 </div>
@@ -785,31 +927,36 @@ const Profile: React.FC = () => {
                   <TrendingUp className="w-5 h-5 mr-2 text-purple-500" />
                   Top Performing Songs
                 </h2>
-                <div className="space-y-3">
-                  {songsData.slice(0, 3).map((song, idx) => (
-                    <div
-                      key={song.id}
-                      className="flex items-center justify-between p-3 bg-gray-50/80 dark:bg-slate-800/60 rounded-lg hover:bg-gray-100/50 dark:hover:bg-slate-800/80 transition-colors duration-200"
-                    >
-                      <div className="flex items-center space-x-3">
-                        <div className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold">
-                          {idx + 1}
-                        </div>
-                        <div>
-                          <div className="text-gray-900 dark:text-white font-medium">
-                            {song.title}
+                {profileData.top_tracks ? (
+                  <div className="space-y-3">
+                    {(profileData.top_tracks || []).slice(0, 3).map((song, idx) => (
+                      <div
+                        key={song.track_id}
+                        className="flex items-center justify-between p-3 bg-gray-50/80 dark:bg-slate-800/60 rounded-lg hover:bg-gray-100/50 dark:hover:bg-slate-800/80 transition-colors duration-200"
+                      >
+                        <div className="flex items-center space-x-3">
+                          <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg flex items-center justify-center text-white font-bold">
+                            {idx + 1}
                           </div>
-                          <div className="text-sm text-gray-600 dark:text-gray-300">
-                            {song.totalPlays.toLocaleString()} plays
+                          <div>
+                            <p className="font-semibold text-gray-900 dark:text-white text-sm">{song.title}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">{(song.total_plays || 0).toLocaleString()} plays</p>
                           </div>
                         </div>
+                        <div className="text-right">
+                          <p className="font-semibold text-green-600 dark:text-green-400 text-sm">
+                            {formatCurrency(song.total_earnings)}
+                          </p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">{song.status}</p>
+                        </div>
                       </div>
-                      <div className="text-green-600 dark:text-green-400 font-semibold">
-                        {formatCurrency(song.totalEarnings)}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center p-4">
+                    <p className="text-gray-500 dark:text-gray-400">Loading...</p>
+                  </div>
+                )}
               </div>
 
               {/* Pending Royalties */}
@@ -847,7 +994,7 @@ const Profile: React.FC = () => {
           {/* Songs Tab */}
           {activeTab === 'songs' && (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-              {songsData.map((song) => (
+              {(profileData.top_tracks || []).map((song) => (
                 <SongCard song={song} />
               ))}
             </div>
@@ -1198,6 +1345,7 @@ const Profile: React.FC = () => {
             </div>
           </div>
         </div>
+      </div>
       )}
     </>
   );

@@ -5,6 +5,7 @@ from artists.views.artist_analytics_view import get_artist_analytics_view
 from artists.views.artist_payments_view import get_artist_payments_view
 from artists.views.artist_hompage import get_artist_homedata
 from artists.views.artist_playlog_views import get_all_track_playlog_view
+from artists.views.artist_profile_view import get_artist_profile_view as get_artist_profile_jwt, update_artist_profile_view
 from artists.views.artist_views import add_artist, archive_artist, edit_artist, get_all_archived_artists_view, get_all_artists_view, get_artist_details_view, get_artist_profile_view, unarchive_artist
 from artists.views.contributions_views import add_contributor, archive_contributor, delete_contributor, edit_contributor, get_all_archived_contributors_view, get_all_contributors_view, get_contributor_details_view, unarchive_contributor, get_artist_contributor_choices_view, get_track_split_summary, auto_balance_track_splits, bulk_update_contributor_splits
 from artists.views.genre_views import add_genre, archive_genre, delete_genre, edit_genre, get_all_archived_genres_view, get_all_genres_view, unarchive_genre
@@ -94,6 +95,10 @@ urlpatterns = [
     path('playlogs/', get_all_track_playlog_view, name='get_all_track_playlog_view'),
     path('analytics/', get_artist_analytics_view, name='get_artist_analytics_view'),
     path('payments/', get_artist_payments_view, name='get_artist_payments_view'),
+    
+    # JWT-based profile endpoints
+    path('profile/', get_artist_profile_jwt, name='get_artist_profile_jwt'),
+    path('profile/update/', update_artist_profile_view, name='update_artist_profile'),
     
     # Enhanced secure media file endpoints
     path('api/', include('artists.api.media_urls')),
