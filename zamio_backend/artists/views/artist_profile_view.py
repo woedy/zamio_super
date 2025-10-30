@@ -75,10 +75,14 @@ def get_artist_profile_view(request):
             'shazam_url': '',  # Not implemented yet
         }
 
-        # Get all tracks for this artist
-        tracks = Track.objects.filter(
-            Q(artist=artist) | Q(contributors__artist=artist)
-        ).distinct()
+        # Get all tracks for this artist (as owner or contributor)
+        if artist.user:
+            tracks = Track.objects.filter(
+                Q(artist=artist) | Q(contributors__user=artist.user)
+            ).distinct()
+        else:
+            # If no user associated, only get tracks where artist is the owner
+            tracks = Track.objects.filter(artist=artist)
 
         # Get genres from tracks
         genres = list(tracks.exclude(genre__isnull=True).values_list('genre__name', flat=True).distinct()[:5])
@@ -138,11 +142,19 @@ def get_artist_profile_view(request):
         for track in top_tracks:
             # Estimate earnings based on play count (₵0.50 per play as example rate)
             track_earnings = track.play_count * 0.50
+            
+            # Format duration from timedelta to string (MM:SS)
+            duration_str = '0:00'
+            if track.duration:
+                total_seconds = int(track.duration.total_seconds())
+                minutes = total_seconds // 60
+                seconds = total_seconds % 60
+                duration_str = f"{minutes}:{seconds:02d}"
 
             top_tracks_data.append({
                 'track_id': track.track_id,
                 'title': track.title,
-                'duration': track.duration or '0:00',
+                'duration': duration_str,
                 'release_date': track.release_date.isoformat() if track.release_date else None,
                 'total_plays': track.play_count,
                 'total_earnings': float(track_earnings),
