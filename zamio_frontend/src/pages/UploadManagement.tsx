@@ -622,24 +622,41 @@ const UploadManagement: React.FC = () => {
 
   const pendingDeleteKind = resolveEntityKind(pendingDelete);
 
-  const handleViewTrack = (upload: UploadData) => {
-    const normalizedEntityTrackId = upload.entityTrackId?.trim();
-    const fallbackTrackId =
-      typeof upload.entityId === 'number' && Number.isFinite(upload.entityId)
-        ? String(upload.entityId)
-        : null;
+  const sanitizeTrackIdentifier = (value: unknown): string | undefined => {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return String(value);
+    }
 
-    const preferredIdentifier = normalizedEntityTrackId && normalizedEntityTrackId.length > 0
-      ? normalizedEntityTrackId
-      : fallbackTrackId;
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) {
+        return undefined;
+      }
+
+      const normalized = trimmed.toLowerCase();
+      if (['undefined', 'null', 'none', 'nan'].includes(normalized)) {
+        return undefined;
+      }
+
+      return trimmed;
+    }
+
+    return undefined;
+  };
+
+  const handleViewTrack = (upload: UploadData) => {
+    const normalizedEntityTrackId = sanitizeTrackIdentifier(upload.entityTrackId);
+    const fallbackTrackId = sanitizeTrackIdentifier(upload.entityId);
+    const fallbackTrackIdNumber =
+      typeof upload.entityId === 'number' && Number.isFinite(upload.entityId) ? upload.entityId : undefined;
+
+    const preferredIdentifier = normalizedEntityTrackId ?? fallbackTrackId;
 
     if (preferredIdentifier) {
       const searchParams = new URLSearchParams({ trackId: preferredIdentifier });
       navigate(`/dashboard/track-details?${searchParams.toString()}`, {
         state: {
-          trackId: typeof upload.entityId === 'number' && Number.isFinite(upload.entityId)
-            ? upload.entityId
-            : undefined,
+          trackId: fallbackTrackIdNumber,
           trackKey: preferredIdentifier,
         },
       });

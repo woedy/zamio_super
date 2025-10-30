@@ -239,6 +239,30 @@ const mapDetailToViewModel = (detail: TrackDetailPayload): TrackViewModel => {
   };
 };
 
+const INVALID_IDENTIFIER_TOKENS = new Set(['undefined', 'null', 'none', 'nan']);
+
+const sanitizeIdentifier = (value: unknown): string | number | undefined => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return undefined;
+    }
+
+    const normalized = trimmed.toLowerCase();
+    if (INVALID_IDENTIFIER_TOKENS.has(normalized)) {
+      return undefined;
+    }
+
+    return trimmed;
+  }
+
+  return undefined;
+};
+
 const TrackDetails: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -246,21 +270,16 @@ const TrackDetails: React.FC = () => {
   const locationState = location.state as { trackId?: number | string; trackKey?: number | string } | null;
   const stateTrackIdentifierRaw = locationState?.trackKey ?? locationState?.trackId;
   const queryTrackIdentifierValue = searchParams.get('trackId') ?? searchParams.get('track');
-  const sanitizedQueryTrackIdentifier =
-    queryTrackIdentifierValue && queryTrackIdentifierValue.trim().length > 0
-      ? queryTrackIdentifierValue.trim()
-      : undefined;
+  const sanitizedQueryTrackIdentifier = sanitizeIdentifier(queryTrackIdentifierValue ?? undefined);
 
   const trackIdentifier: string | number | undefined = (() => {
-    if (typeof stateTrackIdentifierRaw === 'string' && stateTrackIdentifierRaw.trim()) {
-      return stateTrackIdentifierRaw.trim();
+    const sanitizedState = sanitizeIdentifier(stateTrackIdentifierRaw);
+
+    if (sanitizedState !== undefined) {
+      return sanitizedState;
     }
 
-    if (typeof stateTrackIdentifierRaw === 'number' && Number.isFinite(stateTrackIdentifierRaw)) {
-      return stateTrackIdentifierRaw;
-    }
-
-    if (sanitizedQueryTrackIdentifier) {
+    if (sanitizedQueryTrackIdentifier !== undefined) {
       return sanitizedQueryTrackIdentifier;
     }
 
@@ -293,12 +312,7 @@ const TrackDetails: React.FC = () => {
   });
 
   const loadTrackDetail = useCallback(async () => {
-    const normalizedIdentifier =
-      typeof trackIdentifier === 'string'
-        ? trackIdentifier.trim()
-        : typeof trackIdentifier === 'number' && Number.isFinite(trackIdentifier)
-          ? trackIdentifier
-          : null;
+    const normalizedIdentifier = sanitizeIdentifier(trackIdentifier) ?? null;
 
     if (normalizedIdentifier === null || normalizedIdentifier === '') {
       setError('Track identifier is missing.');

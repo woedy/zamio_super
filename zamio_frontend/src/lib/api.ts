@@ -1145,9 +1145,19 @@ export const fetchArtistTrackDetail = async (
   trackIdentifier: number | string,
   options: TrackDetailRequestOptions = {},
 ): Promise<TrackDetailPayload> => {
+  const invalidTokens = new Set(['undefined', 'null', 'none', 'nan']);
   const normalizedIdentifier =
     typeof trackIdentifier === 'string'
-      ? trackIdentifier.trim()
+      ? (() => {
+          const trimmed = trackIdentifier.trim();
+          if (!trimmed) {
+            return '';
+          }
+          if (invalidTokens.has(trimmed.toLowerCase())) {
+            return '';
+          }
+          return trimmed;
+        })()
       : typeof trackIdentifier === 'number' && Number.isFinite(trackIdentifier)
         ? trackIdentifier
         : null;
