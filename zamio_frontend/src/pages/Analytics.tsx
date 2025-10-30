@@ -65,7 +65,8 @@ const Analytics: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  const formatNumber = (num: number) => {
+  const formatNumber = (num: number | undefined) => {
+    if (num === undefined || num === null) return '0';
     if (num >= 1000000) {
       return (num / 1000000).toFixed(1) + 'M';
     } else if (num >= 1000) {
@@ -74,8 +75,9 @@ const Analytics: React.FC = () => {
     return num.toLocaleString();
   };
 
-  const formatCurrency = (amount: number) => {
-    return `₵${amount.toLocaleString()}`;
+  const formatCurrency = (amount: number | undefined) => {
+    if (amount === undefined || amount === null) return '₵0.00';
+    return `₵${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   const getGrowthIcon = (growth: number) => {
@@ -310,7 +312,7 @@ const Analytics: React.FC = () => {
                   </div>
                   <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
                     <span>{formatNumber(source.plays)} plays</span>
-                    <span>₵{source.avgPerPlay.toFixed(3)} per play</span>
+                    <span>₵{(source.avg_per_play ?? 0).toFixed(3)} per play</span>
                   </div>
                 </div>
               ))}
@@ -404,13 +406,13 @@ const Analytics: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {analyticsData.geographicPerformance.map((region) => (
+                      {analyticsData.geographic_performance.map((region) => (
                         <tr key={region.region} className="border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800/50">
                           <td className="py-3 px-2 text-gray-900 dark:text-white font-medium">{region.region}</td>
                           <td className="py-3 px-2 text-right text-gray-900 dark:text-white">{formatNumber(region.plays)}</td>
                           <td className="py-3 px-2 text-right font-medium text-green-600 dark:text-green-400">{formatCurrency(region.revenue)}</td>
                           <td className="py-3 px-2 text-right text-gray-900 dark:text-white">{formatNumber(region.listeners)}</td>
-                          <td className="py-3 px-2 text-right text-gray-900 dark:text-white">₵{region.avgRevenuePerListener}</td>
+                          <td className="py-3 px-2 text-right text-gray-900 dark:text-white">₵{(region.avg_revenue_per_listener ?? 0).toFixed(2)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -433,7 +435,7 @@ const Analytics: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {analyticsData.trackDetails.map((track) => (
+                      {analyticsData.track_details.map((track) => (
                         <tr key={track.title} className="border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800/50">
                           <td className="py-3 px-2 text-gray-900 dark:text-white font-medium">{track.title}</td>
                           <td className="py-3 px-2 text-right">
@@ -441,21 +443,21 @@ const Analytics: React.FC = () => {
                               <div className="w-16 bg-gray-200 dark:bg-slate-700 rounded-full h-2">
                                 <div
                                   className="bg-green-500 h-2 rounded-full"
-                                  style={{ width: `${track.completionRate}%` }}
+                                  style={{ width: `${track.completion_rate ?? 0}%` }}
                                 />
                               </div>
-                              <span className="text-gray-900 dark:text-white text-xs">{track.completionRate}%</span>
+                              <span className="text-gray-900 dark:text-white text-xs">{track.completion_rate ?? 0}%</span>
                             </div>
                           </td>
-                          <td className="py-3 px-2 text-right text-red-600 dark:text-red-400">{track.skipRate}%</td>
-                          <td className="py-3 px-2 text-right text-gray-900 dark:text-white">{track.avgPlayTime}m</td>
+                          <td className="py-3 px-2 text-right text-red-600 dark:text-red-400">{track.skip_rate ?? 0}%</td>
+                          <td className="py-3 px-2 text-right text-gray-900 dark:text-white">{(track.avg_play_time ?? 0).toFixed(1)}m</td>
                           <td className="py-3 px-2 text-right">
                             <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-                              track.completionRate > 75 ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' :
-                              track.completionRate > 60 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                              (track.completion_rate ?? 0) > 75 ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' :
+                              (track.completion_rate ?? 0) > 60 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400' :
                               'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
                             }`}>
-                              {track.completionRate > 75 ? 'High' : track.completionRate > 60 ? 'Medium' : 'Low'}
+                              {(track.completion_rate ?? 0) > 75 ? 'High' : (track.completion_rate ?? 0) > 60 ? 'Medium' : 'Low'}
                             </span>
                           </td>
                         </tr>
