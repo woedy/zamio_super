@@ -98,19 +98,19 @@ def get_artist_profile_view(request):
         # Total earnings from royalty withdrawals
         total_earnings = RoyaltyWithdrawal.objects.filter(
             artist=artist,
-            status='completed'
+            status='processed'
         ).aggregate(total=Sum('amount'))['total'] or 0.0
 
         # Monthly stats
         monthly_plays = PlayLog.objects.filter(
             track__in=tracks,
-            detected_at__gte=thirty_days_ago
+            played_at__gte=thirty_days_ago
         ).count()
 
         monthly_earnings = RoyaltyWithdrawal.objects.filter(
             artist=artist,
-            status='completed',
-            created_at__gte=thirty_days_ago
+            status='processed',
+            requested_at__gte=thirty_days_ago
         ).aggregate(total=Sum('amount'))['total'] or 0.0
 
         # Radio coverage (unique stations)
@@ -136,7 +136,7 @@ def get_artist_profile_view(request):
         # Top tracks (by plays)
         top_tracks_data = []
         top_tracks = tracks.annotate(
-            play_count=Count('playlogs')
+            play_count=Count('track_playlog')
         ).order_by('-play_count')[:5]
 
         for track in top_tracks:
@@ -167,15 +167,25 @@ def get_artist_profile_view(request):
         recent_activity = []
         recent_plays = PlayLog.objects.filter(
             track__in=tracks
-        ).select_related('track', 'station').order_by('-detected_at')[:10]
+        ).select_related('track').order_by('-played_at')[:10]
 
         for play in recent_plays:
+            # Get station name safely without triggering full station query
+            station_name = 'Unknown'
+            try:
+                if play.station_id:
+                    from stations.models import Station
+                    station = Station.objects.only('name').get(id=play.station_id)
+                    station_name = station.name
+            except:
+                pass
+            
             recent_activity.append({
                 'id': play.id,
                 'track_title': play.track.title,
-                'station_name': play.station.name if play.station else 'Unknown',
-                'detected_at': play.detected_at.isoformat() if play.detected_at else None,
-                'confidence_score': float(play.confidence_score) if play.confidence_score else 0.0,
+                'station_name': station_name,
+                'detected_at': play.played_at.isoformat() if play.played_at else None,
+                'confidence_score': float(play.avg_confidence_score) if play.avg_confidence_score else 0.0,
             })
 
         # Achievements (placeholder - implement based on business logic)
