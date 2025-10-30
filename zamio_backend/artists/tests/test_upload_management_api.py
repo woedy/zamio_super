@@ -182,6 +182,7 @@ class UploadManagementAPITestCase(TestCase):
         completed_payload = uploads_by_id['completed_upload_id']
         self.assertEqual(completed_payload['cover_art_url'], self.library_track.cover_art.url)
         self.assertEqual(completed_payload['album_cover_url'], self.album.cover_art.url)
+        self.assertEqual(completed_payload['entity_type'], 'track')
 
         stats = payload.get('stats', {})
         self.assertEqual(stats['total'], 4)

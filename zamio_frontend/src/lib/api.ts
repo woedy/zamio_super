@@ -619,6 +619,20 @@ export const fetchArtistAlbums = async (params: AlbumListParams = {}) => {
   return data;
 };
 
+export const deleteArtistAlbum = async (albumId: number | string) => {
+  const { data } = await authApi.delete<ApiEnvelope<Record<string, unknown>>>(
+    `/api/artists/api/albums/${albumId}/delete/`,
+  );
+  return data;
+};
+
+export const deleteArtistTrack = async (trackId: number | string) => {
+  const { data } = await authApi.delete<ApiEnvelope<Record<string, unknown>>>(
+    `/api/artists/api/tracks/${trackId}/delete/`,
+  );
+  return data;
+};
+
 export interface CreateArtistAlbumPayload {
   title: string;
   release_date?: string;
@@ -780,13 +794,6 @@ export const fetchArtistAlbumDetail = async (albumId: number) => {
   return data;
 };
 
-export const deleteArtistAlbum = async (albumId: number) => {
-  const { data } = await authApi.delete<ApiEnvelope<Record<string, unknown>>>(
-    `/api/artists/api/albums/${albumId}/delete/`,
-  );
-  return data;
-};
-
 interface LegacyTrackPlayLog {
   time?: string | null;
   station?: string | null;
@@ -901,7 +908,7 @@ const normalizeTimestamp = (value: string | null | undefined): string | null => 
 };
 
 export interface TrackDetailTrack {
-  id: number;
+  id: number | string;
   track_id?: string | number | null;
   title: string;
   artist: string;
@@ -987,7 +994,10 @@ export interface TrackDetailPayload {
   contributors: TrackContributorEntry[];
 }
 
-const normalizeTrackDetail = (trackId: number, raw: LegacyTrackDetailResponse): TrackDetailPayload => {
+const normalizeTrackDetail = (
+  trackIdentifier: number | string,
+  raw: LegacyTrackDetailResponse,
+): TrackDetailPayload => {
   const playLogs = ensureArray(raw.playLogs).map<TrackPlayLogEntry>((log) => ({
     played_at: normalizeTimestamp(log.time ?? null),
     station: log.station ?? null,
@@ -1062,10 +1072,34 @@ const normalizeTrackDetail = (trackId: number, raw: LegacyTrackDetailResponse): 
   const totalPlaysFromSeries = playsOverTimeEntries.reduce((sum, entry) => sum + (entry.plays ?? 0), 0);
   const totalPlays = raw.stats?.total_plays ?? raw.plays ?? totalPlaysFromSeries;
 
+  const rawIdentifierValue =
+    typeof trackIdentifier === 'string'
+      ? trackIdentifier.trim()
+      : typeof trackIdentifier === 'number' && Number.isFinite(trackIdentifier)
+        ? trackIdentifier
+        : null;
+
+  const numericIdentifier =
+    typeof rawIdentifierValue === 'number'
+      ? rawIdentifierValue
+      : typeof rawIdentifierValue === 'string'
+        ? Number(rawIdentifierValue)
+        : null;
+
+  const resolvedTrackKey =
+    raw.track_id ?? (typeof rawIdentifierValue === 'string' && rawIdentifierValue ? rawIdentifierValue : null);
+
+  const resolvedTrackId: string | number =
+    typeof raw.track_id === 'number'
+      ? raw.track_id
+      : typeof numericIdentifier === 'number' && Number.isFinite(numericIdentifier)
+        ? numericIdentifier
+        : resolvedTrackKey ?? rawIdentifierValue ?? 'unknown-track';
+
   return {
     track: {
-      id: trackId,
-      track_id: raw.track_id ?? trackId,
+      id: resolvedTrackId,
+      track_id: resolvedTrackKey ?? (typeof resolvedTrackId === 'string' ? resolvedTrackId : null),
       title: raw.title ?? 'Untitled Track',
       artist: raw.artist_name ?? 'Unknown Artist',
       album: raw.album_title ?? null,
@@ -1108,11 +1142,22 @@ export interface TrackDetailRequestOptions {
 }
 
 export const fetchArtistTrackDetail = async (
-  trackId: number,
+  trackIdentifier: number | string,
   options: TrackDetailRequestOptions = {},
-) => {
+): Promise<TrackDetailPayload> => {
+  const normalizedIdentifier =
+    typeof trackIdentifier === 'string'
+      ? trackIdentifier.trim()
+      : typeof trackIdentifier === 'number' && Number.isFinite(trackIdentifier)
+        ? trackIdentifier
+        : null;
+
+  if (normalizedIdentifier === null || normalizedIdentifier === '') {
+    throw new Error('Track identifier is missing.');
+  }
+
   const params = {
-    track_id: trackId,
+    track_id: normalizedIdentifier,
     period: options.period ?? 'all-time',
   };
 
@@ -1122,14 +1167,37 @@ export const fetchArtistTrackDetail = async (
   );
 
   if (!data?.data) {
-    return data as ApiEnvelope<TrackDetailPayload | undefined>;
+    const extractEnvelopeError = (payload?: ApiEnvelope<unknown>) => {
+      if (!payload) {
+        return '';
+      }
+
+      const { errors, message } = payload;
+      if (errors && typeof errors === 'object') {
+        for (const value of Object.values(errors)) {
+          if (Array.isArray(value)) {
+            const first = value.find((item) => typeof item === 'string' && item.trim());
+            if (first) {
+              return first.trim();
+            }
+          } else if (typeof value === 'string' && value.trim()) {
+            return value.trim();
+          }
+        }
+      }
+
+      if (typeof message === 'string' && message.trim()) {
+        return message.trim();
+      }
+
+      return '';
+    };
+
+    const message = extractEnvelopeError(data) || 'Unable to load track details. Please try again.';
+    throw new Error(message);
   }
 
-  const normalized = normalizeTrackDetail(trackId, data.data);
-  return {
-    ...data,
-    data: normalized,
-  } as ApiEnvelope<TrackDetailPayload>;
+  return normalizeTrackDetail(trackIdentifier, data.data);
 };
 
 export interface UpdateArtistTrackPayload {
@@ -1165,7 +1233,7 @@ const appendTrackField = (formData: FormData, key: string, value: unknown) => {
 };
 
 export const updateArtistTrack = async (
-  trackId: number,
+  trackId: number | string,
   payload: UpdateArtistTrackPayload,
 ) => {
   const formData = new FormData();
