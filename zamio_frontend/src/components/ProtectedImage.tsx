@@ -36,15 +36,24 @@ const ProtectedImage: React.FC<ProtectedImageProps> = ({ src: inputSrc, fallback
   const isTestEnv = envMode === 'test';
   const isBrowser = typeof window !== 'undefined';
 
-  useEffect(() => {
+  const shouldSuppressRequest = useMemo(() => {
     if (!normalizedSrc) {
+      return false;
+    }
+
+    const suppressedFragments = ['/media/defaults/track_cover.png'];
+    return suppressedFragments.some((fragment) => normalizedSrc.includes(fragment));
+  }, [normalizedSrc]);
+
+  useEffect(() => {
+    if (!normalizedSrc || shouldSuppressRequest) {
       if (objectUrlRef.current) {
         URL.revokeObjectURL(objectUrlRef.current);
         objectUrlRef.current = null;
       }
       setObjectUrl(null);
       setDirectSrc(null);
-      setHasError(false);
+      setHasError(Boolean(shouldSuppressRequest));
       setIsLoading(false);
       return;
     }
@@ -148,7 +157,7 @@ const ProtectedImage: React.FC<ProtectedImageProps> = ({ src: inputSrc, fallback
         objectUrlRef.current = null;
       }
     };
-  }, [normalizedSrc, isBrowser, isTestEnv]);
+  }, [normalizedSrc, shouldSuppressRequest, isBrowser, isTestEnv]);
 
   useEffect(() => {
     return () => {
