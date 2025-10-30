@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Upload,
@@ -23,6 +23,8 @@ import {
   Phone,
   Percent
 } from 'lucide-react';
+import { initiateUpload, fetchTrackUploadSupportData, createAlbumForUploads } from '../lib/api';
+import { useAuth } from '../lib/auth';
 
 // Types for the multi-step form
 interface TrackData {
@@ -55,27 +57,16 @@ interface ReviewData {
   contributors: ContributorData[];
 }
 
-// Demo data
-const DEMO_GENRES = [
-  { id: '1', name: 'Afrobeats' },
-  { id: '2', name: 'Afro Pop' },
-  { id: '3', name: 'Highlife' },
-  { id: '4', name: 'Hip Hop' },
-  { id: '5', name: 'Gospel' },
-  { id: '6', name: 'Reggae' },
-  { id: '7', name: 'Dancehall' },
-  { id: '8', name: 'R&B' },
-  { id: '9', name: 'Traditional' },
-  { id: '10', name: 'Jazz' }
-];
+interface GenreOption {
+  id: number;
+  name: string;
+}
 
-const DEMO_ALBUMS = [
-  { id: '1', title: '5 Star', releaseDate: '2024-01-15' },
-  { id: '2', title: 'Obra', releaseDate: '2023-11-20' },
-  { id: '3', title: 'Son Of Africa', releaseDate: '2023-06-10' },
-  { id: '4', title: 'Love & Light', releaseDate: '2024-03-05' },
-  { id: '5', title: 'Afro Vibes Collection', releaseDate: '2024-08-12' }
-];
+interface AlbumOption {
+  id: number;
+  title: string;
+  artist_name?: string | null;
+}
 
 const DEMO_CONTRIBUTOR_ROLES = [
   'Artist', 'Producer', 'Songwriter', 'Featured Artist', 'Remixer', 'Engineer', 'Composer'
@@ -83,10 +74,19 @@ const DEMO_CONTRIBUTOR_ROLES = [
 
 const AddTrack: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const artistId = (user && typeof user['artist_id'] === 'string') ? (user['artist_id'] as string) : '';
+  const stageName = (user && typeof user['stage_name'] === 'string') ? (user['stage_name'] as string) : '';
+  const userEmail = (user && typeof user['email'] === 'string') ? (user['email'] as string) : '';
   const [currentStep, setCurrentStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string>('');
+  const [supportLoading, setSupportLoading] = useState(false);
+  const [supportError, setSupportError] = useState<string | null>(null);
+  const [genres, setGenres] = useState<GenreOption[]>([]);
+  const [albums, setAlbums] = useState<AlbumOption[]>([]);
+  const [audioFile, setAudioFile] = useState<File | null>(null);
 
   // Form data for each step
   const [trackData, setTrackData] = useState<TrackData>({
@@ -106,13 +106,67 @@ const AddTrack: React.FC = () => {
   const [contributors, setContributors] = useState<ContributorData[]>([
     {
       id: '1',
-      name: 'King Promise',
-      email: 'kingpromise@demo.com',
-      phone: '+233 20 123 4567',
+      name: stageName || '',
+      email: userEmail,
+      phone: '',
       role: 'Artist',
-      royaltyPercentage: 60
+      royaltyPercentage: 100
     }
   ]);
+
+  useEffect(() => {
+    if (!artistId) {
+      setSupportError('Artist profile is required before uploading tracks.');
+      return;
+    }
+
+    let isActive = true;
+    setSupportLoading(true);
+    setSupportError(null);
+
+    fetchTrackUploadSupportData(artistId)
+      .then((response) => {
+        if (!isActive) return;
+        const payload = response?.data;
+        setGenres(payload?.genres ?? []);
+        setAlbums(payload?.albums ?? []);
+      })
+      .catch(() => {
+        if (!isActive) return;
+        setSupportError('Unable to load genres and albums. Please try again.');
+      })
+      .finally(() => {
+        if (isActive) {
+          setSupportLoading(false);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [artistId]);
+
+  useEffect(() => {
+    if (!stageName) {
+      return;
+    }
+    setContributors((prev) => {
+      if (!prev.length) {
+        return prev;
+      }
+      const [first, ...rest] = prev;
+      if (first.name && first.name !== '') {
+        return prev;
+      }
+      return [
+        {
+          ...first,
+          name: stageName,
+        },
+        ...rest,
+      ];
+    });
+  }, [stageName]);
 
   const steps = [
     { id: 0, label: 'Track Info', icon: Music2, title: 'Track Information' },
@@ -120,6 +174,24 @@ const AddTrack: React.FC = () => {
     { id: 2, label: 'Contributors', icon: Users, title: 'Contributors & Rights' },
     { id: 3, label: 'Review', icon: CheckCircle, title: 'Review & Submit' }
   ];
+
+  const handleAudioFileSelect = (file: File) => {
+    const maxSize = 100 * 1024 * 1024;
+    if (!file.type.startsWith('audio/')) {
+      setError('Please choose a valid audio file.');
+      return;
+    }
+    if (file.size > maxSize) {
+      setError('Audio file is too large. Maximum size is 100MB.');
+      return;
+    }
+    setAudioFile(file);
+    setError(null);
+  };
+
+  const removeAudioFile = () => {
+    setAudioFile(null);
+  };
 
   // Step 1: Track Information Handlers
   const handleTrackInfoChange = (field: keyof TrackData, value: string) => {
@@ -133,6 +205,10 @@ const AddTrack: React.FC = () => {
     }
     if (!trackData.genre) {
       setError('Please select a genre.');
+      return false;
+    }
+    if (!audioFile) {
+      setError('Please select an audio file to upload.');
       return false;
     }
     return true;
@@ -230,44 +306,136 @@ const AddTrack: React.FC = () => {
     }
   };
 
+  const selectedGenre = genres.find((genre) => String(genre.id) === trackData.genre);
+  const selectedAlbum = albums.find((album) => String(album.id) === trackData.album);
+
   // Final Submit
   const handleSubmit = async () => {
-    setLoading(true);
     setError(null);
 
+    if (!validateStep1()) {
+      return;
+    }
+
+    if (!artistId) {
+      setError('Artist profile is required before uploading tracks.');
+      return;
+    }
+
+    if (!audioFile) {
+      setError('Please select an audio file to upload.');
+      return;
+    }
+
+    setLoading(true);
+
+    const sanitizedContributors = contributors
+      .filter((contributor) => contributor.name.trim() || contributor.email.trim())
+      .map((contributor) => ({
+        name: contributor.name.trim(),
+        email: contributor.email.trim(),
+        phone: contributor.phone.trim(),
+        role: contributor.role,
+        royaltyPercentage: contributor.royaltyPercentage,
+      }));
+
+    const trimmedTitle = trackData.title.trim();
+
     try {
-      // Simulate processing time
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const formData = new FormData();
+      formData.append('upload_type', 'track_audio');
+      formData.append('file', audioFile);
+      formData.append('title', trimmedTitle);
+      formData.append('artist_name', stageName || '');
+      formData.append('explicit', 'false');
 
-      const reviewData: ReviewData = {
-        trackData,
-        coverArtData,
-        contributors
-      };
+      if (trackData.genre) {
+        formData.append('genre_id', trackData.genre);
+      }
+      if (selectedGenre) {
+        formData.append('genre_name', selectedGenre.name);
+      }
+      if (trackData.album) {
+        formData.append('album_id', trackData.album);
+      }
+      if (selectedAlbum) {
+        formData.append('album_title', selectedAlbum.title);
+      }
+      if (trackData.releaseDate) {
+        formData.append('release_date', trackData.releaseDate);
+      }
+      if (trackData.description) {
+        formData.append('lyrics', trackData.description);
+      }
+      if (sanitizedContributors.length) {
+        formData.append('contributors', JSON.stringify(sanitizedContributors));
+      }
 
-      console.log('Track upload completed:', reviewData);
+      const response = await initiateUpload(formData);
+      const payload = response?.data ?? {};
+      const uploadId = payload['upload_id'] as string | undefined;
+      const trackId = payload['track_id'] as number | undefined;
 
-      setSuccessMessage(`${trackData.title} has been successfully uploaded with ${contributors.length} contributor(s)!`);
+      if (coverArtData.file && trackId) {
+        const coverFormData = new FormData();
+        coverFormData.append('upload_type', 'track_cover');
+        coverFormData.append('file', coverArtData.file);
+        coverFormData.append('track_id', String(trackId));
+        coverFormData.append('title', trimmedTitle);
+        if (trackData.album) {
+          coverFormData.append('album_id', trackData.album);
+        }
+        try {
+          await initiateUpload(coverFormData);
+        } catch (coverError) {
+          console.error('Cover art upload failed', coverError);
+          setSupportError('Cover art upload failed. You can retry from Upload Management.');
+        }
+      }
+
+      setSuccessMessage(`${trimmedTitle} is being processed. You can monitor progress from Upload Management.`);
       setCurrentStep(3);
 
-      // Reset form after success
       setTimeout(() => {
         setTrackData({ title: '', genre: '', album: '', releaseDate: '', description: '' });
+        setAudioFile(null);
+        if (coverArtData.preview) {
+          URL.revokeObjectURL(coverArtData.preview);
+        }
         setCoverArtData({ file: null, fileName: null, preview: null });
-        setContributors([{
-          id: '1',
-          name: 'King Promise',
-          email: 'kingpromise@demo.com',
-          phone: '+233 20 123 4567',
-          role: 'Artist',
-          royaltyPercentage: 60
-        }]);
+        setContributors([
+          {
+            id: '1',
+            name: stageName || '',
+            email: userEmail,
+            phone: '',
+            role: 'Artist',
+            royaltyPercentage: 100,
+          },
+        ]);
         setCurrentStep(0);
         setSuccessMessage('');
-      }, 3000);
-
-    } catch (err) {
-      setError('Failed to upload track. Please try again.');
+        if (uploadId) {
+          navigate('/dashboard/upload-management', { state: { highlightUploadId: uploadId } });
+        } else {
+          navigate('/dashboard/upload-management');
+        }
+      }, 2000);
+    } catch (err: any) {
+      let message = 'Failed to upload track. Please try again.';
+      const responseErrors = err?.response?.data?.errors;
+      if (responseErrors && typeof responseErrors === 'object') {
+        const firstKey = Object.keys(responseErrors)[0];
+        const firstMessage = responseErrors[firstKey];
+        if (Array.isArray(firstMessage) && firstMessage.length > 0) {
+          message = String(firstMessage[0]);
+        } else if (typeof firstMessage === 'string') {
+          message = firstMessage;
+        }
+      } else if (err?.response?.data?.message) {
+        message = String(err.response.data.message);
+      }
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -277,13 +445,32 @@ const AddTrack: React.FC = () => {
   const renderStepContent = () => {
     switch (currentStep) {
       case 0:
-        return <TrackInfoStep data={trackData} onChange={handleTrackInfoChange} />;
+        return (
+          <TrackInfoStep
+            data={trackData}
+            onChange={handleTrackInfoChange}
+            genres={genres}
+            albums={albums}
+            audioFile={audioFile}
+            onAudioSelect={handleAudioFileSelect}
+            onAudioRemove={removeAudioFile}
+            isLoading={supportLoading}
+            errorMessage={supportError}
+          />
+        );
       case 1:
         return <CoverArtStep data={coverArtData} onFileSelect={handleCoverArtFile} onDrop={handleCoverArtDrop} onRemove={removeCoverArt} />;
       case 2:
         return <ContributorsStep contributors={contributors} onAdd={addContributor} onUpdate={updateContributor} onRemove={removeContributor} />;
       case 3:
-        return <ReviewStep data={{ trackData, coverArtData, contributors }} />;
+        return (
+          <ReviewStep
+            data={{ trackData, coverArtData, contributors }}
+            genreName={selectedGenre?.name ?? 'Not selected'}
+            albumTitle={selectedAlbum?.title ?? 'No album selected'}
+            audioFileName={audioFile?.name ?? null}
+          />
+        );
       default:
         return null;
     }
@@ -436,84 +623,140 @@ const AddTrack: React.FC = () => {
 const TrackInfoStep: React.FC<{
   data: TrackData;
   onChange: (field: keyof TrackData, value: string) => void;
-}> = ({ data, onChange }) => (
+  genres: GenreOption[];
+  albums: AlbumOption[];
+  audioFile: File | null;
+  onAudioSelect: (file: File) => void;
+  onAudioRemove: () => void;
+  isLoading: boolean;
+  errorMessage?: string | null;
+}> = ({ data, onChange, genres, albums, audioFile, onAudioSelect, onAudioRemove, isLoading, errorMessage }) => (
   <div className="space-y-6">
     <div className="flex items-center space-x-3 mb-6">
       <Music className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
       <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Track Information</h2>
     </div>
 
+    {errorMessage && (
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-700 dark:border-amber-900/60 dark:bg-amber-900/30 dark:text-amber-200">
+        {errorMessage}
+      </div>
+    )}
+
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      {/* Track Title */}
       <div className="md:col-span-2">
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          Audio File <span className="text-red-500">*</span>
+        </label>
+        <div className={`rounded-lg border-2 border-dashed ${audioFile ? 'border-emerald-300 dark:border-emerald-600 bg-emerald-50/40 dark:bg-emerald-900/10' : 'border-gray-300 dark:border-slate-600 bg-gray-50/40 dark:bg-slate-800/20'} p-4 transition-all duration-200`}>
+          {audioFile ? (
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-gray-900 dark:text-white">{audioFile.name}</p>
+                <p className="text-xs text-gray-600 dark:text-gray-400">
+                  {(audioFile.size / (1024 * 1024)).toFixed(2)} MB • {audioFile.type || 'audio'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onAudioRemove}
+                className="inline-flex items-center px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300"
+              >
+                Remove file
+              </button>
+            </div>
+          ) : (
+            <label className="flex flex-col items-center justify-center space-y-3 cursor-pointer">
+              <Upload className="w-8 h-8 text-indigo-500" />
+              <div className="text-center">
+                <p className="text-sm font-medium text-gray-900 dark:text-white">Select or drag in your audio file</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Supports MP3, WAV, AAC up to 100MB</p>
+              </div>
+              <input
+                type="file"
+                accept="audio/*"
+                onChange={(e) => e.target.files?.[0] && onAudioSelect(e.target.files[0])}
+                aria-label="Audio file"
+                className="hidden"
+              />
+              <span className="px-4 py-2 rounded-md bg-indigo-600 text-white text-xs uppercase tracking-wide">Browse Files</span>
+            </label>
+          )}
+        </div>
+      </div>
+
+      <div className="md:col-span-2">
+        <label htmlFor="track-title" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
           Track Title <span className="text-red-500">*</span>
         </label>
         <input
           type="text"
           value={data.title}
           onChange={(e) => onChange('title', e.target.value)}
+          id="track-title"
           className="w-full px-4 py-3 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200"
           placeholder="Enter track title"
         />
       </div>
 
-      {/* Genre */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+        <label htmlFor="track-genre" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
           Genre <span className="text-red-500">*</span>
         </label>
         <select
           value={data.genre}
           onChange={(e) => onChange('genre', e.target.value)}
-          className="w-full px-4 py-3 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200"
+          id="track-genre"
+          disabled={isLoading}
+          className="w-full px-4 py-3 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200 disabled:opacity-60"
         >
           <option value="">Select Genre</option>
-          {DEMO_GENRES.map(genre => (
+          {genres.map((genre) => (
             <option key={genre.id} value={genre.id}>{genre.name}</option>
           ))}
         </select>
       </div>
 
-      {/* Album */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+        <label htmlFor="track-album" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
           Album
         </label>
         <select
           value={data.album}
           onChange={(e) => onChange('album', e.target.value)}
-          className="w-full px-4 py-3 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200"
+          id="track-album"
+          disabled={isLoading}
+          className="w-full px-4 py-3 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200 disabled:opacity-60"
         >
           <option value="">Select Album (Optional)</option>
-          {DEMO_ALBUMS.map(album => (
+          {albums.map((album) => (
             <option key={album.id} value={album.id}>{album.title}</option>
           ))}
         </select>
       </div>
 
-      {/* Release Date */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+        <label htmlFor="track-release-date" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
           Release Date
         </label>
         <input
           type="date"
           value={data.releaseDate}
           onChange={(e) => onChange('releaseDate', e.target.value)}
+          id="track-release-date"
           className="w-full px-4 py-3 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200"
         />
       </div>
 
-      {/* Description */}
       <div className="md:col-span-2">
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+        <label htmlFor="track-description" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
           Description
         </label>
         <textarea
           value={data.description}
           onChange={(e) => onChange('description', e.target.value)}
           rows={4}
+          id="track-description"
           className="w-full px-4 py-3 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200"
           placeholder="Brief description of the track (optional)"
         />
@@ -726,7 +969,10 @@ const ContributorsStep: React.FC<{
 // Step 4: Review Component
 const ReviewStep: React.FC<{
   data: ReviewData;
-}> = ({ data }) => (
+  genreName: string;
+  albumTitle: string;
+  audioFileName: string | null;
+}> = ({ data, genreName, albumTitle, audioFileName }) => (
   <div className="space-y-6">
     <div className="flex items-center space-x-3 mb-6">
       <CheckCircle className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
@@ -747,20 +993,22 @@ const ReviewStep: React.FC<{
           </div>
           <div className="flex justify-between">
             <span className="text-sm text-gray-600 dark:text-gray-400">Genre:</span>
-            <span className="text-sm font-medium text-gray-900 dark:text-white">
-              {DEMO_GENRES.find(g => g.id === data.trackData.genre)?.name || 'Not selected'}
-            </span>
+            <span className="text-sm font-medium text-gray-900 dark:text-white">{genreName}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-sm text-gray-600 dark:text-gray-400">Album:</span>
-            <span className="text-sm font-medium text-gray-900 dark:text-white">
-              {DEMO_ALBUMS.find(a => a.id === data.trackData.album)?.title || 'No album selected'}
-            </span>
+            <span className="text-sm font-medium text-gray-900 dark:text-white">{albumTitle}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-sm text-gray-600 dark:text-gray-400">Release Date:</span>
             <span className="text-sm font-medium text-gray-900 dark:text-white">
               {data.trackData.releaseDate || 'Not set'}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-sm text-gray-600 dark:text-gray-400">Audio File:</span>
+            <span className="text-sm font-medium text-gray-900 dark:text-white">
+              {audioFileName || 'No file selected'}
             </span>
           </div>
           {data.trackData.description && (

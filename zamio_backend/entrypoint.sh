@@ -9,6 +9,11 @@ log() {
 
 log "Starting ZamIO Django application..."
 
+MEDIA_BASE="${MEDIA_ROOT:-/app/media}"
+STATIC_BASE="${STATIC_ROOT:-/app/static_cdn/static_root}"
+log "Ensuring media directory at ${MEDIA_BASE} and static directory at ${STATIC_BASE}"
+mkdir -p "${MEDIA_BASE}" "${MEDIA_BASE}/temp" "${STATIC_BASE}"
+
 # Wait for database to be ready using pg_isready
 log "Waiting for database to be ready..."
 PG_ISREADY_CMD=(pg_isready)

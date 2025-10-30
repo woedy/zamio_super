@@ -14,6 +14,7 @@ import librosa
 from celery import shared_task
 from django.conf import settings
 from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 
@@ -30,10 +31,16 @@ def _handle_processing_error(upload_id: str, track_id: int, user_id: int, error_
         # Update processing status
         status = UploadProcessingStatus.objects.get(upload_id=upload_id)
         status.mark_failed(error_msg)
-        
-        # Get track for audit logging
+
+        # Get track for audit logging and flag as failed
         track = Track.objects.get(id=track_id)
         user = User.objects.get(id=user_id)
+
+        track.processing_status = 'failed'
+        track.processing_error = error_msg
+        track.processed_at = timezone.now()
+        track.fingerprinted = False
+        track.save(update_fields=['processing_status', 'processing_error', 'processed_at', 'fingerprinted'])
         
         # Create audit log
         AuditLog.objects.create(
@@ -62,14 +69,14 @@ def process_track_upload(
     self,
     upload_id: str,
     track_id: int,
-    temp_file_path: str,
+    source_file_path: str,
     original_filename: str,
     user_id: int,
 ) -> Dict[str, Any]:
     """
     Process uploaded track file in background with progress tracking.
     """
-    wav_path = mp3_path = None
+    source_temp_path = wav_path = mp3_path = None
     try:
         status = UploadProcessingStatus.objects.get(upload_id=upload_id)
         status.mark_started()
@@ -82,9 +89,19 @@ def process_track_upload(
 
         # Prepare paths
         ext = os.path.splitext(original_filename)[1].lower()
+        if not ext:
+            ext = os.path.splitext(source_file_path)[1].lower()
         base = uuid.uuid4().hex
         temp_dir = os.path.join(settings.MEDIA_ROOT, "temp")
         os.makedirs(temp_dir, exist_ok=True)
+
+        source_suffix = ext if ext else ".upload"
+        source_temp_path = os.path.join(temp_dir, f"{base}_source{source_suffix}")
+        try:
+            with default_storage.open(source_file_path, "rb") as stored_file, open(source_temp_path, "wb") as temp_file:
+                shutil.copyfileobj(stored_file, temp_file)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Stored upload {source_file_path} could not be located for processing")
 
         wav_path = os.path.join(temp_dir, f"{base}.wav")
         mp3_path = os.path.join(temp_dir, f"{base}.mp3")
@@ -94,18 +111,18 @@ def process_track_upload(
         # Convert audio formats with FFmpeg
         if ext == ".mp3":
             subprocess.run(
-                ["ffmpeg", "-i", temp_file_path, "-ar", "44100", "-ac", "2", wav_path],
+                ["ffmpeg", "-i", source_temp_path, "-ar", "44100", "-ac", "2", wav_path],
                 check=True,
                 capture_output=True,
             )
-            shutil.copyfile(temp_file_path, mp3_path)
+            shutil.copyfile(source_temp_path, mp3_path)
         elif ext == ".wav":
             subprocess.run(
-                ["ffmpeg", "-i", temp_file_path, "-b:a", "192k", mp3_path],
+                ["ffmpeg", "-i", source_temp_path, "-b:a", "192k", mp3_path],
                 check=True,
                 capture_output=True,
             )
-            shutil.copyfile(temp_file_path, wav_path)
+            shutil.copyfile(source_temp_path, wav_path)
         else:
             raise ValueError(f"Unsupported file type: {ext}")
 
@@ -191,6 +208,11 @@ def process_track_upload(
             "fingerprints_created": len(fingerprints),
         }
 
+    except FileNotFoundError as e:
+        return _handle_processing_error(
+            upload_id, track_id, user_id, str(e), "missing_source_file"
+        )
+
     except subprocess.CalledProcessError as e:
         return _handle_processing_error(
             upload_id, track_id, user_id, f"Audio conversion failed: {e.stderr.decode()}", "conversion_failed"
@@ -201,12 +223,17 @@ def process_track_upload(
 
     finally:
         # Clean up temporary files
-        for path in [temp_file_path, wav_path, mp3_path]:
+        for path in [source_temp_path, wav_path, mp3_path]:
             if path and os.path.exists(path):
                 try:
                     os.remove(path)
                 except OSError:
                     pass
+        if source_file_path and default_storage.exists(source_file_path):
+            try:
+                default_storage.delete(source_file_path)
+            except Exception:
+                pass
 
 
 @shared_task(bind=True, max_retries=2)
@@ -277,13 +304,14 @@ def process_cover_art_upload(
     self,
     upload_id: str,
     track_id: int,
-    temp_file_path: str,
+    source_file_path: str,
     original_filename: str,
     user_id: int,
 ) -> Dict[str, Any]:
     """
     Process uploaded cover art file in background with progress tracking.
     """
+    source_temp_path = optimized_path = None
     try:
         status = UploadProcessingStatus.objects.get(upload_id=upload_id)
         status.mark_started()
@@ -296,28 +324,41 @@ def process_cover_art_upload(
 
         # Validate image file
         from PIL import Image
+        ext = os.path.splitext(original_filename)[1].lower()
+        if not ext:
+            ext = os.path.splitext(source_file_path)[1].lower()
+        temp_dir = os.path.join(settings.MEDIA_ROOT, "temp")
+        os.makedirs(temp_dir, exist_ok=True)
+        source_suffix = ext if ext else ".upload"
+        base = uuid.uuid4().hex
+        source_temp_path = os.path.join(temp_dir, f"{base}_cover{source_suffix}")
         try:
-            with Image.open(temp_file_path) as img:
+            with default_storage.open(source_file_path, "rb") as stored_file, open(source_temp_path, "wb") as temp_file:
+                shutil.copyfileobj(stored_file, temp_file)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Stored upload {source_file_path} could not be located for processing")
+        try:
+            with Image.open(source_temp_path) as img:
                 # Verify it's a valid image
                 img.verify()
-                
+
             # Reopen for processing (verify() closes the file)
-            with Image.open(temp_file_path) as img:
+            with Image.open(source_temp_path) as img:
                 # Convert to RGB if necessary
                 if img.mode in ('RGBA', 'LA', 'P'):
                     img = img.convert('RGB')
-                
+
                 status.update_progress(50, "Optimizing image")
-                
+
                 # Resize if too large (max 1024x1024)
                 max_size = (1024, 1024)
                 if img.size[0] > max_size[0] or img.size[1] > max_size[1]:
                     img.thumbnail(max_size, Image.Resampling.LANCZOS)
-                
+
                 # Save optimized image
-                optimized_path = temp_file_path + "_optimized.jpg"
+                optimized_path = source_temp_path + "_optimized.jpg"
                 img.save(optimized_path, 'JPEG', quality=85, optimize=True)
-                
+
         except Exception as e:
             raise ValueError(f"Invalid image file: {str(e)}")
 
@@ -368,6 +409,11 @@ def process_cover_art_upload(
             "cover_art_url": track.cover_art.url if track.cover_art else None,
         }
 
+    except FileNotFoundError as e:
+        return _handle_processing_error(
+            upload_id, track_id, user_id, str(e), "missing_source_file"
+        )
+
     except Exception as e:
         return _handle_processing_error(
             upload_id, track_id, user_id, str(e), "cover_art_processing_failed"
@@ -375,12 +421,17 @@ def process_cover_art_upload(
 
     finally:
         # Clean up temporary files
-        for path in [temp_file_path, temp_file_path + "_optimized.jpg"]:
+        for path in [source_temp_path, optimized_path]:
             if path and os.path.exists(path):
                 try:
                     os.remove(path)
                 except OSError:
                     pass
+        if source_file_path and default_storage.exists(source_file_path):
+            try:
+                default_storage.delete(source_file_path)
+            except Exception:
+                pass
 
 
 @shared_task(bind=True, max_retries=2)
@@ -399,11 +450,18 @@ def cleanup_failed_uploads(self) -> Dict[str, Any]:
         cleaned_count = 0
         for upload in failed_uploads:
             try:
+                temp_storage_key = (upload.metadata or {}).get('internal_temp_storage_path')
+                if temp_storage_key and default_storage.exists(temp_storage_key):
+                    try:
+                        default_storage.delete(temp_storage_key)
+                    except Exception:
+                        pass
                 # Clean up any associated temporary files
                 temp_dir = os.path.join(settings.MEDIA_ROOT, 'temp')
-                for filename in os.listdir(temp_dir):
-                    if upload.upload_id in filename:
-                        os.remove(os.path.join(temp_dir, filename))
+                if os.path.isdir(temp_dir):
+                    for filename in os.listdir(temp_dir):
+                        if upload.upload_id in filename:
+                            os.remove(os.path.join(temp_dir, filename))
                 
                 # Delete the upload record
                 upload.delete()
