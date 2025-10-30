@@ -1,10 +1,11 @@
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from .view import home_page
+from .media_views import serve_media_with_cors
 from accounts.api.custom_jwt import CustomTokenObtainPairView, CustomTokenRefreshView, CustomTokenVerifyView
 from .api_views import (
     log_frontend_error, 
@@ -53,7 +54,12 @@ urlpatterns = [
 
 ]
 
+# Serve media files with CORS headers
+# Use custom view to ensure proper CORS headers for images, audio, video
+urlpatterns += [
+    re_path(r'^media/(?P<path>.*)$', serve_media_with_cors, name='media'),
+]
+
 if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 

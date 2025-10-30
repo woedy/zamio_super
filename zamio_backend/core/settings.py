@@ -311,6 +311,36 @@ if not CORS_ALLOW_ALL_ORIGINS:
         )
     )
 
+# CORS headers for media files (images, audio, video)
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+    'range',  # For audio/video streaming
+]
+
+CORS_EXPOSE_HEADERS = [
+    'content-length',
+    'content-range',
+    'accept-ranges',
+]
+
+# Allow all HTTP methods for CORS
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+
 
 def _env_flag(name: str, default: bool) -> bool:
     return os.environ.get(name, str(default)).lower() in {"1", "true", "yes"}
@@ -361,8 +391,8 @@ PERMISSIONS_POLICY = os.environ.get(
 )
 
 CROSS_ORIGIN_OPENER_POLICY = os.environ.get('CROSS_ORIGIN_OPENER_POLICY', 'same-origin')
-CROSS_ORIGIN_EMBEDDER_POLICY = os.environ.get('CROSS_ORIGIN_EMBEDDER_POLICY', 'require-corp')
-CROSS_ORIGIN_RESOURCE_POLICY = os.environ.get('CROSS_ORIGIN_RESOURCE_POLICY', 'same-origin')
+CROSS_ORIGIN_EMBEDDER_POLICY = os.environ.get('CROSS_ORIGIN_EMBEDDER_POLICY', 'unsafe-none')  # Changed from require-corp to allow media
+CROSS_ORIGIN_RESOURCE_POLICY = os.environ.get('CROSS_ORIGIN_RESOURCE_POLICY', 'cross-origin')  # Changed from same-origin to allow media access
 
 
 # JWT Configuration
