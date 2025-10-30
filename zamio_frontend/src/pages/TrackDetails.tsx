@@ -77,7 +77,7 @@ interface TrackPlayLogViewModel {
 }
 
 interface TrackViewModel {
-  id: number;
+  id: number | string;
   title: string;
   artist_name: string;
   album: string | null;
@@ -130,6 +130,25 @@ const formatDateLabel = (value: string | null) => {
 };
 
 const ensureNonEmpty = <T,>(items: T[], fallback: T): T[] => (items.length > 0 ? items : [fallback]);
+
+const resolveTrackErrorMessage = (error: unknown): string => {
+  if (typeof error === 'string' && error.trim()) {
+    return error.trim();
+  }
+
+  if (error instanceof Error && typeof error.message === 'string' && error.message.trim()) {
+    return error.message.trim();
+  }
+
+  if (error && typeof error === 'object') {
+    const maybeMessage = (error as { message?: unknown }).message;
+    if (typeof maybeMessage === 'string' && maybeMessage.trim()) {
+      return maybeMessage.trim();
+    }
+  }
+
+  return 'Unable to load track details. Please try again.';
+};
 
 const mapDetailToViewModel = (detail: TrackDetailPayload): TrackViewModel => {
   const track = detail.track;
@@ -220,14 +239,52 @@ const mapDetailToViewModel = (detail: TrackDetailPayload): TrackViewModel => {
   };
 };
 
+const INVALID_IDENTIFIER_TOKENS = new Set(['undefined', 'null', 'none', 'nan']);
+
+const sanitizeIdentifier = (value: unknown): string | number | undefined => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return undefined;
+    }
+
+    const normalized = trimmed.toLowerCase();
+    if (INVALID_IDENTIFIER_TOKENS.has(normalized)) {
+      return undefined;
+    }
+
+    return trimmed;
+  }
+
+  return undefined;
+};
+
 const TrackDetails: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const stateTrackId = (location.state as { trackId?: number } | null)?.trackId;
-  const queryTrackIdValue = searchParams.get('trackId');
-  const parsedQueryTrackId = queryTrackIdValue ? Number(queryTrackIdValue) : undefined;
-  const trackId = stateTrackId ?? (Number.isFinite(parsedQueryTrackId) ? parsedQueryTrackId : undefined);
+  const locationState = location.state as { trackId?: number | string; trackKey?: number | string } | null;
+  const stateTrackIdentifierRaw = locationState?.trackKey ?? locationState?.trackId;
+  const queryTrackIdentifierValue = searchParams.get('trackId') ?? searchParams.get('track');
+  const sanitizedQueryTrackIdentifier = sanitizeIdentifier(queryTrackIdentifierValue ?? undefined);
+
+  const trackIdentifier: string | number | undefined = (() => {
+    const sanitizedState = sanitizeIdentifier(stateTrackIdentifierRaw);
+
+    if (sanitizedState !== undefined) {
+      return sanitizedState;
+    }
+
+    if (sanitizedQueryTrackIdentifier !== undefined) {
+      return sanitizedQueryTrackIdentifier;
+    }
+
+    return undefined;
+  })();
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -255,7 +312,9 @@ const TrackDetails: React.FC = () => {
   });
 
   const loadTrackDetail = useCallback(async () => {
-    if (!trackId) {
+    const normalizedIdentifier = sanitizeIdentifier(trackIdentifier) ?? null;
+
+    if (normalizedIdentifier === null || normalizedIdentifier === '') {
       setError('Track identifier is missing.');
       setDetail(null);
       setLoading(false);
@@ -265,15 +324,15 @@ const TrackDetails: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetchArtistTrackDetail(trackId);
-      setDetail(response?.data ?? null);
+      const response = await fetchArtistTrackDetail(normalizedIdentifier);
+      setDetail(response);
     } catch (err) {
-      setError('Unable to load track details. Please try again.');
+      setError(resolveTrackErrorMessage(err));
       setDetail(null);
     } finally {
       setLoading(false);
     }
-  }, [trackId]);
+  }, [trackIdentifier]);
 
   useEffect(() => {
     void loadTrackDetail();
@@ -424,7 +483,16 @@ const TrackDetails: React.FC = () => {
   };
 
   const handleSaveTrack = async () => {
-    if (!trackId) {
+    const canonicalTrackId =
+      detail?.track?.track_id ??
+      (typeof trackIdentifier === 'string'
+        ? trackIdentifier
+        : typeof trackIdentifier === 'number' && Number.isFinite(trackIdentifier)
+          ? trackIdentifier
+          : undefined);
+
+    if (!canonicalTrackId) {
+      setActionMessage('Track identifier is missing.');
       return;
     }
 
@@ -436,7 +504,7 @@ const TrackDetails: React.FC = () => {
 
     setIsSaving(true);
     try {
-      await updateArtistTrack(trackId, {
+      await updateArtistTrack(canonicalTrackId, {
         title: trimmedTitle,
         genre: editTrackData.genre_name || undefined,
         album_title: editTrackData.album || undefined,

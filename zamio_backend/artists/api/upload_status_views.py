@@ -722,6 +722,7 @@ def get_user_uploads(request):
                 'title': title,
                 'station': station_name or None,
                 'entity_id': upload.entity_id,
+                'entity_type': upload.entity_type or None,
                 'metadata': metadata,
                 'cover_art_url': cover_art_url,
                 'album_cover_url': album_cover_url,
