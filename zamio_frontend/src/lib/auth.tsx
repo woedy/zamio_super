@@ -104,3 +104,12 @@ export const useAuth = () => {
   return context;
 };
 
+/**
+ * Get the artist ID from stored auth
+ */
+export const getArtistId = (): string | null => {
+  const stored = getStoredAuth();
+  const artistId = stored.user?.artist_id;
+  return typeof artistId === 'string' ? artistId : null;
+};
+

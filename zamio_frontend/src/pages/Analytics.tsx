@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   BarChart3,
   TrendingUp,
@@ -29,74 +29,41 @@ import {
   Search,
   Table,
   Grid,
-  List
+  List,
+  XCircle
 } from 'lucide-react';
+import { fetchArtistAnalytics, type AnalyticsData } from '../lib/analyticsApi';
+import { getArtistId } from '../lib/auth';
 
-// Mock analytics data
-const analyticsData = {
+// Default empty analytics data
+const defaultAnalyticsData: AnalyticsData = {
+  time_range: '12months',
   overview: {
-    totalPlays: 1247000,
-    totalRevenue: 23475.50,
-    totalTracks: 12,
-    totalAlbums: 5,
-    activeListeners: 45670,
-    growthRate: 12.5,
-    previousPeriodGrowth: -2.1
+    total_plays: 0,
+    total_revenue: 0,
+    total_tracks: 0,
+    total_albums: 0,
+    active_listeners: 0,
+    growth_rate: 0,
+    previous_period_growth: 0
   },
-  monthlyPerformance: [
-    { month: 'Jan', plays: 95000, revenue: 1425.00, listeners: 12500 },
-    { month: 'Feb', plays: 102000, revenue: 1530.00, listeners: 13400 },
-    { month: 'Mar', plays: 118000, revenue: 1770.00, listeners: 15200 },
-    { month: 'Apr', plays: 125000, revenue: 1875.00, listeners: 16800 },
-    { month: 'May', plays: 134000, revenue: 2010.00, listeners: 18200 },
-    { month: 'Jun', plays: 145000, revenue: 2175.00, listeners: 19800 },
-    { month: 'Jul', plays: 152000, revenue: 2280.00, listeners: 21400 },
-    { month: 'Aug', plays: 168000, revenue: 2520.00, listeners: 23500 },
-    { month: 'Sep', plays: 175000, revenue: 2625.00, listeners: 25600 },
-    { month: 'Oct', plays: 189000, revenue: 2835.00, listeners: 27800 },
-    { month: 'Nov', plays: 203000, revenue: 3045.00, listeners: 30200 },
-    { month: 'Dec', plays: 215000, revenue: 3225.00, listeners: 32500 }
-  ],
-  topTracks: [
-    { title: 'Ghana Na Woti', plays: 450000, revenue: 8750.00, growth: 15.2, listeners: 15600, avgPlayTime: 3.2 },
-    { title: 'Terminator', plays: 320000, revenue: 6240.00, growth: -3.1, listeners: 12400, avgPlayTime: 2.8 },
-    { title: 'Perfect Combi', plays: 280000, revenue: 5460.00, growth: 8.7, listeners: 10800, avgPlayTime: 3.5 },
-    { title: 'Paris', plays: 197000, revenue: 3841.50, growth: 12.3, listeners: 8900, avgPlayTime: 2.9 },
-    { title: 'Angela', plays: 156000, revenue: 3039.00, growth: -1.2, listeners: 7200, avgPlayTime: 3.1 }
-  ],
-  geographicPerformance: [
-    { region: 'Greater Accra', plays: 567000, percentage: 45.5, revenue: 11340.00, listeners: 18900, avgRevenuePerListener: 0.60 },
-    { region: 'Ashanti', plays: 312000, percentage: 25.0, revenue: 6240.00, listeners: 12400, avgRevenuePerListener: 0.50 },
-    { region: 'Western', plays: 187000, percentage: 15.0, revenue: 3740.00, listeners: 8900, avgRevenuePerListener: 0.42 },
-    { region: 'Central', plays: 124000, percentage: 9.9, revenue: 2480.00, listeners: 6200, avgRevenuePerListener: 0.40 },
-    { region: 'Other Regions', plays: 57000, percentage: 4.6, revenue: 1140.00, listeners: 3800, avgRevenuePerListener: 0.30 }
-  ],
-  revenueBySource: [
-    { source: 'Radio Stations', amount: 18750.00, percentage: 80.0, plays: 562500, avgPerPlay: 0.033 },
-    { source: 'Streaming', amount: 3750.00, percentage: 16.0, plays: 562500, avgPerPlay: 0.0067 },
-    { source: 'Public Performance', amount: 975.50, percentage: 4.0, plays: 124000, avgPerPlay: 0.0079 }
-  ],
-  recentActivity: [
-    { action: 'Track played on Joy FM', time: '2 minutes ago', plays: 1, revenue: 0.03, location: 'Accra' },
-    { action: 'Album purchased', time: '15 minutes ago', revenue: 12.50, location: 'Kumasi' },
-    { action: 'Track shared on social media', time: '1 hour ago', plays: 45, revenue: 1.35, location: 'Takoradi' },
-    { action: 'New follower', time: '2 hours ago', followers: 1, location: 'Cape Coast' },
-    { action: 'Playlist added', time: '3 hours ago', plays: 120, revenue: 3.60, location: 'Accra' }
-  ],
-  trackDetails: [
-    { title: 'Ghana Na Woti', plays: 450000, revenue: 8750.00, listeners: 15600, avgPlayTime: 3.2, completionRate: 78.5, skipRate: 12.3 },
-    { title: 'Terminator', plays: 320000, revenue: 6240.00, listeners: 12400, avgPlayTime: 2.8, completionRate: 65.2, skipRate: 18.7 },
-    { title: 'Perfect Combi', plays: 280000, revenue: 5460.00, listeners: 10800, avgPlayTime: 3.5, completionRate: 82.1, skipRate: 9.8 },
-    { title: 'Paris', plays: 197000, revenue: 3841.50, listeners: 8900, avgPlayTime: 2.9, completionRate: 71.4, skipRate: 15.6 },
-    { title: 'Angela', plays: 156000, revenue: 3039.00, listeners: 7200, avgPlayTime: 3.1, completionRate: 69.8, skipRate: 17.2 }
-  ]
+  monthly_performance: [],
+  top_tracks: [],
+  geographic_performance: [],
+  revenue_by_source: [],
+  recent_activity: [],
+  track_details: []
 };
 
 const Analytics: React.FC = () => {
-  const [selectedTimeRange, setSelectedTimeRange] = useState('12months');
+  const [selectedTimeRange, setSelectedTimeRange] = useState<'7days' | '30days' | '3months' | '12months'>('12months');
   const [selectedMetric, setSelectedMetric] = useState('plays');
   const [selectedView, setSelectedView] = useState<'charts' | 'tables'>('charts');
   const [sortBy, setSortBy] = useState<'plays' | 'revenue' | 'growth'>('plays');
+  const [analyticsData, setAnalyticsData] = useState<AnalyticsData>(defaultAnalyticsData);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const formatNumber = (num: number) => {
     if (num >= 1000000) {
@@ -121,6 +88,48 @@ const Analytics: React.FC = () => {
     if (growth > 0) return 'text-green-600 dark:text-green-400';
     if (growth < 0) return 'text-red-600 dark:text-red-400';
     return 'text-gray-600 dark:text-gray-400';
+  };
+
+  // Fetch analytics data
+  const loadAnalytics = useCallback(async (showRefreshing = false) => {
+    const artistId = getArtistId();
+    if (!artistId) {
+      setError('Artist ID not found. Please log in again.');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      if (showRefreshing) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      setError(null);
+
+      const data = await fetchArtistAnalytics({
+        artist_id: artistId,
+        time_range: selectedTimeRange,
+      });
+
+      setAnalyticsData(data);
+    } catch (err) {
+      console.error('Failed to load analytics:', err);
+      setError('Failed to load analytics data. Please try again.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [selectedTimeRange]);
+
+  // Load analytics on mount and when time range changes
+  useEffect(() => {
+    loadAnalytics();
+  }, [loadAnalytics]);
+
+  // Handle refresh
+  const handleRefresh = () => {
+    loadAnalytics(true);
   };
 
   return (
@@ -169,6 +178,15 @@ const Analytics: React.FC = () => {
                 </button>
               </div>
 
+              <button
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="flex items-center space-x-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700 transition-all duration-200"
+              >
+                <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                <span>{refreshing ? 'Refreshing...' : 'Refresh'}</span>
+              </button>
+              
               <button className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl">
                 <Download className="w-4 h-4" />
                 <span>Export</span>
@@ -178,7 +196,37 @@ const Analytics: React.FC = () => {
         </div>
       </div>
 
+      {/* Loading State */}
+      {loading && (
+        <div className="flex items-center justify-center py-20">
+          <div className="text-center">
+            <RefreshCw className="w-12 h-12 text-indigo-600 dark:text-indigo-400 animate-spin mx-auto mb-4" />
+            <p className="text-gray-600 dark:text-gray-400">Loading analytics data...</p>
+          </div>
+        </div>
+      )}
+
+      {/* Error State */}
+      {error && !loading && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6">
+          <div className="flex items-center space-x-3">
+            <XCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
+            <div>
+              <h3 className="text-lg font-semibold text-red-900 dark:text-red-200">Error Loading Analytics</h3>
+              <p className="text-red-700 dark:text-red-300">{error}</p>
+            </div>
+          </div>
+          <button
+            onClick={handleRefresh}
+            className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+          >
+            Try Again
+          </button>
+        </div>
+      )}
+
       {/* Content */}
+      {!loading && !error && (
       <div className="space-y-8">
         {/* Performance Charts Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -239,7 +287,7 @@ const Analytics: React.FC = () => {
           <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-2xl p-6 border border-white/20 dark:border-slate-700/30 shadow-2xl">
             <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6">Revenue Sources Analysis</h2>
             <div className="space-y-4">
-              {analyticsData.revenueBySource.map((source) => (
+              {analyticsData.revenue_by_source.map((source) => (
                 <div key={source.source} className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-gray-900 dark:text-white">
@@ -296,7 +344,7 @@ const Analytics: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {[...analyticsData.topTracks]
+                  {[...analyticsData.top_tracks]
                     .sort((a, b) => {
                       switch (sortBy) {
                         case 'revenue': return b.revenue - a.revenue;
@@ -471,11 +519,11 @@ const Analytics: React.FC = () => {
                 <div>
                   <p className="text-sm font-normal text-gray-700 dark:text-slate-300">Total Plays</p>
                   <p className="text-2xl font-bold text-gray-900 dark:text-slate-100">
-                    {formatNumber(analyticsData.overview.totalPlays)}
+                    {formatNumber(analyticsData.overview.total_plays)}
                   </p>
-                  <div className={`flex items-center space-x-1 text-xs ${getGrowthColor(analyticsData.overview.growthRate)}`}>
-                    {getGrowthIcon(analyticsData.overview.growthRate)}
-                    <span>{Math.abs(analyticsData.overview.growthRate)}% growth</span>
+                  <div className={`flex items-center space-x-1 text-xs ${getGrowthColor(analyticsData.overview.growth_rate)}`}>
+                    {getGrowthIcon(analyticsData.overview.growth_rate)}
+                    <span>{Math.abs(analyticsData.overview.growth_rate)}% growth</span>
                   </div>
                 </div>
                 <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/60 dark:to-indigo-900/60 rounded-lg flex items-center justify-center">
@@ -489,7 +537,7 @@ const Analytics: React.FC = () => {
                 <div>
                   <p className="text-sm font-normal text-gray-700 dark:text-slate-300">Total Revenue</p>
                   <p className="text-2xl font-bold text-gray-900 dark:text-slate-100">
-                    {formatCurrency(analyticsData.overview.totalRevenue)}
+                    {formatCurrency(analyticsData.overview.total_revenue)}
                   </p>
                   <div className={`flex items-center space-x-1 text-xs ${getGrowthColor(8.3)}`}>
                     {getGrowthIcon(8.3)}
@@ -507,7 +555,7 @@ const Analytics: React.FC = () => {
                 <div>
                   <p className="text-sm font-normal text-gray-700 dark:text-slate-300">Active Listeners</p>
                   <p className="text-2xl font-bold text-gray-900 dark:text-slate-100">
-                    {formatNumber(analyticsData.overview.activeListeners)}
+                    {formatNumber(analyticsData.overview.active_listeners)}
                   </p>
                   <div className={`flex items-center space-x-1 text-xs ${getGrowthColor(5.7)}`}>
                     {getGrowthIcon(5.7)}
@@ -525,7 +573,7 @@ const Analytics: React.FC = () => {
                 <div>
                   <p className="text-sm font-normal text-gray-700 dark:text-slate-300">Total Tracks</p>
                   <p className="text-2xl font-bold text-gray-900 dark:text-slate-100">
-                    {analyticsData.overview.totalTracks}
+                    {analyticsData.overview.total_tracks}
                   </p>
                   <div className={`flex items-center space-x-1 text-xs ${getGrowthColor(2.1)}`}>
                     {getGrowthIcon(2.1)}
@@ -540,6 +588,7 @@ const Analytics: React.FC = () => {
           </div>
         )}
       </div>
+      )}
     </>
   );
 };
