@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Play,
   Pause,
@@ -28,7 +28,9 @@ import {
   Filter,
   HelpCircle,
   Settings,
-  Edit
+  Edit,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import ContributorsSection from '../components/trackDetails/ContributorsSection';
 import PlaysOverTimeSection from '../components/trackDetails/PlaysOverTimeSection';
@@ -36,80 +38,197 @@ import TopStationsSection from '../components/trackDetails/TopStationsSection';
 import PlayLogsSection from '../components/trackDetails/PlayLogsSection';
 import RevenueDashboardSection from '../components/trackDetails/RevenueDashboardSection';
 import GeographicPerformanceSection from '../components/trackDetails/GeographicPerformanceSection';
+import {
+  fetchArtistTrackDetail,
+  updateArtistTrack,
+  type TrackDetailPayload,
+} from '../lib/api';
 
-// Mock track data - enhanced with more realistic structure matching reference
-const mockTrackData = {
-  id: '1',
-  title: 'Ghana Na Woti',
-  artist_name: 'King Promise',
-  album: '5 Star',
-  genre_name: 'Afrobeats',
-  duration: '3:45',
-  release_date: '2023-06-15',
-  plays: 1247,
-  cover_art: '/covers/ghana-na-woti.jpg',
-  audio_file_mp3: '/audio/ghana-na-woti.mp3',
-  // Revenue data
-  totalEarnings: 2347.50,
-  monthlyEarnings: [
-    { month: 'Jun 2024', amount: 450.00, currency: 'GHS' },
-    { month: 'Jul 2024', amount: 523.00, currency: 'GHS' },
-    { month: 'Aug 2024', amount: 612.00, currency: 'GHS' },
-    { month: 'Sep 2024', amount: 387.00, currency: 'GHS' },
-    { month: 'Oct 2024', amount: 375.50, currency: 'GHS' }
-  ],
-  territoryEarnings: [
-    { territory: 'Ghana', amount: 1876.00, currency: 'GHS', percentage: 80 },
-    { territory: 'Nigeria', amount: 234.50, currency: 'GHS', percentage: 10 },
-    { territory: 'UK', amount: 140.70, currency: 'GHS', percentage: 6 },
-    { territory: 'USA', amount: 93.80, currency: 'GHS', percentage: 4 }
-  ],
-  payoutHistory: [
-    { date: '2024-09-15', amount: 450.00, status: 'Paid', period: 'Jun 2024' },
-    { date: '2024-10-15', amount: 523.00, status: 'Paid', period: 'Jul 2024' },
-    { date: '2024-11-15', amount: 612.00, status: 'Pending', period: 'Aug 2024' }
-  ],
-  contributors: [
-    { role: 'Producer', name: 'KillBeatz', percentage: 25 },
-    { role: 'Featured Artist', name: 'Shatta Wale', percentage: 15 },
-    { role: 'Mixing Engineer', name: 'MikeMillzOnEm', percentage: 10 }
-  ],
-  topStations: [
-    { name: "Joy FM", count: 156, region: 'Greater Accra' },
-    { name: "Peace FM", count: 134, region: 'Greater Accra' },
-    { name: "Adom FM", count: 98, region: 'Ashanti' },
-    { name: "Hitz FM", count: 87, region: 'Greater Accra' },
-    { name: "Okay FM", count: 76, region: 'Greater Accra' }
-  ],
-  playLogs: [
-    { time: '2024-10-16T10:30:00Z', station: 'Peace FM', region: 'Greater Accra' },
-    { time: '2024-10-16T14:22:00Z', station: 'Joy FM', region: 'Greater Accra' },
-    { time: '2024-10-16T16:45:00Z', station: 'Adom FM', region: 'Ashanti' },
-    { time: '2024-10-16T19:15:00Z', station: 'Hitz FM', region: 'Greater Accra' },
-    { time: '2024-10-16T21:30:00Z', station: 'Okay FM', region: 'Greater Accra' }
-  ],
-  playsOverTime: [
-    { month: 'Jun', plays: 245 },
-    { month: 'Jul', plays: 389 },
-    { month: 'Aug', plays: 567 },
-    { month: 'Sep', plays: 723 },
-    { month: 'Oct', plays: 1247 }
-  ],
-  radioStations: [
-    { name: "Joy FM", latitude: 5.5600, longitude: -0.2100 },
-    { name: "Peace FM", latitude: 5.5900, longitude: -0.2400 },
-    { name: "Adom FM", latitude: 6.6885, longitude: -1.6244 },
-    { name: "Hitz FM", latitude: 5.5800, longitude: -0.2200 },
-    { name: "Okay FM", latitude: 5.5700, longitude: -0.2300 }
-  ]
+interface MonthlyEarningViewModel {
+  month: string;
+  amount: number;
+  currency: string;
+}
+
+interface TerritoryEarningViewModel {
+  territory: string;
+  amount: number;
+  currency: string;
+  percentage: number;
+}
+
+interface PayoutHistoryViewModel {
+  date: string;
+  amount: number;
+  status: string;
+  period: string;
+}
+
+interface TrackContributorViewModel {
+  role: string;
+  name: string;
+  percentage: number;
+}
+
+interface TrackPlayLogViewModel {
+  time: string;
+  station: string;
+  region: string;
+}
+
+interface TrackViewModel {
+  id: number;
+  title: string;
+  artist_name: string;
+  album: string | null;
+  genre_name: string | null;
+  duration: string;
+  release_date: string | null;
+  plays: number;
+  totalEarnings: number;
+  averageConfidence: number | null;
+  cover_art: string | null;
+  audio_file_url: string | null;
+  monthlyEarnings: MonthlyEarningViewModel[];
+  territoryEarnings: TerritoryEarningViewModel[];
+  payoutHistory: PayoutHistoryViewModel[];
+  playsOverTime: { month: string; plays: number }[];
+  topStations: { name: string; count: number; region: string }[];
+  playLogs: TrackPlayLogViewModel[];
+  contributors: TrackContributorViewModel[];
+}
+
+type RegionPerformanceColor = 'green' | 'blue' | 'purple' | 'amber';
+
+interface RegionPerformanceViewModel {
+  region: string;
+  plays: number;
+  percentage: number;
+  stations: number;
+  color: RegionPerformanceColor;
+}
+
+const formatDuration = (seconds?: number | null) => {
+  if (seconds === undefined || seconds === null || Number.isNaN(seconds)) {
+    return '—';
+  }
+  const total = Math.max(0, Math.floor(seconds));
+  const mins = Math.floor(total / 60);
+  const secs = total % 60;
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+const formatDateLabel = (value: string | null) => {
+  if (!value) {
+    return '—';
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return '—';
+  }
+  return parsed.toLocaleDateString();
+};
+
+const ensureNonEmpty = <T,>(items: T[], fallback: T): T[] => (items.length > 0 ? items : [fallback]);
+
+const mapDetailToViewModel = (detail: TrackDetailPayload): TrackViewModel => {
+  const track = detail.track;
+
+  const monthly = detail.revenue.monthly.map((entry) => ({
+    month: entry.month,
+    amount: Number(entry.amount ?? 0),
+    currency: entry.currency ?? 'GHS',
+  }));
+
+  const territories = detail.revenue.territories.map((entry) => ({
+    territory: entry.territory,
+    amount: Number(entry.amount ?? 0),
+    currency: entry.currency ?? 'GHS',
+    percentage: Number(entry.percentage ?? 0),
+  }));
+
+  const payoutHistory = detail.revenue.payout_history.map((entry) => ({
+    date: entry.date,
+    amount: Number(entry.amount ?? 0),
+    status: entry.status,
+    period: entry.period,
+  }));
+
+  const playsOverTime = detail.performance.plays_over_time.map((entry) => ({
+    month: entry.label,
+    plays: entry.plays ?? 0,
+  }));
+
+  const topStations = detail.performance.top_stations.map((entry) => ({
+    name: entry.name,
+    count: entry.count ?? 0,
+    region: entry.region ?? entry.country ?? 'Unknown region',
+  }));
+
+  const fallbackTimestamp =
+    detail.stats.last_played_at ?? detail.stats.first_played_at ?? track.release_date ?? new Date().toISOString();
+
+  const playLogs = detail.play_logs
+    .map((entry) => ({
+      time: entry.played_at ?? fallbackTimestamp,
+      station: entry.station ?? 'Unknown Station',
+      region: entry.region ?? entry.country ?? 'Unknown Region',
+    }))
+    .filter((entry) => Boolean(entry.time));
+
+  const contributors = detail.contributors.map((entry) => ({
+    role: entry.role,
+    name: entry.name,
+    percentage: entry.percentage,
+  }));
+
+  const safeMonthly = ensureNonEmpty(monthly, { month: 'No Data', amount: 0, currency: 'GHS' });
+  const safeTerritories = ensureNonEmpty(territories, {
+    territory: 'No Data',
+    amount: 0,
+    currency: 'GHS',
+    percentage: 0,
+  });
+  const safePayouts = ensureNonEmpty(payoutHistory, {
+    date: new Date().toISOString().slice(0, 10),
+    amount: 0,
+    status: 'Pending',
+    period: 'No Data',
+  });
+  const safePlaysOverTime = ensureNonEmpty(playsOverTime, { month: 'No Data', plays: 0 });
+
+  return {
+    id: track.id,
+    title: track.title,
+    artist_name: track.artist,
+    album: track.album ?? null,
+    genre_name: track.genre ?? null,
+    duration: formatDuration(track.duration_seconds ?? null),
+    release_date: track.release_date ?? null,
+    plays: detail.stats.total_plays ?? track.plays ?? 0,
+    totalEarnings: Number(detail.stats.total_revenue ?? track.total_revenue ?? 0),
+    averageConfidence: detail.stats.average_confidence ?? null,
+    cover_art: track.cover_art_url ?? null,
+    audio_file_url: track.audio_file_url ?? null,
+    monthlyEarnings: safeMonthly,
+    territoryEarnings: safeTerritories,
+    payoutHistory: safePayouts,
+    playsOverTime: safePlaysOverTime,
+    topStations,
+    playLogs,
+    contributors,
+  };
 };
 
 const TrackDetails: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { trackId } = location.state || {};
+  const [searchParams] = useSearchParams();
+  const stateTrackId = (location.state as { trackId?: number } | null)?.trackId;
+  const queryTrackIdValue = searchParams.get('trackId');
+  const parsedQueryTrackId = queryTrackIdValue ? Number(queryTrackIdValue) : undefined;
+  const trackId = stateTrackId ?? (Number.isFinite(parsedQueryTrackId) ? parsedQueryTrackId : undefined);
 
-  // Audio Player
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
@@ -119,109 +238,141 @@ const TrackDetails: React.FC = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [newContributor, setNewContributor] = useState({ name: '', role: '', percentage: 0 });
   const [activeTab, setActiveTab] = useState<'performance' | 'revenue' | 'contributors' | 'geography'>('performance');
+  const [detail, setDetail] = useState<TrackDetailPayload | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
-  // Get track data - for demo, we'll use the first track or find by ID
-  const track = trackId ? mockTrackData : mockTrackData;
+  const track = useMemo(() => (detail ? mapDetailToViewModel(detail) : null), [detail]);
 
-  // Initialize edit track data after track is available
   const [editTrackData, setEditTrackData] = useState({
-    title: track.title,
-    artist_name: track.artist_name,
-    genre_name: track.genre_name,
-    album: track.album,
-    description: ''
+    title: '',
+    artist_name: '',
+    genre_name: '',
+    album: '',
+    description: '',
   });
+
+  const loadTrackDetail = useCallback(async () => {
+    if (!trackId) {
+      setError('Track identifier is missing.');
+      setDetail(null);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetchArtistTrackDetail(trackId);
+      setDetail(response?.data ?? null);
+    } catch (err) {
+      setError('Unable to load track details. Please try again.');
+      setDetail(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [trackId]);
+
+  useEffect(() => {
+    void loadTrackDetail();
+  }, [loadTrackDetail]);
+
+  useEffect(() => {
+    if (!track) {
+      return;
+    }
+    setEditTrackData({
+      title: track.title,
+      artist_name: track.artist_name,
+      genre_name: track.genre_name ?? '',
+      album: track.album ?? '',
+      description: detail?.track?.lyrics ?? '',
+    });
+  }, [track, detail]);
+
+  useEffect(() => {
+    if (!actionMessage) {
+      return;
+    }
+    const timer = window.setTimeout(() => setActionMessage(null), 3500);
+    return () => window.clearTimeout(timer);
+  }, [actionMessage]);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
 
     const setAudioData = () => {
-      setDuration(audio.duration);
+      setDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
     };
 
     const updateTime = () => {
       setCurrentTime(audio.currentTime);
     };
 
+    const handlePlay = () => setIsPlaying(true);
+    const handlePause = () => setIsPlaying(false);
+
     audio.addEventListener('loadedmetadata', setAudioData);
     audio.addEventListener('timeupdate', updateTime);
+    audio.addEventListener('play', handlePlay);
+    audio.addEventListener('pause', handlePause);
+    audio.addEventListener('ended', handlePause);
 
     return () => {
       audio.removeEventListener('loadedmetadata', setAudioData);
       audio.removeEventListener('timeupdate', updateTime);
+      audio.removeEventListener('play', handlePlay);
+      audio.removeEventListener('pause', handlePause);
+      audio.removeEventListener('ended', handlePause);
     };
-  }, []);
+  }, [track?.audio_file_url]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) {
+      return;
+    }
+    audio.volume = volume;
+  }, [volume, track?.audio_file_url]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) {
+      return;
+    }
+    audio.pause();
+    audio.currentTime = 0;
+    setCurrentTime(0);
+    setDuration(0);
+    setIsPlaying(false);
+  }, [track?.audio_file_url]);
 
   const togglePlay = () => {
+    if (!track?.audio_file_url) {
+      return;
+    }
     const audio = audioRef.current;
-    if (!audio) return;
+    if (!audio) {
+      return;
+    }
 
-    if (isPlaying) {
-      audio.pause();
+    if (audio.paused) {
+      void audio.play();
     } else {
-      audio.play();
-    }
-    setIsPlaying(!isPlaying);
-  };
-
-  const handleAddContributor = () => {
-    if (newContributor.name.trim() && newContributor.role.trim()) {
-      // Calculate current total percentage from existing contributors
-      const currentTotal = track.contributors.reduce((sum, contributor) => sum + (contributor.percentage || 0), 0);
-      const newTotal = currentTotal + newContributor.percentage;
-
-      // Validate that new total doesn't exceed 100%
-      if (newTotal > 100) {
-        alert(`Total percentage would exceed 100%. Current total: ${currentTotal}%, adding ${newContributor.percentage}% would make ${newTotal}%`);
-        return;
-      }
-
-      // In a real app, this would make an API call
-      // For demo, we'll just show an alert
-      alert(`Added contributor: ${newContributor.name} as ${newContributor.role} with ${newContributor.percentage}% split`);
-      setNewContributor({ name: '', role: '', percentage: 0 });
-      setIsModalOpen(false);
+      audio.pause();
     }
   };
 
-  const handleModalClose = () => {
-    setIsModalOpen(false);
-    setNewContributor({ name: '', role: '', percentage: 0 });
-  };
-
-  // Calculate current total percentage
-  const currentTotalPercentage = track.contributors.reduce((sum, contributor) => sum + (contributor.percentage || 0), 0);
-  const remainingPercentage = 100 - currentTotalPercentage;
-  const regionPerformance = [
-    { region: 'Greater Accra', plays: 423, percentage: 68, color: 'green' as const, stations: 12 },
-    { region: 'Ashanti', plays: 156, percentage: 25, color: 'blue' as const, stations: 8 },
-    { region: 'Northern', plays: 34, percentage: 5, color: 'purple' as const, stations: 3 },
-    { region: 'Western', plays: 67, percentage: 11, color: 'amber' as const, stations: 4 }
-  ];
-  const tabs = [
-    { id: 'performance', label: 'Performance' },
-    { id: 'revenue', label: 'Revenue' },
-    { id: 'contributors', label: 'Contributors' },
-    { id: 'geography', label: 'Geography' }
-  ] as const;
-
-  const handleRangeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const time = parseFloat(e.target.value);
+  const handleSeek = (time: number) => {
     const audio = audioRef.current;
-    if (audio) {
-      audio.currentTime = time;
-      setCurrentTime(time);
+    if (!audio) {
+      return;
     }
-  };
-
-  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const vol = parseFloat(e.target.value);
-    setVolume(vol);
-    const audio = audioRef.current;
-    if (audio) {
-      audio.volume = vol;
-    }
+    audio.currentTime = time;
+    setCurrentTime(time);
   };
 
   const formatTime = (time: number) => {
@@ -234,13 +385,228 @@ const TrackDetails: React.FC = () => {
     return `${minutes}:${seconds}`;
   };
 
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const vol = parseFloat(e.target.value);
+    setVolume(vol);
+    const audio = audioRef.current;
+    if (audio) {
+      audio.volume = vol;
+    }
+  };
+
+  const handleAddContributor = () => {
+    if (!track) {
+      return;
+    }
+
+    if (newContributor.name.trim() && newContributor.role.trim()) {
+      const currentTotal = track.contributors.reduce((sum, contributor) => sum + (contributor.percentage || 0), 0);
+      const newTotal = currentTotal + newContributor.percentage;
+
+      if (newTotal > 100) {
+        setActionMessage(
+          `Total percentage would exceed 100%. Current total: ${currentTotal}%, adding ${newContributor.percentage}% would make ${newTotal}%.`,
+        );
+        return;
+      }
+
+      setActionMessage(
+        `Contributor ${newContributor.name} added as ${newContributor.role} with ${newContributor.percentage}% share.`,
+      );
+      setIsModalOpen(false);
+      setNewContributor({ name: '', role: '', percentage: 0 });
+    }
+  };
+
+  const handleModalClose = () => {
+    setIsModalOpen(false);
+    setNewContributor({ name: '', role: '', percentage: 0 });
+  };
+
+  const handleSaveTrack = async () => {
+    if (!trackId) {
+      return;
+    }
+
+    const trimmedTitle = editTrackData.title.trim();
+    if (!trimmedTitle) {
+      setActionMessage('Track title is required.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await updateArtistTrack(trackId, {
+        title: trimmedTitle,
+        genre: editTrackData.genre_name || undefined,
+        album_title: editTrackData.album || undefined,
+        lyrics: editTrackData.description || undefined,
+      });
+      setActionMessage('Track updated successfully.');
+      setIsEditModalOpen(false);
+      await loadTrackDetail();
+    } catch (err) {
+      setActionMessage('Unable to update track. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const currentTotalPercentage = track
+    ? track.contributors.reduce((sum, contributor) => sum + (contributor.percentage || 0), 0)
+    : 0;
+  const remainingPercentage = Math.max(0, 100 - currentTotalPercentage);
+
+  const handleRefresh = useCallback(() => {
+    void loadTrackDetail();
+  }, [loadTrackDetail]);
+
+  const tabs = useMemo(
+    () => [
+      { id: 'performance', label: 'Performance' },
+      { id: 'revenue', label: 'Revenue' },
+      { id: 'contributors', label: 'Contributors' },
+      { id: 'geography', label: 'Geography' },
+    ] as const,
+    [],
+  );
+
+  const regionPerformance = useMemo<RegionPerformanceViewModel[]>(() => {
+    if (!track) {
+      return [];
+    }
+
+    const aggregated = new Map<
+      string,
+      {
+        plays: number;
+        stationNames: Set<string>;
+      }
+    >();
+
+    track.topStations.forEach((station) => {
+      const regionKey = station.region || 'Unknown Region';
+      const existing = aggregated.get(regionKey);
+      if (existing) {
+        existing.plays += station.count ?? 0;
+        existing.stationNames.add(station.name);
+      } else {
+        aggregated.set(regionKey, {
+          plays: station.count ?? 0,
+          stationNames: new Set([station.name]),
+        });
+      }
+    });
+
+    if (aggregated.size === 0) {
+      return [
+        {
+          region: 'No regional data',
+          plays: 0,
+          percentage: 0,
+          stations: 0,
+          color: 'purple',
+        },
+      ];
+    }
+
+    const totalPlays = Array.from(aggregated.values()).reduce((sum, entry) => sum + entry.plays, 0);
+    const colors: RegionPerformanceColor[] = ['green', 'blue', 'purple', 'amber'];
+
+    return Array.from(aggregated.entries()).map(([regionKey, entry], index) => ({
+      region: regionKey,
+      plays: entry.plays,
+      percentage: totalPlays ? Math.round((entry.plays / totalPlays) * 100) : 0,
+      stations: entry.stationNames.size,
+      color: colors[index % colors.length],
+    }));
+  }, [track]);
+
+  const handleRangeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const time = parseFloat(e.target.value);
+    if (!Number.isNaN(time)) {
+      handleSeek(time);
+    }
+  };
+
+  const isAudioAvailable = Boolean(track?.audio_file_url);
+  const sliderMax = duration > 0 ? duration : currentTime > 0 ? currentTime : 0;
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="flex items-center space-x-3 text-purple-600 dark:text-purple-300">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          <span className="text-sm font-medium">Loading track details…</span>
+        </div>
+      </div>
+    );
+  }
+
+  const handleBack = () => {
+    navigate('/dashboard/upload-management');
+  };
+
+  if (error) {
+    return (
+      <div className="max-w-3xl mx-auto">
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-red-700 dark:border-red-900/40 dark:bg-red-950/40 dark:text-red-200">
+          <div className="flex items-start space-x-3">
+            <AlertCircle className="mt-0.5 h-5 w-5" />
+            <div>
+              <h2 className="text-lg font-semibold">Unable to display track details</h2>
+              <p className="mt-1 text-sm">{error}</p>
+              <button
+                type="button"
+                onClick={handleRefresh}
+                className="mt-4 inline-flex items-center space-x-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-purple-700"
+              >
+                <RotateCcw className="h-4 w-4" />
+                <span>Retry</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!track) {
+    return (
+      <div className="max-w-3xl mx-auto">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-200">
+          <div className="flex items-start space-x-3">
+            <AlertCircle className="mt-0.5 h-5 w-5" />
+            <div>
+              <h2 className="text-lg font-semibold">Track not found</h2>
+              <p className="mt-1 text-sm">We couldn’t find the track you’re looking for.</p>
+              <button
+                type="button"
+                onClick={handleBack}
+                className="mt-4 inline-flex items-center space-x-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-purple-700"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                <span>Back to uploads</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
+      {actionMessage && (
+        <div className="mb-4 rounded-2xl border border-purple-200 bg-purple-50 px-4 py-3 text-sm text-purple-800 shadow-sm dark:border-purple-900/40 dark:bg-purple-950/40 dark:text-purple-200">
+          {actionMessage}
+        </div>
+      )}
       {/* Enhanced Back Navigation with Breadcrumbs */}
       <div className="mb-6">
         <nav className="flex items-center space-x-2 text-sm" aria-label="Breadcrumb">
           <button
-            onClick={() => navigate('/dashboard/all-artist-songs')}
+            onClick={handleBack}
             className="flex items-center space-x-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500 rounded-lg p-1"
             aria-label="Go back to upload management"
           >
@@ -259,7 +625,13 @@ const TrackDetails: React.FC = () => {
         {/* Quick Actions Bar */}
         <div className="flex items-center justify-between mt-4">
           <div className="flex items-center space-x-2">
-            <button className="p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500" title="Refresh data">
+            <button
+              type="button"
+              onClick={handleRefresh}
+              className="p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              title="Refresh data"
+              aria-label="Refresh track data"
+            >
               <RotateCcw className="w-4 h-4" />
             </button>
             <button className="p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500" title="Export report">
@@ -306,7 +678,7 @@ const TrackDetails: React.FC = () => {
             <div>
               <div className="flex items-center space-x-2 mb-2">
                 <span className="px-2 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300 text-xs font-medium rounded-full">
-                  {track.genre_name}
+                  {track.genre_name ?? '—'}
                 </span>
                 <span className="px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 text-xs font-medium rounded-full">
                   Active
@@ -344,19 +716,28 @@ const TrackDetails: React.FC = () => {
             {/* Enhanced Album Art with Glow */}
             <div className="relative flex-shrink-0">
               <div className="w-48 h-48 lg:w-64 lg:h-64 rounded-2xl overflow-hidden shadow-2xl group-hover:shadow-purple-500/25 transition-all duration-300">
-                <img
-                  src={track.cover_art}
-                  alt={`${track.title} cover art`}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                />
+                {track.cover_art ? (
+                  <img
+                    src={track.cover_art}
+                    alt={`${track.title} cover art`}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-purple-500 via-pink-500 to-indigo-500 text-4xl font-bold text-white">
+                    {track.title ? track.title.charAt(0).toUpperCase() : '?'}
+                  </div>
+                )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
               </div>
               {/* Floating Play Button */}
               <button
-                className="absolute -bottom-2 -right-2 w-12 h-12 bg-gradient-to-r from-purple-600 to-pink-600 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center group-hover:scale-110 focus:outline-none focus:ring-4 focus:ring-purple-500/50"
-                aria-label={`Play ${track.title}`}
+                type="button"
+                onClick={togglePlay}
+                disabled={!isAudioAvailable}
+                className="absolute -bottom-2 -right-2 w-12 h-12 bg-gradient-to-r from-purple-600 to-pink-600 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center group-hover:scale-110 focus:outline-none focus:ring-4 focus:ring-purple-500/50 disabled:cursor-not-allowed disabled:opacity-60"
+                aria-label={`${isPlaying ? 'Pause' : 'Play'} ${track.title}`}
               >
-                <Play className="w-5 h-5 text-white ml-0.5" fill="currentColor" />
+                {isPlaying ? <Pause className="w-5 h-5 text-white" /> : <Play className="w-5 h-5 text-white ml-0.5" fill="currentColor" />}
               </button>
             </div>
 
@@ -372,7 +753,7 @@ const TrackDetails: React.FC = () => {
                 <div className="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400">
                   <span className="flex items-center space-x-1">
                     <Music className="w-4 h-4" />
-                    <span>{track.genre_name}</span>
+                    <span>{track.genre_name ?? '—'}</span>
                   </span>
                   <span className="flex items-center space-x-1">
                     <Clock className="w-4 h-4" />
@@ -380,7 +761,7 @@ const TrackDetails: React.FC = () => {
                   </span>
                   <span className="flex items-center space-x-1">
                     <Calendar className="w-4 h-4" />
-                    <span>{new Date(track.release_date).toLocaleDateString()}</span>
+                    <span>{formatDateLabel(track.release_date)}</span>
                   </span>
                 </div>
               </div>
@@ -388,11 +769,15 @@ const TrackDetails: React.FC = () => {
               {/* Enhanced Action Buttons */}
               <div className="flex items-center space-x-3">
                 <button
-                  className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-full hover:from-purple-700 hover:to-pink-700 transition-all duration-200 shadow-lg hover:shadow-xl group-hover:scale-105 focus:outline-none focus:ring-4 focus:ring-purple-500/50"
-                  aria-label={`Play ${track.title}`}
+                  type="button"
+                  onClick={togglePlay}
+                  disabled={!isAudioAvailable}
+                  className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-full hover:from-purple-700 hover:to-pink-700 transition-all duration-200 shadow-lg hover:shadow-xl group-hover:scale-105 focus:outline-none focus:ring-4 focus:ring-purple-500/50 disabled:cursor-not-allowed disabled:opacity-60"
+                  aria-label={`${isPlaying ? 'Pause' : 'Play'} ${track.title}`}
+                  aria-pressed={isPlaying}
                 >
-                  <Play className="w-5 h-5" fill="currentColor" />
-                  <span className="font-medium">Play Track</span>
+                  {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" fill="currentColor" />}
+                  <span className="font-medium">{isPlaying ? 'Pause Track' : 'Play Track'}</span>
                 </button>
                 <button
                   className="flex items-center space-x-2 px-6 py-3 bg-white/20 dark:bg-slate-800/50 backdrop-blur-sm text-gray-700 dark:text-gray-300 rounded-full border border-gray-200 dark:border-slate-600 hover:bg-white/30 dark:hover:bg-slate-800/70 transition-all duration-200 group-hover:scale-105 focus:outline-none focus:ring-4 focus:ring-purple-500/50 relative"
@@ -419,6 +804,55 @@ const TrackDetails: React.FC = () => {
                   </div>
                 </button>
               </div>
+
+              {isAudioAvailable ? (
+                <div className="mt-6 w-full space-y-3">
+                  <div className="flex flex-col space-y-4 sm:flex-row sm:items-center sm:space-y-0 sm:space-x-4">
+                    <button
+                      type="button"
+                      onClick={togglePlay}
+                      className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg transition-transform duration-200 hover:scale-105 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-purple-500/50"
+                      aria-label={`${isPlaying ? 'Pause' : 'Play'} preview`}
+                    >
+                      {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" fill="currentColor" />}
+                    </button>
+                    <div className="flex-1">
+                      <input
+                        type="range"
+                        min={0}
+                        max={sliderMax || 0}
+                        step={0.1}
+                        value={sliderMax ? Math.min(currentTime, sliderMax) : 0}
+                        onChange={handleRangeChange}
+                        className="slider w-full accent-purple-600"
+                        aria-label="Track progress"
+                      />
+                      <div className="mt-2 flex justify-between text-xs text-gray-500 dark:text-gray-400">
+                        <span>{formatTime(currentTime)}</span>
+                        <span>{formatTime(sliderMax || 0)}</span>
+                      </div>
+                    </div>
+                    <div className="flex w-full items-center space-x-2 sm:w-40">
+                      {volume <= 0 ? <VolumeX className="h-4 w-4 text-gray-500 dark:text-gray-400" /> : <Volume2 className="h-4 w-4 text-gray-500 dark:text-gray-400" />}
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={volume}
+                        onChange={handleVolumeChange}
+                        className="w-full accent-purple-600"
+                        aria-label="Volume"
+                      />
+                    </div>
+                  </div>
+                  <audio ref={audioRef} src={track.audio_file_url ?? undefined} preload="metadata" />
+                </div>
+              ) : (
+                <div className="mt-6 rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-3 text-sm text-gray-500 dark:border-slate-600 dark:bg-slate-800/40 dark:text-gray-400">
+                  Audio preview unavailable for this track.
+                </div>
+              )}
 
               {/* Keyboard Navigation Instructions */}
               <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center space-x-2">
@@ -776,14 +1210,15 @@ const TrackDetails: React.FC = () => {
                   Cancel
                 </button>
                 <button
-                  onClick={() => {
-                    // In a real app, this would make an API call to update the track
-                    alert(`Track "${editTrackData.title}" has been updated successfully!`);
-                    setIsEditModalOpen(false);
-                  }}
-                  className="flex-1 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all duration-200"
+                  type="button"
+                  onClick={handleSaveTrack}
+                  disabled={isSaving}
+                  className="flex-1 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Save Changes
+                  <span className="inline-flex items-center justify-center space-x-2">
+                    {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+                    <span>{isSaving ? 'Saving…' : 'Save Changes'}</span>
+                  </span>
                 </button>
               </div>
             </div>
