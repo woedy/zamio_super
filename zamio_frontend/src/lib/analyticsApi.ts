@@ -1,7 +1,7 @@
 /**
  * Analytics API functions and types
  */
-import { authApi, type ApiEnvelope } from './api';
+import authApi, { type ApiEnvelope } from './api';
 
 // ===== TYPES =====
 

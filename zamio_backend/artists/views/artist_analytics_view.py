@@ -11,9 +11,9 @@ from django.core.paginator import Paginator, PageNotAnInteger, EmptyPage
 from django.db.models import Q
 import librosa
 from rest_framework import status
-from rest_framework.authentication import TokenAuthentication
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.permissions import IsAuthenticated
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework.response import Response
 
 from accounts.api.artist_views import is_valid_email, check_email_exist
@@ -39,7 +39,7 @@ User = get_user_model()
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([JWTAuthentication])
 def get_artist_analytics_view(request):
     payload, data, errors = {}, {}, {}
 
