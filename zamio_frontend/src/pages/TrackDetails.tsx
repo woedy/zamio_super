@@ -43,6 +43,7 @@ import {
   updateArtistTrack,
   type TrackDetailPayload,
 } from '../lib/api';
+import { getDemoTrackById } from '../lib/demoTrackData';
 
 interface MonthlyEarningViewModel {
   month: string;
@@ -312,20 +313,17 @@ const TrackDetails: React.FC = () => {
   });
 
   const loadTrackDetail = useCallback(async () => {
-    const normalizedIdentifier = sanitizeIdentifier(trackIdentifier) ?? null;
-
-    if (normalizedIdentifier === null || normalizedIdentifier === '') {
-      setError('Track identifier is missing.');
-      setDetail(null);
-      setLoading(false);
-      return;
-    }
-
+    // Using demo data - no backend request
     setLoading(true);
     setError(null);
+    
+    // Simulate network delay for realistic UX
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
     try {
-      const response = await fetchArtistTrackDetail(normalizedIdentifier);
-      setDetail(response);
+      const normalizedIdentifier = sanitizeIdentifier(trackIdentifier) ?? null;
+      const demoData = getDemoTrackById(normalizedIdentifier || undefined);
+      setDetail(demoData);
     } catch (err) {
       setError(resolveTrackErrorMessage(err));
       setDetail(null);
