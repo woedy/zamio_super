@@ -13,6 +13,8 @@ from artists.services.media_file_service import MediaFileService
 from artists.services.media_access_service import MediaAccessService
 from artists.models import Track, Album
 from accounts.models import AuditLog
+from accounts.api.custom_jwt import CustomJWTAuthentication
+from artists.tasks import delete_track_record
 
 
 @api_view(['POST'])
@@ -338,7 +340,7 @@ def list_user_tracks_view(request):
 
 
 @api_view(['DELETE'])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 @permission_classes([IsAuthenticated])
 def delete_track_view(request, track_id):
     """Delete a track (only if user owns it and it's not published)"""
@@ -360,27 +362,28 @@ def delete_track_view(request, track_id):
                 'message': 'Cannot delete published track',
                 'errors': {'track': ['Published tracks cannot be deleted']}
             }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Log the deletion
+
+        task_result = delete_track_record.delay(track_id=track.id, user_id=user.id)
+
         AuditLog.objects.create(
             user=user,
-            action='track_delete',
+            action='track_deletion_scheduled',
             resource_type='Track',
             resource_id=str(track_id),
             request_data={
                 'title': track.title,
                 'status': track.status,
-                'processing_status': track.processing_status
-            }
+                'processing_status': track.processing_status,
+            },
+            response_data={'success': True, 'task_id': task_result.id},
+            status_code=202,
         )
-        
-        # Delete the track (files will be deleted automatically)
-        track.delete()
-        
+
         return Response({
-            'message': 'Track deleted successfully'
-        }, status=status.HTTP_200_OK)
-        
+            'message': 'Track deletion scheduled',
+            'data': {'track_id': track_id, 'task_id': task_result.id}
+        }, status=status.HTTP_202_ACCEPTED)
+
     except Exception as e:
         return Response({
             'message': 'Failed to delete track',
