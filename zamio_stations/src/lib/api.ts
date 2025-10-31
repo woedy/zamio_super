@@ -284,6 +284,68 @@ export interface StationDashboardParams {
   end_date?: string;
 }
 
+export interface StationLogPagination {
+  count: number;
+  page_number: number;
+  page_size: number;
+  total_pages: number;
+  next: number | null;
+  previous: number | null;
+  has_next: boolean;
+  has_previous: boolean;
+}
+
+export interface StationPlayLogRecord {
+  id: number | string;
+  track_title: string;
+  artist: string | null;
+  station_name: string | null;
+  matched_at: string | null;
+  stop_time: string | null;
+  duration: string | null;
+  royalty_amount: number;
+  status: string;
+  attribution_source: string | null;
+  partner_name: string | null;
+  plays: number;
+  source: string | null;
+  confidence: number | null;
+}
+
+export interface StationMatchLogRecord {
+  id: number | string;
+  track_title: string;
+  artist: string | null;
+  station_name: string | null;
+  matched_at: string | null;
+  confidence: number | null;
+  status: string;
+}
+
+export interface StationLogsCollection<T> {
+  results: T[];
+  pagination: StationLogPagination;
+}
+
+export interface StationLogsPayload {
+  playLogs?: StationLogsCollection<StationPlayLogRecord>;
+  matchLogs?: StationLogsCollection<StationMatchLogRecord>;
+}
+
+export interface StationLogsParams {
+  stationId: string;
+  search?: string;
+  playPage?: number;
+  matchPage?: number;
+  playPageSize?: number;
+  matchPageSize?: number;
+  playSortBy?: string;
+  playSortOrder?: 'asc' | 'desc';
+  matchSortBy?: string;
+  matchSortOrder?: 'asc' | 'desc';
+  logPageState?: 'playlogs' | 'matchlogs' | 'all';
+}
+
 export const fetchStationOnboardingStatus = async (stationId: string) => {
   const { data } = await authApi.get<ApiEnvelope<StationOnboardingStatus>>(
     `/api/accounts/enhanced-station-onboarding-status/${stationId}/`,
@@ -302,6 +364,62 @@ export const fetchStationDashboard = async (
 
   const { data } = await authApi.get<ApiEnvelope<StationDashboardPayload>>(
     '/api/stations/dashboard/',
+    { params: query },
+  );
+
+  return data;
+};
+
+export const fetchStationLogs = async ({
+  stationId,
+  search,
+  playPage,
+  matchPage,
+  playPageSize,
+  matchPageSize,
+  playSortBy,
+  playSortOrder,
+  matchSortBy,
+  matchSortOrder,
+  logPageState,
+}: StationLogsParams) => {
+  const query: Record<string, string | number> = {
+    station_id: stationId,
+  };
+
+  if (search) {
+    query.search = search;
+  }
+  if (typeof playPage === 'number') {
+    query.play_page = playPage;
+  }
+  if (typeof matchPage === 'number') {
+    query.match_page = matchPage;
+  }
+  if (typeof playPageSize === 'number') {
+    query.play_page_size = playPageSize;
+  }
+  if (typeof matchPageSize === 'number') {
+    query.match_page_size = matchPageSize;
+  }
+  if (playSortBy) {
+    query.play_sort_by = playSortBy;
+  }
+  if (playSortOrder) {
+    query.play_sort_order = playSortOrder;
+  }
+  if (matchSortBy) {
+    query.match_sort_by = matchSortBy;
+  }
+  if (matchSortOrder) {
+    query.match_sort_order = matchSortOrder;
+  }
+  if (logPageState) {
+    query.log_page_state = logPageState;
+  }
+
+  const { data } = await authApi.get<ApiEnvelope<StationLogsPayload>>(
+    '/api/stations/playlogs/',
     { params: query },
   );
 
