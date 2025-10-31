@@ -1,13 +1,75 @@
-import React, { useState } from 'react';
-import { Card, Button } from '@zamio/ui';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Card } from '@zamio/ui';
 import { TrendingUp, Eye, ChevronUp, ChevronDown, Download, Share2, Settings, BarChart3, DollarSign, Globe, Target, Music, MapPin, PieChart, Award } from 'lucide-react';
 import HoverCard from '../components/HoverCard';
+import { useAuth } from '../lib/auth';
+import {
+  fetchStationDashboard,
+  type StationDashboardPayload,
+  type StationDashboardDetectionRecord,
+  type StationDashboardSystemMetric,
+  type StationDashboardStaffPerformance,
+  type StationDashboardTopTrack,
+  type StationDashboardMonthlyTrend,
+  type StationDashboardBreakdownEntry,
+  type StationDashboardRegionStat,
+  type StationDashboardComplianceStatus,
+} from '../lib/api';
+
+const resolveErrorMessage = (error: unknown): string => {
+  if (!error) {
+    return 'Unable to load dashboard data.';
+  }
+
+  if (typeof error === 'string') {
+    return error;
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === 'object') {
+    const maybeError = error as {
+      response?: { data?: unknown; status?: number };
+      message?: string;
+    };
+
+    if (maybeError.response?.data && typeof maybeError.response.data === 'object') {
+      const data = maybeError.response.data as Record<string, unknown>;
+      if (typeof data['message'] === 'string') {
+        return data['message'];
+      }
+      if (typeof data['detail'] === 'string') {
+        return data['detail'];
+      }
+      if (data['errors'] && typeof data['errors'] === 'object') {
+        const errors = data['errors'] as Record<string, unknown>;
+        const firstKey = Object.keys(errors)[0];
+        const firstValue = firstKey ? errors[firstKey] : null;
+        if (typeof firstValue === 'string') {
+          return firstValue;
+        }
+        if (Array.isArray(firstValue) && firstValue.length > 0) {
+          const candidate = firstValue[0];
+          if (typeof candidate === 'string') {
+            return candidate;
+          }
+        }
+      }
+    }
+
+    if (typeof maybeError.message === 'string' && maybeError.message.length > 0) {
+      return maybeError.message;
+    }
+  }
+
+  return 'Unable to load dashboard data. Please try again later.';
+};
 
 export default function Dashboard() {
-  const [isLoading, setIsLoading] = useState(false);
+  const { user } = useAuth();
   const [selectedPeriod, setSelectedPeriod] = useState('monthly');
-  const [activeTab, setActiveTab] = useState('overview');
-  const [selectedRegion, setSelectedRegion] = useState('all');
   const [chartFilters, setChartFilters] = useState({
     airplayTrends: {
       showDetections: true,
@@ -19,44 +81,179 @@ export default function Dashboard() {
       showStations: true
     }
   });
-  const [tooltip, setTooltip] = useState<{
-    show: boolean;
-    content: string;
-    x: number;
-    y: number;
-  }>({
-    show: false,
-    content: '',
-    x: 0,
-    y: 0
-  });
+  const [dashboardData, setDashboardData] = useState<StationDashboardPayload | null>(null);
+  const [dashboardError, setDashboardError] = useState<string | null>(null);
+  const [isLoadingDashboard, setIsLoadingDashboard] = useState(false);
 
-  // Station-focused data (not artist data)
-  const stationStats = {
-    tracksDetected: 8450,
-    monitoringAccuracy: 94.2,
-    uptime: 99.7,
-    revenueEarned: 2847.50,
-    activeStaff: 12,
-    complianceScore: 8.9
-  };
+  const stationId = useMemo(() => {
+    if (user && typeof user === 'object' && user !== null) {
+      const candidate = user['station_id'];
+      if (typeof candidate === 'string' && candidate.length > 0) {
+        return candidate;
+      }
+    }
+    return null;
+  }, [user]);
 
-  const monthlyTargets = {
-    detectionTarget: 10000,
-    earningsTarget: 3000,
-    stationsTarget: 150,
-    accuracyTarget: 95,
-    uptimeTarget: 99,
-    revenueTarget: 3000
-  };
+  const loadDashboard = useCallback(async () => {
+    if (!stationId) {
+      setDashboardError('Your station ID is missing. Please sign out and sign in again.');
+      setDashboardData(null);
+      return;
+    }
 
-  const performanceScore = {
-    overall: 8.7,
-    detectionGrowth: 9.2,
-    regionalReach: 8.5,
-    systemHealth: 8.8,
-    compliance: 9.0
-  };
+    setIsLoadingDashboard(true);
+    setDashboardError(null);
+
+    try {
+      const envelope = await fetchStationDashboard(stationId, {
+        period: selectedPeriod,
+      });
+      const payload = (envelope?.data ?? null) as StationDashboardPayload | null;
+      setDashboardData(payload);
+    } catch (error) {
+      setDashboardError(resolveErrorMessage(error));
+      setDashboardData((previous) => previous ?? null);
+    } finally {
+      setIsLoadingDashboard(false);
+    }
+  }, [stationId, selectedPeriod]);
+
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
+
+  const stationStats = useMemo(
+    () => ({
+      tracksDetected: dashboardData?.stats?.tracksDetected ?? dashboardData?.totalPlays ?? 0,
+      monitoringAccuracy: dashboardData?.stats?.monitoringAccuracy ?? dashboardData?.confidenceScore ?? 0,
+      uptime: dashboardData?.stats?.uptime ?? 0,
+      revenueEarned: dashboardData?.stats?.revenueEarned ?? dashboardData?.totalRoyalties ?? 0,
+      activeStaff: dashboardData?.stats?.activeStaff ?? 0,
+      complianceScore: dashboardData?.stats?.complianceScore ?? 0,
+    }),
+    [dashboardData],
+  );
+
+  const monthlyTargets = useMemo(
+    () => ({
+      detectionTarget:
+        dashboardData?.targets?.detectionTarget ??
+        (stationStats.tracksDetected ? Math.ceil(stationStats.tracksDetected * 1.2) : 10),
+      earningsTarget:
+        dashboardData?.targets?.earningsTarget ??
+        (stationStats.revenueEarned ? Math.ceil(stationStats.revenueEarned * 1.2) : 100),
+      stationsTarget: dashboardData?.targets?.stationsTarget ?? (dashboardData?.activeRegions ?? 5),
+      accuracyTarget: dashboardData?.targets?.accuracyTarget ?? 95,
+      uptimeTarget: dashboardData?.targets?.uptimeTarget ?? 99,
+      revenueTarget:
+        dashboardData?.targets?.revenueTarget ??
+        (stationStats.revenueEarned ? Math.ceil(stationStats.revenueEarned * 1.3) : 150),
+    }),
+    [dashboardData, stationStats],
+  );
+
+  const performanceScore = useMemo(
+    () => ({
+      overall: dashboardData?.performanceScore?.overall ?? 0,
+      detectionGrowth: dashboardData?.performanceScore?.detectionGrowth ?? 0,
+      regionalReach: dashboardData?.performanceScore?.regionalReach ?? 0,
+      systemHealth: dashboardData?.performanceScore?.systemHealth ?? 0,
+      compliance: dashboardData?.performanceScore?.compliance ?? 0,
+    }),
+    [dashboardData],
+  );
+
+  const recentDetections = useMemo<StationDashboardDetectionRecord[]>(
+    () =>
+      (dashboardData?.recentDetections ?? []).map((detection) => ({
+        ...detection,
+        confidence: detection.confidence ?? 0,
+        status: detection.status ?? 'pending',
+      })),
+    [dashboardData],
+  );
+
+  const systemHealth = useMemo<StationDashboardSystemMetric[]>(
+    () =>
+      (dashboardData?.systemHealth ?? []).map((metric) => ({
+        ...metric,
+        status: metric.status ?? 'average',
+      })),
+    [dashboardData],
+  );
+
+  const staffPerformance = useMemo<StationDashboardStaffPerformance[]>(
+    () => dashboardData?.staffPerformance ?? [],
+    [dashboardData],
+  );
+
+  const topTracks = useMemo<StationDashboardTopTrack[]>(
+    () =>
+      (dashboardData?.topTracks ?? []).map((track, index, source) => ({
+        ...track,
+        trend:
+          track.trend ??
+          (index === 0 ? 'up' : index === source.length - 1 && source.length > 1 ? 'down' : 'stable'),
+        stations: track.stations ?? 1,
+      })),
+    [dashboardData],
+  );
+
+  const monthlyTrends = useMemo<StationDashboardMonthlyTrend[]>(
+    () =>
+      (dashboardData?.monthlyTrends ?? []).map((entry) => ({
+        month: entry.month ?? '—',
+        detections: entry.detections ?? 0,
+        accuracy: entry.accuracy ?? 0,
+        earnings: entry.earnings ?? 0,
+      })),
+    [dashboardData],
+  );
+
+  const stationBreakdown = useMemo<StationDashboardBreakdownEntry[]>(
+    () =>
+      (dashboardData?.stationBreakdown ?? []).map((entry) => ({
+        ...entry,
+        type: entry.type ?? entry.station,
+      })),
+    [dashboardData],
+  );
+
+  const ghanaRegions = useMemo<StationDashboardRegionStat[]>(
+    () =>
+      (dashboardData?.ghanaRegions ?? []).map((region) => ({
+        ...region,
+        trend:
+          region.trend ?? (region.growth > 1 ? 'up' : region.growth < -1 ? 'down' : 'stable'),
+      })),
+    [dashboardData],
+  );
+
+  const complianceStatus = useMemo<StationDashboardComplianceStatus>(
+    () => ({
+      broadcastingLicense: dashboardData?.complianceStatus?.broadcastingLicense ?? 'pending',
+      musicLicense: dashboardData?.complianceStatus?.musicLicense ?? 'pending',
+      technicalCertification: dashboardData?.complianceStatus?.technicalCertification ?? 'pending',
+      lastAudit: dashboardData?.complianceStatus?.lastAudit ?? null,
+      nextAudit: dashboardData?.complianceStatus?.nextAudit ?? null,
+    }),
+    [dashboardData],
+  );
+
+  const maxDetections = useMemo(
+    () => monthlyTrends.reduce((max, entry) => Math.max(max, entry.detections ?? 0), 0),
+    [monthlyTrends],
+  );
+
+  const maxEarnings = useMemo(
+    () => monthlyTrends.reduce((max, entry) => Math.max(max, entry.earnings ?? 0), 0),
+    [monthlyTrends],
+  );
+
+  const isInitialLoading = isLoadingDashboard && !dashboardData;
+  const safeMaxDetections = maxDetections || 1;
+  const safeMaxEarnings = maxEarnings || 1;
 
   const statusColors = {
     excellent: {
@@ -107,154 +304,6 @@ export default function Dashboard() {
     }
   };
 
-  const recentDetections = [
-    { id: 1, title: 'Ghana Na Woti', artist: 'King Promise', confidence: 96, timestamp: '2 mins ago', status: 'verified' },
-    { id: 2, title: 'Obra', artist: 'Samini', confidence: 94, timestamp: '5 mins ago', status: 'verified' },
-    { id: 3, title: 'Krom Aye De', artist: 'Okra Tom Dawidi', confidence: 92, timestamp: '8 mins ago', status: 'pending' },
-    { id: 4, title: 'Love & Light', artist: 'Kuami Eugene', confidence: 98, timestamp: '12 mins ago', status: 'verified' },
-    { id: 5, title: 'Dance Floor', artist: 'Kofi Kinaata', confidence: 89, timestamp: '15 mins ago', status: 'flagged' },
-  ];
-
-  const systemHealth = [
-    { metric: 'Stream Quality', value: 98.5, status: 'excellent' },
-    { metric: 'Detection Speed', value: 2.3, status: 'good', unit: 'sec avg' },
-    { metric: 'Server Uptime', value: 99.7, status: 'excellent', unit: '%' },
-    { metric: 'Database Health', value: 99.2, status: 'excellent', unit: '%' },
-  ];
-
-  const staffPerformance = [
-    { name: 'Sarah Johnson', role: 'Senior Monitor', detections: 1247, accuracy: 96.8, status: 'active' },
-    { name: 'Michael Brown', role: 'Quality Analyst', detections: 892, accuracy: 94.2, status: 'active' },
-    { name: 'Grace Osei', role: 'Junior Monitor', detections: 654, accuracy: 91.5, status: 'training' },
-    { name: 'David Mensah', role: 'Technical Lead', detections: 445, accuracy: 98.1, status: 'active' },
-  ];
-
-  const topTracks = [
-    { id: 1, title: 'Ghana Na Woti', detections: 1250, earnings: 75.0, confidence: 96, trend: 'up', stations: 12 },
-    { id: 2, title: 'Obra', detections: 980, earnings: 58.8, confidence: 94, trend: 'up', stations: 9 },
-    { id: 3, title: 'Krom Aye De', detections: 875, earnings: 52.5, confidence: 92, trend: 'down', stations: 8 },
-    { id: 4, title: 'Love & Light', detections: 743, earnings: 44.58, confidence: 90, trend: 'stable', stations: 7 },
-    { id: 5, title: 'Dance Floor', detections: 654, earnings: 39.24, confidence: 89, trend: 'up', stations: 6 },
-  ];
-
-  const monthlyTrends = [
-    { month: 'Jan', detections: 680, accuracy: 92.5, earnings: 408.0 },
-    { month: 'Feb', detections: 745, accuracy: 93.2, earnings: 447.0 },
-    { month: 'Mar', detections: 820, accuracy: 94.1, earnings: 492.0 },
-    { month: 'Apr', detections: 890, accuracy: 94.8, earnings: 534.0 },
-    { month: 'May', detections: 920, accuracy: 95.2, earnings: 552.0 },
-    { month: 'Jun', detections: 845, accuracy: 94.7, earnings: 507.0 },
-  ];
-
-  const stationBreakdown = [
-    {
-      station: 'Peace FM',
-      detections: 1245,
-      percentage: 28.5,
-      region: 'Greater Accra',
-      type: 'National'
-    },
-    {
-      station: 'Hitz FM',
-      detections: 987,
-      percentage: 22.6,
-      region: 'Greater Accra',
-      type: 'Urban'
-    },
-    {
-      station: 'Adom FM',
-      detections: 743,
-      percentage: 17.0,
-      region: 'Ashanti',
-      type: 'Regional'
-    },
-    {
-      station: 'Joy FM',
-      detections: 654,
-      percentage: 15.0,
-      region: 'Greater Accra',
-      type: 'National'
-    },
-    {
-      station: 'Okay FM',
-      detections: 543,
-      percentage: 12.4,
-      region: 'Greater Accra',
-      type: 'Urban'
-    },
-    {
-      station: 'Others',
-      detections: 198,
-      percentage: 4.5,
-      region: 'Various',
-      type: 'Various'
-    }
-  ];
-
-  const ghanaRegions = [
-    {
-      region: 'Greater Accra',
-      detections: 15234,
-      earnings: 913.04,
-      stations: 45,
-      growth: 15.2,
-      trend: 'up'
-    },
-    {
-      region: 'Ashanti',
-      detections: 12543,
-      earnings: 752.58,
-      stations: 32,
-      growth: 12.8,
-      trend: 'up'
-    },
-    {
-      region: 'Northern',
-      detections: 8765,
-      earnings: 525.9,
-      stations: 18,
-      growth: 18.5,
-      trend: 'up'
-    },
-    {
-      region: 'Western',
-      detections: 6543,
-      earnings: 392.58,
-      stations: 15,
-      growth: 8.9,
-      trend: 'stable'
-    },
-    {
-      region: 'Eastern',
-      detections: 4321,
-      earnings: 259.26,
-      stations: 12,
-      growth: 11.3,
-      trend: 'up'
-    },
-    {
-      region: 'Central',
-      detections: 3456,
-      earnings: 207.36,
-      stations: 8,
-      growth: 7.2,
-      trend: 'stable'
-    }
-  ];
-
-  const complianceStatus = {
-    broadcastingLicense: 'valid',
-    musicLicense: 'valid',
-    technicalCertification: 'pending',
-    lastAudit: '2024-09-15',
-    nextAudit: '2024-12-15'
-  };
-
-  // Calculate max values after all data is defined
-  const maxDetections = Math.max(...monthlyTrends.map(m => m.detections));
-  const maxEarnings = Math.max(...monthlyTrends.map(m => m.earnings));
-  const maxRegionalDetections = Math.max(...ghanaRegions.map(r => r.detections));
-
   return (
     <div className="space-y-8">
       {/* Station Dashboard Header */}
@@ -269,19 +318,17 @@ export default function Dashboard() {
           <select
             value={selectedPeriod}
             onChange={(e) => {
-              setIsLoading(true);
               setSelectedPeriod(e.target.value);
-              setTimeout(() => setIsLoading(false), 800); // Simulate loading
             }}
-            className={`px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:border-blue-400 transition-all duration-200 hover:shadow-sm ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-            disabled={isLoading}
+            className={`px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:border-blue-400 transition-all duration-200 hover:shadow-sm ${isLoadingDashboard ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={isLoadingDashboard}
           >
             <option value="daily">Daily</option>
             <option value="weekly">Weekly</option>
             <option value="monthly">Monthly</option>
             <option value="yearly">Yearly</option>
           </select>
-          {isLoading && (
+          {isLoadingDashboard && (
             <div className="flex items-center space-x-2">
               <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
               <span className="text-sm text-gray-600 dark:text-gray-400">Updating...</span>
@@ -290,8 +337,14 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {dashboardError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+          {dashboardError}
+        </div>
+      )}
+
       {/* Station Stats Cards - Enhanced Design */}
-      <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 transition-opacity duration-300 ${isLoading ? 'opacity-50' : 'opacity-100'}`}>
+      <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 transition-opacity duration-300 ${isLoadingDashboard ? 'opacity-50' : 'opacity-100'}`}>
         {/* Tracks Detected Card */}
         <Card className="bg-gradient-to-br from-red-50/90 via-orange-50/80 to-pink-50/90 dark:from-slate-900/95 dark:via-slate-800/90 dark:to-slate-900/95 backdrop-blur-sm rounded-xl shadow-lg border border-red-200/50 dark:border-slate-600/60 p-6 hover:shadow-xl hover:scale-[1.02] transition-all duration-300 hover:border-red-300 dark:hover:border-red-700/70 group cursor-pointer">
           <div className="flex items-center justify-between">
@@ -451,7 +504,7 @@ export default function Dashboard() {
       </div>
 
       {/* Main Content Grid - Station-focused sections */}
-      <div className={`grid grid-cols-1 lg:grid-cols-3 gap-8 transition-opacity duration-300 ${isLoading ? 'opacity-50' : 'opacity-100'}`}>
+      <div className={`grid grid-cols-1 lg:grid-cols-3 gap-8 transition-opacity duration-300 ${isLoadingDashboard ? 'opacity-50' : 'opacity-100'}`}>
         {/* Left Column */}
         <div className="lg:col-span-2 space-y-8">
           {/* Recent Detections */}
@@ -466,7 +519,7 @@ export default function Dashboard() {
               </button>
             </div>
             <div className="space-y-4">
-              {isLoading ? (
+              {isInitialLoading ? (
                 // Loading skeleton for detections
                 Array.from({ length: 3 }).map((_, index) => (
                   <div key={index} className="flex items-center justify-between p-4 bg-white/5 dark:bg-slate-800/50 rounded-xl border border-white/10 animate-pulse">
@@ -496,13 +549,13 @@ export default function Dashboard() {
                           {detection.title}
                         </div>
                         <div className="text-sm text-gray-600 dark:text-gray-300">
-                          by {detection.artist} • {detection.confidence}% confidence
+                          by {detection.artist ?? 'Unknown artist'} • {detection.confidence}% confidence
                         </div>
                       </div>
                     </div>
                     <div className="text-right">
                       <div className="text-gray-900 dark:text-white font-semibold text-sm">
-                        {detection.timestamp}
+                        {detection.timestamp ?? 'Just now'}
                       </div>
                       <div className={`inline-flex items-center justify-center text-xs font-medium px-2 py-0.5 rounded-full transition-all duration-300 min-w-[60px] text-center ${
                         detection.status === 'verified' ? 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800' :
@@ -551,7 +604,7 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="space-y-4">
-              {isLoading ? (
+              {isInitialLoading ? (
                 // Loading skeleton for chart
                 Array.from({ length: 6 }).map((_, index) => (
                   <div key={index} className="space-y-3 animate-pulse">
@@ -595,7 +648,7 @@ export default function Dashboard() {
                         <div className="flex-1 bg-gray-200 dark:bg-slate-700 rounded-full h-3 overflow-hidden group-hover:bg-gray-300 dark:group-hover:bg-slate-600 transition-colors duration-300">
                           <div
                             className="h-full bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full transition-all duration-500 hover:from-blue-400 hover:to-cyan-400 cursor-pointer"
-                            style={{ width: `${(month.detections / maxDetections) * 100}%` }}
+                            style={{ width: `${(month.detections / safeMaxDetections) * 100}%` }}
                             title={`${month.detections.toLocaleString()} detections`}
                           />
                         </div>
@@ -604,7 +657,7 @@ export default function Dashboard() {
                         <div className="flex-1 bg-gray-200 dark:bg-slate-700 rounded-full h-3 overflow-hidden group-hover:bg-gray-300 dark:group-hover:bg-slate-600 transition-colors duration-300">
                           <div
                             className="h-full bg-gradient-to-r from-emerald-500 to-green-500 rounded-full transition-all duration-500 hover:from-emerald-400 hover:to-green-400 cursor-pointer"
-                            style={{ width: `${(month.earnings / maxEarnings) * 100}%` }}
+                            style={{ width: `${(month.earnings / safeMaxEarnings) * 100}%` }}
                             title={`₵${month.earnings.toFixed(0)} earnings`}
                           />
                         </div>

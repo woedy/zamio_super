@@ -11,7 +11,7 @@ from rest_framework.test import APIClient
 
 from artists.models import Artist, Genre, Track
 from music_monitor.models import PlayLog
-from stations.models import Station
+from stations.models import Station, StationStaff
 
 
 @override_settings(SECURE_SSL_REDIRECT=False)
@@ -39,7 +39,7 @@ class StationDashboardAPITestCase(TestCase):
             active=True,
         )
 
-        genre = Genre.objects.create(name='Afrobeats', color='#facc15')
+        genre = Genre.objects.create(name='Afrobeats')
 
         artist_user = user_model.objects.create_user(
             email='artist@example.com',
@@ -87,6 +87,14 @@ class StationDashboardAPITestCase(TestCase):
             flagged=True,
         )
 
+        StationStaff.objects.create(
+            station=self.station,
+            name='Sarah Johnson',
+            email='sarah@example.com',
+            role='manager',
+            active=True,
+        )
+
         self.client = APIClient()
         self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.token.key}')
 
@@ -107,9 +115,37 @@ class StationDashboardAPITestCase(TestCase):
 
         data = payload['data']
         self.assertEqual(data['stationName'], self.station.name)
+        self.assertEqual(data['stationId'], self.station.station_id)
         self.assertEqual(data['totalSongs'], 1)
         self.assertEqual(data['totalPlays'], 2)
+        self.assertAlmostEqual(data['totalRoyalties'], 3.75, places=2)
+
+        stats = data['stats']
+        self.assertEqual(stats['tracksDetected'], 2)
+        self.assertAlmostEqual(stats['revenueEarned'], 3.75, places=2)
+        self.assertEqual(stats['activeStaff'], 1)
+        self.assertIn('monitoringAccuracy', stats)
+
+        targets = data['targets']
+        self.assertGreaterEqual(targets['detectionTarget'], stats['tracksDetected'])
+        self.assertIn('uptimeTarget', targets)
+
         self.assertEqual(data['disputeSummary']['disputed'], 1)
         self.assertEqual(data['disputeSummary']['undisputed'], 1)
-        self.assertGreater(len(data['airplayData']), 0)
+
+        self.assertTrue(len(data['recentDetections']) > 0)
+        top_track = data['topTracks'][0]
+        self.assertEqual(top_track['title'], self.track.title)
+        self.assertEqual(top_track['detections'], 2)
+
+        self.assertTrue(len(data['systemHealth']) >= 3)
+        self.assertTrue(len(data['monthlyTrends']) > 0)
+        self.assertTrue(len(data['stationBreakdown']) > 0)
+        self.assertTrue(len(data['ghanaRegions']) > 0)
+
+        compliance = data['complianceStatus']
+        self.assertIn('broadcastingLicense', compliance)
+        self.assertIn('technicalCertification', compliance)
+
+        self.assertEqual(len(data['airplayData']), 7)
         self.assertGreater(len(data['trendData']), 0)
