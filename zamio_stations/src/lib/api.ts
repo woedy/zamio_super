@@ -151,10 +151,278 @@ export interface StationOnboardingStatus {
   [key: string]: unknown;
 }
 
+export type StationDashboardTrend = 'up' | 'down' | 'stable';
+export type StationDashboardStatusLevel = 'excellent' | 'good' | 'average' | 'poor';
+
+export interface StationDashboardStatsSummary {
+  tracksDetected: number;
+  monitoringAccuracy: number;
+  uptime: number;
+  revenueEarned: number;
+  activeStaff: number;
+  complianceScore: number;
+}
+
+export interface StationDashboardTargets {
+  detectionTarget: number;
+  earningsTarget: number;
+  stationsTarget: number;
+  accuracyTarget: number;
+  uptimeTarget: number;
+  revenueTarget: number;
+}
+
+export interface StationDashboardPerformanceScore {
+  overall: number;
+  detectionGrowth: number;
+  regionalReach: number;
+  systemHealth: number;
+  compliance: number;
+}
+
+export interface StationDashboardDetectionRecord {
+  id: number | string;
+  title: string;
+  artist?: string | null;
+  confidence: number;
+  timestamp?: string | null;
+  status: string;
+}
+
+export interface StationDashboardSystemMetric {
+  metric: string;
+  value: number;
+  status: StationDashboardStatusLevel;
+  unit?: string;
+}
+
+export interface StationDashboardStaffPerformance {
+  name: string;
+  role?: string | null;
+  detections: number;
+  accuracy: number;
+  status: string;
+}
+
+export interface StationDashboardTopTrack {
+  id: number | string | null;
+  title: string;
+  detections: number;
+  earnings: number;
+  confidence: number;
+  trend?: StationDashboardTrend;
+  stations: number;
+}
+
+export interface StationDashboardMonthlyTrend {
+  month: string;
+  detections: number;
+  accuracy: number;
+  earnings: number;
+}
+
+export interface StationDashboardBreakdownEntry {
+  station: string;
+  detections: number;
+  percentage: number;
+  region: string;
+  type?: string;
+}
+
+export interface StationDashboardRegionStat {
+  region: string;
+  detections: number;
+  earnings: number;
+  stations: number;
+  growth: number;
+  trend?: StationDashboardTrend;
+}
+
+export interface StationDashboardComplianceStatus {
+  broadcastingLicense?: string;
+  musicLicense?: string;
+  technicalCertification?: string;
+  lastAudit?: string | null;
+  nextAudit?: string | null;
+}
+
+export interface StationDashboardPayload {
+  period?: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  stationId?: string;
+  stationName?: string;
+  totalSongs?: number;
+  totalPlays?: number;
+  totalRoyalties?: number;
+  confidenceScore?: number;
+  activeRegions?: number;
+  stats?: StationDashboardStatsSummary;
+  targets?: StationDashboardTargets;
+  performanceScore?: StationDashboardPerformanceScore;
+  recentDetections?: StationDashboardDetectionRecord[];
+  systemHealth?: StationDashboardSystemMetric[];
+  staffPerformance?: StationDashboardStaffPerformance[];
+  topTracks?: StationDashboardTopTrack[];
+  monthlyTrends?: StationDashboardMonthlyTrend[];
+  stationBreakdown?: StationDashboardBreakdownEntry[];
+  ghanaRegions?: StationDashboardRegionStat[];
+  complianceStatus?: StationDashboardComplianceStatus;
+  disputeSummary?: {
+    total?: number;
+    disputed?: number;
+    undisputed?: number;
+  };
+  airplayData?: { day: string; plays: number }[];
+  trendData?: { date: string; plays: number }[];
+  [key: string]: unknown;
+}
+
+export interface StationDashboardParams {
+  period?: string;
+  start_date?: string;
+  end_date?: string;
+}
+
+export interface StationLogPagination {
+  count: number;
+  page_number: number;
+  page_size: number;
+  total_pages: number;
+  next: number | null;
+  previous: number | null;
+  has_next: boolean;
+  has_previous: boolean;
+}
+
+export interface StationPlayLogRecord {
+  id: number | string;
+  track_title: string;
+  artist: string | null;
+  station_name: string | null;
+  matched_at: string | null;
+  stop_time: string | null;
+  duration: string | null;
+  royalty_amount: number;
+  status: string;
+  attribution_source: string | null;
+  partner_name: string | null;
+  plays: number;
+  source: string | null;
+  confidence: number | null;
+}
+
+export interface StationMatchLogRecord {
+  id: number | string;
+  track_title: string;
+  artist: string | null;
+  station_name: string | null;
+  matched_at: string | null;
+  confidence: number | null;
+  status: string;
+}
+
+export interface StationLogsCollection<T> {
+  results: T[];
+  pagination: StationLogPagination;
+}
+
+export interface StationLogsPayload {
+  playLogs?: StationLogsCollection<StationPlayLogRecord>;
+  matchLogs?: StationLogsCollection<StationMatchLogRecord>;
+}
+
+export interface StationLogsParams {
+  stationId: string;
+  search?: string;
+  playPage?: number;
+  matchPage?: number;
+  playPageSize?: number;
+  matchPageSize?: number;
+  playSortBy?: string;
+  playSortOrder?: 'asc' | 'desc';
+  matchSortBy?: string;
+  matchSortOrder?: 'asc' | 'desc';
+  logPageState?: 'playlogs' | 'matchlogs' | 'all';
+}
+
 export const fetchStationOnboardingStatus = async (stationId: string) => {
   const { data } = await authApi.get<ApiEnvelope<StationOnboardingStatus>>(
     `/api/accounts/enhanced-station-onboarding-status/${stationId}/`,
   );
+  return data;
+};
+
+export const fetchStationDashboard = async (
+  stationId: string,
+  params: StationDashboardParams = {},
+) => {
+  const query = {
+    station_id: stationId,
+    ...params,
+  };
+
+  const { data } = await authApi.get<ApiEnvelope<StationDashboardPayload>>(
+    '/api/stations/dashboard/',
+    { params: query },
+  );
+
+  return data;
+};
+
+export const fetchStationLogs = async ({
+  stationId,
+  search,
+  playPage,
+  matchPage,
+  playPageSize,
+  matchPageSize,
+  playSortBy,
+  playSortOrder,
+  matchSortBy,
+  matchSortOrder,
+  logPageState,
+}: StationLogsParams) => {
+  const query: Record<string, string | number> = {
+    station_id: stationId,
+  };
+
+  if (search) {
+    query.search = search;
+  }
+  if (typeof playPage === 'number') {
+    query.play_page = playPage;
+  }
+  if (typeof matchPage === 'number') {
+    query.match_page = matchPage;
+  }
+  if (typeof playPageSize === 'number') {
+    query.play_page_size = playPageSize;
+  }
+  if (typeof matchPageSize === 'number') {
+    query.match_page_size = matchPageSize;
+  }
+  if (playSortBy) {
+    query.play_sort_by = playSortBy;
+  }
+  if (playSortOrder) {
+    query.play_sort_order = playSortOrder;
+  }
+  if (matchSortBy) {
+    query.match_sort_by = matchSortBy;
+  }
+  if (matchSortOrder) {
+    query.match_sort_order = matchSortOrder;
+  }
+  if (logPageState) {
+    query.log_page_state = logPageState;
+  }
+
+  const { data } = await authApi.get<ApiEnvelope<StationLogsPayload>>(
+    '/api/stations/playlogs/',
+    { params: query },
+  );
+
   return data;
 };
 
