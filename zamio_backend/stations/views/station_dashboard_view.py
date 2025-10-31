@@ -13,11 +13,13 @@ from rest_framework import status
 from music_monitor.models import PlayLog
 from stations.models import Station, StationStaff
 
+from accounts.api.custom_jwt import CustomJWTAuthentication
+
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def get_station_dashboard_data(request):
     payload = {}
     data = {}

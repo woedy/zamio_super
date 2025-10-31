@@ -8,6 +8,7 @@ from django.urls import reverse
 from django.utils import timezone
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import AccessToken
 
 from artists.models import Artist, Genre, Track
 from music_monitor.models import PlayLog
@@ -98,6 +99,12 @@ class StationDashboardAPITestCase(TestCase):
         self.client = APIClient()
         self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.token.key}')
 
+        self.jwt_client = APIClient()
+        access_token = AccessToken.for_user(self.station_user)
+        access_token['user_id'] = str(self.station_user.user_id)
+        access_token['user_type'] = self.station_user.user_type
+        self.jwt_client.credentials(HTTP_AUTHORIZATION=f'Bearer {str(access_token)}')
+
     def test_dashboard_endpoint_returns_station_metrics(self) -> None:
         url = reverse('stations:get_station_dashboard_data')
         response = self.client.get(
@@ -149,3 +156,19 @@ class StationDashboardAPITestCase(TestCase):
 
         self.assertEqual(len(data['airplayData']), 7)
         self.assertGreater(len(data['trendData']), 0)
+
+    def test_dashboard_endpoint_accepts_jwt_bearer_token(self) -> None:
+        url = reverse('stations:get_station_dashboard_data')
+        response = self.jwt_client.get(
+            url,
+            {
+                'station_id': self.station.station_id,
+                'period': 'monthly',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn('data', payload)
+        self.assertEqual(payload['data']['stationId'], self.station.station_id)
