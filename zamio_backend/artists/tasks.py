@@ -8,7 +8,7 @@ import uuid
 import hashlib
 from datetime import timedelta
 from decimal import Decimal
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 import librosa
 from celery import shared_task
@@ -18,7 +18,7 @@ from django.core.files.storage import default_storage
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 
-from artists.models import Track, Fingerprint, UploadProcessingStatus, Contributor
+from artists.models import Track, Fingerprint, UploadProcessingStatus, Contributor, Album
 from accounts.models import AuditLog
 from artists.utils.fingerprint_tracks import simple_fingerprint
 
@@ -480,3 +480,246 @@ def cleanup_failed_uploads(self) -> Dict[str, Any]:
             "success": False,
             "error": str(e),
         }
+
+
+def _delete_file_field(file_field) -> str | None:
+    """Delete a Django file field safely and return the removed path."""
+    if not file_field:
+        return None
+
+    file_name = getattr(file_field, "name", None)
+    if not file_name:
+        return None
+
+    storage = getattr(file_field, "storage", default_storage)
+    try:
+        if storage.exists(file_name):
+            storage.delete(file_name)
+    except Exception:
+        # Storage clean-up failures shouldn't block the deletion pipeline
+        pass
+
+    return file_name
+
+
+def _delete_track_resources(track: Track) -> Dict[str, Any]:
+    """Delete a track and its heavy fingerprint data, returning a summary."""
+
+    track_id = track.id
+    track_title = track.title
+
+    removed_files: List[str] = []
+    for field_name in ["audio_file", "audio_file_mp3", "audio_file_wav", "cover_art"]:
+        removed_path = _delete_file_field(getattr(track, field_name, None))
+        if removed_path:
+            removed_files.append(removed_path)
+
+    fingerprints_deleted, _ = Fingerprint.objects.filter(track_id=track_id).delete()
+    contributors_deleted, _ = track.contributors.all().delete()
+
+    track.delete()
+
+    return {
+        "track_id": track_id,
+        "track_title": track_title,
+        "fingerprints_deleted": fingerprints_deleted,
+        "contributors_deleted": contributors_deleted,
+        "files_removed": removed_files,
+    }
+
+
+def _delete_album_resources(album: Album) -> Dict[str, Any]:
+    """Delete an album and related files."""
+
+    album_id = album.id
+    album_title = album.title
+    removed_cover = _delete_file_field(getattr(album, "cover_art", None))
+    album.delete()
+
+    payload = {
+        "album_id": album_id,
+        "album_title": album_title,
+        "files_removed": [],
+    }
+    if removed_cover:
+        payload["files_removed"].append(removed_cover)
+    return payload
+
+
+def _purge_upload_source_files(metadata: Dict[str, Any]) -> List[str]:
+    """Remove any temporary storage keys referenced in upload metadata."""
+
+    removed: List[str] = []
+    for key in [
+        "internal_temp_storage_path",
+        "storage_path",
+        "source_storage_path",
+    ]:
+        storage_key = metadata.get(key)
+        if not storage_key:
+            continue
+        try:
+            if default_storage.exists(storage_key):
+                default_storage.delete(storage_key)
+                removed.append(storage_key)
+        except Exception:
+            continue
+    return removed
+
+
+@shared_task(bind=True, max_retries=2)
+def delete_upload_artifacts(self, upload_id: str, user_id: int) -> Dict[str, Any]:
+    """Delete upload related resources asynchronously to improve UX."""
+
+    summary: Dict[str, Any] = {"success": False, "upload_id": upload_id}
+
+    try:
+        upload_status = UploadProcessingStatus.objects.filter(upload_id=upload_id, user_id=user_id).first()
+        if not upload_status:
+            summary["error"] = "Upload not found"
+            return summary
+
+        metadata = upload_status.metadata or {}
+        removed_files = _purge_upload_source_files(metadata)
+
+        deletion_summary: Dict[str, Any] = {}
+
+        upload_type = getattr(upload_status, "upload_type", "")
+
+        if upload_status.entity_type == "track" and upload_status.entity_id:
+            track = Track.objects.filter(id=upload_status.entity_id, artist__user_id=user_id).first()
+            if track and upload_type == "track_audio":
+                track_summary = _delete_track_resources(track)
+                deletion_summary["track"] = track_summary
+                removed_files.extend(track_summary.get("files_removed", []))
+            elif track:
+                deletion_summary["track"] = {
+                    "track_id": track.id,
+                    "track_title": track.title,
+                    "skipped": True,
+                    "reason": f"Upload type {upload_type} does not remove track",
+                }
+        elif upload_status.entity_type == "album" and upload_status.entity_id and upload_type != "album_cover":
+            album = Album.objects.filter(id=upload_status.entity_id, artist__user_id=user_id).first()
+            if album:
+                album_summary = _delete_album_resources(album)
+                deletion_summary["album"] = album_summary
+                removed_files.extend(album_summary.get("files_removed", []))
+
+        metadata = {
+            **metadata,
+            "deleted_at": timezone.now().isoformat(),
+            "deletion_summary": deletion_summary,
+        }
+
+        upload_status.status = "deleted"
+        upload_status.progress_percentage = 100
+        upload_status.current_step = "Deletion completed"
+        upload_status.completed_at = timezone.now()
+        upload_status.entity_id = None
+        upload_status.entity_type = ""
+        upload_status.metadata = metadata
+        upload_status.save(
+            update_fields=[
+                "status",
+                "progress_percentage",
+                "current_step",
+                "completed_at",
+                "entity_id",
+                "entity_type",
+                "metadata",
+            ]
+        )
+
+        AuditLog.objects.create(
+            user_id=user_id,
+            action="upload_deletion_completed",
+            resource_type="upload",
+            resource_id=upload_id,
+            request_data={},
+            response_data={
+                "success": True,
+                "removed_files": removed_files,
+                "deletion_summary": deletion_summary,
+            },
+            status_code=200,
+        )
+
+        summary.update(
+            {
+                "success": True,
+                "removed_files": removed_files,
+                "deletion_summary": deletion_summary,
+            }
+        )
+        return summary
+
+
+    except Exception as exc:
+        summary["error"] = str(exc)
+
+        try:
+            upload_status = UploadProcessingStatus.objects.get(upload_id=upload_id, user_id=user_id)
+            upload_status.status = "failed"
+            upload_status.error_message = f"Deletion failed: {exc}"
+            upload_status.save(update_fields=["status", "error_message"])
+        except UploadProcessingStatus.DoesNotExist:
+            pass
+
+        AuditLog.objects.create(
+            user_id=user_id,
+            action="upload_deletion_failed",
+            resource_type="upload",
+            resource_id=upload_id,
+            request_data={},
+            response_data={"success": False, "error": str(exc)},
+            status_code=500,
+        )
+
+        return summary
+
+
+@shared_task(bind=True, max_retries=2)
+def delete_track_record(self, track_id: int, user_id: int) -> Dict[str, Any]:
+    """Delete a track asynchronously."""
+
+    summary: Dict[str, Any] = {"success": False, "track_id": track_id}
+
+    try:
+        track = Track.objects.filter(id=track_id, artist__user_id=user_id).first()
+        if not track:
+            summary["error"] = "Track not found"
+            return summary
+
+        deletion_summary = _delete_track_resources(track)
+
+        AuditLog.objects.create(
+            user_id=user_id,
+            action="track_deletion_completed",
+            resource_type="track",
+            resource_id=str(track_id),
+            request_data={},
+            response_data={
+                "success": True,
+                **deletion_summary,
+            },
+            status_code=200,
+        )
+
+        summary.update({"success": True, **deletion_summary})
+        return summary
+
+    except Exception as exc:
+        summary["error"] = str(exc)
+
+        AuditLog.objects.create(
+            user_id=user_id,
+            action="track_deletion_failed",
+            resource_type="track",
+            resource_id=str(track_id),
+            request_data={},
+            response_data={"success": False, "error": str(exc)},
+            status_code=500,
+        )
+
+        return summary

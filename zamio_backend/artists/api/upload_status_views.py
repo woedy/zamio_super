@@ -19,7 +19,12 @@ from accounts.models import AuditLog
 from artists.models import Track, Album, Artist, UploadProcessingStatus, Contributor, Genre
 from .album_management_views import _parse_release_date, _resolve_genre
 from accounts.api.custom_jwt import CustomJWTAuthentication
-from artists.tasks import process_track_upload, process_cover_art_upload, update_contributor_splits
+from artists.tasks import (
+    process_track_upload,
+    process_cover_art_upload,
+    update_contributor_splits,
+    delete_upload_artifacts,
+)
 from artists.services.media_file_service import MediaFileService
 
 
@@ -489,7 +494,7 @@ def get_user_uploads(request):
     try:
         user = request.user
 
-        base_query = UploadProcessingStatus.objects.filter(user=user)
+        base_query = UploadProcessingStatus.objects.filter(user=user).exclude(status='deleted')
         upload_type_filter = request.GET.get('upload_type')
         excluded_cover_types = ['track_cover', 'album_cover']
 
@@ -505,7 +510,7 @@ def get_user_uploads(request):
         stats = {
             'total': filtered_query.count(),
             'uploading': sum(totals_map.get(status_key, 0) for status_key in ['pending', 'queued']),
-            'processing': totals_map.get('processing', 0),
+            'processing': totals_map.get('processing', 0) + totals_map.get('deleting', 0),
             'completed': totals_map.get('completed', 0),
             'failed': totals_map.get('failed', 0) + totals_map.get('cancelled', 0),
         }
@@ -530,7 +535,7 @@ def get_user_uploads(request):
 
         status_map = {
             'uploading': ['pending', 'queued'],
-            'processing': ['processing'],
+            'processing': ['processing', 'deleting'],
             'completed': ['completed'],
             'failed': ['failed', 'cancelled'],
             'cancelled': ['cancelled'],
@@ -646,9 +651,11 @@ def get_user_uploads(request):
                 'pending': 'uploading',
                 'queued': 'uploading',
                 'processing': 'processing',
+                'deleting': 'processing',
                 'completed': 'completed',
                 'failed': 'failed',
                 'cancelled': 'cancelled',
+                'deleted': 'completed',
             }.get(value, value)
 
         def format_duration_value(upload, track):
@@ -1019,6 +1026,20 @@ def delete_upload(request, upload_id):
             payload['errors'] = {'upload_id': ['Upload not found or you do not have permission to delete it']}
             return Response(payload, status=status.HTTP_404_NOT_FOUND)
 
+        if upload_status.status == 'deleted':
+            payload['message'] = 'Upload already deleted'
+            payload['data'] = {'upload_id': upload_id, 'status': 'deleted'}
+            return Response(payload, status=status.HTTP_200_OK)
+
+        if upload_status.status == 'deleting':
+            payload['message'] = 'Upload deletion already in progress'
+            payload['data'] = {
+                'upload_id': upload_id,
+                'status': 'deleting',
+                'task_id': (upload_status.metadata or {}).get('deletion_task_id'),
+            }
+            return Response(payload, status=status.HTTP_202_ACCEPTED)
+
         if upload_status.status not in ['completed', 'failed', 'cancelled']:
             payload['message'] = 'Upload cannot be deleted yet'
             payload['errors'] = {
@@ -1026,21 +1047,44 @@ def delete_upload(request, upload_id):
             }
             return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
-        upload_status.delete()
+        metadata = upload_status.metadata or {}
+        previous_status = upload_status.status
+        deletion_requested_at = timezone.now().isoformat()
+
+        task_result = delete_upload_artifacts.delay(upload_id=upload_id, user_id=user.id)
+
+        metadata.update({
+            'deletion_requested_at': deletion_requested_at,
+            'deletion_task_id': task_result.id,
+        })
+
+        upload_status.status = 'deleting'
+        upload_status.progress_percentage = min(upload_status.progress_percentage, 95)
+        upload_status.current_step = 'Queued for deletion'
+        upload_status.metadata = metadata
+        upload_status.save(update_fields=['status', 'progress_percentage', 'current_step', 'metadata'])
 
         AuditLog.objects.create(
             user=user,
-            action='upload_deleted',
+            action='upload_deletion_scheduled',
             resource_type='upload',
             resource_id=upload_id,
-            request_data={},
-            response_data={'success': True},
-            status_code=200,
+            request_data={
+                'status_before': previous_status,
+                'entity_type': upload_status.entity_type,
+                'entity_id': upload_status.entity_id,
+            },
+            response_data={'success': True, 'task_id': task_result.id},
+            status_code=202,
         )
 
-        payload['message'] = 'Upload deleted successfully'
-        payload['data'] = {'upload_id': upload_id}
-        return Response(payload, status=status.HTTP_200_OK)
+        payload['message'] = 'Upload deletion scheduled'
+        payload['data'] = {
+            'upload_id': upload_id,
+            'status': 'deleting',
+            'task_id': task_result.id,
+        }
+        return Response(payload, status=status.HTTP_202_ACCEPTED)
 
     except Exception as e:
         payload['message'] = 'Failed to delete upload'

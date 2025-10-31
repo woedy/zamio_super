@@ -132,6 +132,8 @@ class UploadProcessingStatus(models.Model):
         ('completed', 'Completed'),
         ('failed', 'Failed'),
         ('cancelled', 'Cancelled'),
+        ('deleting', 'Deleting'),
+        ('deleted', 'Deleted'),
     ]
     
     UPLOAD_TYPES = [

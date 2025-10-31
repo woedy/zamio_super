@@ -23,8 +23,6 @@ import {
   fetchUploadStatusById,
   cancelUploadRequest,
   deleteUploadRequest,
-  deleteArtistAlbum,
-  deleteArtistTrack,
   createAlbumForUploads,
   type UploadLifecycleStatus,
   type UploadManagementPagination,
@@ -105,8 +103,10 @@ const extractApiErrorMessage = (error: unknown, fallback: string): string => {
 const mapBackendStatus = (status?: string): UploadLifecycleStatus => {
   switch (status) {
     case 'processing':
+    case 'deleting':
       return 'processing';
     case 'completed':
+    case 'deleted':
       return 'completed';
     case 'failed':
       return 'failed';
@@ -589,14 +589,16 @@ const UploadManagement: React.FC = () => {
 
     try {
       const entityKind = resolveEntityKind(pendingDelete);
-      if (pendingDelete.entityId && entityKind === 'album') {
-        await deleteArtistAlbum(pendingDelete.entityId);
-      } else if (pendingDelete.entityId && entityKind === 'track') {
-        await deleteArtistTrack(pendingDelete.entityId);
-      }
+      const response = await deleteUploadRequest(pendingDelete.uploadId);
+      const responsePayload = (response?.data ?? {}) as Record<string, unknown>;
+      const backendStatus = typeof responsePayload.status === 'string' ? responsePayload.status : undefined;
 
-      await deleteUploadRequest(pendingDelete.uploadId);
-      setActionMessage('Upload removed successfully.');
+      if (backendStatus === 'deleted') {
+        setActionMessage('Upload removed successfully.');
+      } else {
+        const noun = entityKind === 'track' ? 'track' : entityKind === 'album' ? 'album' : 'upload';
+        setActionMessage(`Deletion scheduled. We'll remove this ${noun} shortly.`);
+      }
       setSelectedUploads((prev) => prev.filter((id) => id !== pendingDelete.id));
       await fetchUploads(currentPage);
       succeeded = true;

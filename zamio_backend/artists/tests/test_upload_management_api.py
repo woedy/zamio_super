@@ -13,7 +13,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from PIL import Image
 
 from artists.models import Artist, UploadProcessingStatus, Album, Genre, Track
-from artists.tasks import process_track_upload
+from artists.tasks import process_track_upload, delete_upload_artifacts
 
 
 User = get_user_model()
@@ -219,12 +219,33 @@ class UploadManagementAPITestCase(TestCase):
         self.processing_upload.refresh_from_db()
         self.assertEqual(self.processing_upload.status, 'cancelled')
 
-    def test_delete_upload_removes_failed_record(self):
+    @patch('artists.api.upload_status_views.delete_upload_artifacts.delay')
+    def test_delete_upload_removes_failed_record(self, mocked_delay):
+        mocked_delay.return_value = SimpleNamespace(id='task-789')
+
         response = self.client.delete('/api/artists/api/upload/failed_upload_id/delete/')
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertFalse(
-            UploadProcessingStatus.objects.filter(upload_id='failed_upload_id').exists()
-        )
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+
+        self.failed_upload.refresh_from_db()
+        self.assertEqual(self.failed_upload.status, 'deleting')
+        self.assertEqual(self.failed_upload.metadata.get('deletion_task_id'), 'task-789')
+        self.assertEqual(response.data['data']['status'], 'deleting')
+        mocked_delay.assert_called_with(upload_id='failed_upload_id', user_id=self.user.id)
+
+    def test_delete_upload_artifacts_task_removes_track(self):
+        track_id = self.library_track.id
+        upload_id = self.completed_upload.upload_id
+
+        self.completed_upload.status = 'completed'
+        self.completed_upload.save(update_fields=['status'])
+
+        result = delete_upload_artifacts.apply(args=(upload_id, self.user.id)).get()
+
+        self.assertTrue(result['success'])
+        self.completed_upload.refresh_from_db()
+        self.assertEqual(self.completed_upload.status, 'deleted')
+        self.assertIsNone(self.completed_upload.entity_id)
+        self.assertFalse(Track.objects.filter(id=track_id).exists())
 
     def test_get_user_uploads_infers_file_type_when_missing(self):
         legacy_upload = UploadProcessingStatus.objects.create(
