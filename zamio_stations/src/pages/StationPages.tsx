@@ -1,8 +1,13 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ComingSoonPage from './ComingSoon';
 import PlayLogs from './PlayLogs';
 import AllDisputeMatches from './MatchDisputeManagement/AllDisputeMatches';
 import { Card } from '@zamio/ui';
+import { useAuth } from '../lib/auth';
+import {
+  fetchStationProfile,
+  type StationProfilePayload,
+} from '../lib/api';
 import {
   Search,
   AlertTriangle,
@@ -49,169 +54,92 @@ import {
   BellRing,
 } from 'lucide-react';
 
-// Station Profile Demo Data
-const stationProfile = {
-  id: 'demo-station-123',
-  name: 'Peace FM',
-  tagline: 'Your Voice in the Capital',
-  description: 'Ghana\'s premier news and current affairs radio station, broadcasting 24/7 with the latest news, analysis, and entertainment.',
-  logo: '/demo-images/peace-fm-logo.png',
-  coverImage: '/demo-images/peace-fm-cover.jpg',
-  location: 'Accra, Greater Accra Region',
-  address: 'No. 12 Castle Road, Osu, Accra',
-  phone: '+233 30 222 3456',
-  email: 'info@peacefmonline.com',
-  website: 'https://peacefmonline.com',
-  frequency: '104.3 FM',
-  established: '1995',
-  licenseNumber: 'GBC/RAD/2024/001',
-  licenseExpiry: '2025-12-31',
-  status: 'Active',
-  rating: 4.8,
-  listeners: 250000,
-  weeklyReach: 1800000,
-  stationType: 'News/Talk Radio',
-  coverageArea: 'Greater Accra Region, Eastern Region, Central Region',
-  contactName: 'Kofi Asante',
-  contactTitle: 'Station Manager',
-  complianceOfficer: 'Sarah Johnson',
-  complianceOfficerEmail: 'sarah@peacefmonline.com',
-  complianceOfficerPhone: '+233 24 123 4567',
-  emergencyContact: '+233 24 987 6543',
-  socialMedia: {
-    facebook: 'https://facebook.com/peacefm',
-    twitter: 'https://twitter.com/peacefmonline',
-    instagram: 'https://instagram.com/peacefmonline',
-    youtube: 'https://youtube.com/peacefmonline'
+// Station Profile Data Helpers
+const resolveProfileError = (maybeError: unknown) => {
+  if (!maybeError) {
+    return 'Unable to load station profile. Please try again later.';
   }
+
+  if (typeof maybeError === 'object' && maybeError !== null) {
+    const response = (maybeError as { response?: unknown }).response;
+    if (response && typeof response === 'object') {
+      const data = (response as { data?: unknown }).data;
+      if (data && typeof data === 'object') {
+        const message = (data as { message?: unknown }).message;
+        if (typeof message === 'string' && message.trim().length > 0) {
+          return message;
+        }
+
+        const errors = (data as { errors?: unknown }).errors;
+        if (errors && typeof errors === 'object') {
+          const entries = Object.entries(errors as Record<string, unknown>);
+          const firstEntry = entries[0];
+          if (firstEntry) {
+            const [, errorValue] = firstEntry;
+            if (typeof errorValue === 'string' && errorValue.length > 0) {
+              return errorValue;
+            }
+            if (Array.isArray(errorValue) && errorValue.length > 0) {
+              const candidate = errorValue[0];
+              if (typeof candidate === 'string' && candidate.length > 0) {
+                return candidate;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    const message = (maybeError as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim().length > 0) {
+      return message;
+    }
+  }
+
+  return 'Unable to load station profile. Please try again later.';
 };
 
-const complianceDocuments = [
-  {
-    id: '1',
-    name: 'Broadcasting License.pdf',
-    type: 'license',
-    status: 'approved',
-    uploadedAt: '2024-01-15',
-    fileSize: '2.4 MB',
-    expiryDate: '2025-12-31'
-  },
-  {
-    id: '2',
-    name: 'Technical Certificate.pdf',
-    type: 'certificate',
-    status: 'approved',
-    uploadedAt: '2024-10-01',
-    fileSize: '1.8 MB',
-    expiryDate: '2026-06-15'
-  },
-  {
-    id: '3',
-    name: 'Monthly Compliance Report.pdf',
-    type: 'report',
-    status: 'pending',
-    uploadedAt: '2024-11-01',
-    fileSize: '3.2 MB'
-  }
-];
-
-const stationStats = {
-  totalDetections: 15420,
-  monthlyDetections: 2340,
-  accuracy: 96.5,
-  uptime: 99.8,
-  revenue: 45680.50,
-  activeStaff: 12,
-  broadcasts: 8760,
-  avgDailyListeners: 185000,
-  weeklyReach: 1800000
+const defaultProfile: StationProfilePayload['profile'] = {
+  id: '',
+  name: 'Your Station',
+  tagline: '',
+  description: '',
+  logo: '',
+  coverImage: '',
+  location: '',
+  address: '',
+  phone: '',
+  email: '',
+  website: '',
+  frequency: '',
+  established: '',
+  licenseNumber: '',
+  licenseExpiry: '',
+  status: 'Pending',
+  rating: 0,
+  weeklyReach: 0,
+  stationType: '',
+  coverageArea: '',
+  contactName: '',
+  contactTitle: '',
+  complianceOfficer: '',
+  complianceOfficerEmail: '',
+  complianceOfficerPhone: '',
+  emergencyContact: '',
+  socialMedia: {},
 };
 
-const recentActivity = [
-  {
-    id: 1,
-    type: 'detection',
-    title: 'High-confidence match detected',
-    description: 'Sarkodie - "Adonai" detected with 98% confidence',
-    time: '2 minutes ago',
-    status: 'success'
-  },
-  {
-    id: 2,
-    type: 'system',
-    title: 'System maintenance completed',
-    description: 'Scheduled maintenance window completed successfully',
-    time: '1 hour ago',
-    status: 'info'
-  },
-  {
-    id: 3,
-    type: 'alert',
-    title: 'Low confidence detection flagged',
-    description: 'Stonebwoy track detected with 78% confidence - requires review',
-    time: '3 hours ago',
-    status: 'warning'
-  },
-  {
-    id: 4,
-    type: 'revenue',
-    title: 'Monthly earnings updated',
-    description: '₵12,450 credited to account for November detections',
-    time: '1 day ago',
-    status: 'success'
-  }
-];
-
-const staffMembers = [
-  {
-    id: 1,
-    name: 'Kofi Asante',
-    role: 'Station Manager',
-    email: 'kofi.asante@peacefm.com',
-    phone: '+233 24 123 4567',
-    status: 'Active',
-    joinDate: '2018-03-15',
-    avatar: '/demo-avatars/kofi.jpg',
-    permissions: ['reports', 'monitoring', 'staff', 'settings', 'payments', 'compliance'],
-    roleType: 'admin'
-  },
-  {
-    id: 2,
-    name: 'Ama Serwaa',
-    role: 'Program Director',
-    email: 'ama.serwaa@peacefm.com',
-    phone: '+233 24 234 5678',
-    status: 'Active',
-    joinDate: '2019-07-22',
-    avatar: '/demo-avatars/ama.jpg',
-    permissions: ['reports', 'monitoring', 'staff'],
-    roleType: 'manager'
-  },
-  {
-    id: 3,
-    name: 'Kwame Boateng',
-    role: 'Technical Director',
-    email: 'kwame.boateng@peacefm.com',
-    phone: '+233 24 345 6789',
-    status: 'Active',
-    joinDate: '2020-01-10',
-    avatar: '/demo-avatars/kwame.jpg',
-    permissions: ['monitoring', 'settings'],
-    roleType: 'manager'
-  },
-  {
-    id: 4,
-    name: 'Efua Mensah',
-    role: 'Music Librarian',
-    email: 'efua.mensah@peacefm.com',
-    phone: '+233 24 456 7890',
-    status: 'Active',
-    joinDate: '2021-05-18',
-    avatar: '/demo-avatars/efua.jpg',
-    permissions: ['reports'],
-    roleType: 'reporter'
-  }
-];
+const defaultStats: StationProfilePayload['stats'] = {
+  totalDetections: 0,
+  monthlyDetections: 0,
+  accuracy: 0,
+  uptime: 0,
+  revenue: 0,
+  activeStaff: 0,
+  broadcasts: 0,
+  avgDailyListeners: 0,
+  weeklyReach: 0,
+};
 
 // MatchLogs Page
 const MatchLogs: React.FC = () => {
@@ -227,6 +155,69 @@ const MatchDisputes: React.FC = () => {
 const Profile: React.FC = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [isEditing, setIsEditing] = useState(false);
+  const { user } = useAuth();
+  const [profileData, setProfileData] = useState<StationProfilePayload | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(false);
+
+  const stationId = useMemo(() => {
+    if (user && typeof user === 'object' && user !== null) {
+      const candidate = (user as Record<string, unknown>)['station_id'];
+      if (typeof candidate === 'string' && candidate.length > 0) {
+        return candidate;
+      }
+    }
+    return null;
+  }, [user]);
+
+  const loadProfile = useCallback(async () => {
+    if (!stationId) {
+      setProfileError('Your station ID is missing. Please sign out and sign in again.');
+      setProfileData(null);
+      return;
+    }
+
+    setIsLoadingProfile(true);
+    setProfileError(null);
+
+    try {
+      const envelope = await fetchStationProfile(stationId);
+      const payload = (envelope?.data ?? null) as StationProfilePayload | null;
+      setProfileData(payload);
+    } catch (error) {
+      setProfileError(resolveProfileError(error));
+      setProfileData((previous) => previous ?? null);
+    } finally {
+      setIsLoadingProfile(false);
+    }
+  }, [stationId]);
+
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
+
+  const stationProfile = useMemo(() => profileData?.profile ?? defaultProfile, [profileData]);
+  const stationStats = useMemo(
+    () => ({
+      totalDetections: profileData?.stats?.totalDetections ?? defaultStats.totalDetections,
+      monthlyDetections: profileData?.stats?.monthlyDetections ?? defaultStats.monthlyDetections,
+      accuracy: profileData?.stats?.accuracy ?? defaultStats.accuracy,
+      uptime: profileData?.stats?.uptime ?? defaultStats.uptime,
+      revenue: profileData?.stats?.revenue ?? defaultStats.revenue,
+      activeStaff: profileData?.stats?.activeStaff ?? defaultStats.activeStaff,
+      broadcasts: profileData?.stats?.broadcasts ?? defaultStats.broadcasts,
+      avgDailyListeners: profileData?.stats?.avgDailyListeners ?? defaultStats.avgDailyListeners,
+      weeklyReach: profileData?.stats?.weeklyReach ?? defaultStats.weeklyReach,
+    }),
+    [profileData],
+  );
+  const recentActivity = profileData?.recentActivity ?? [];
+  const staffMembers = profileData?.staff ?? [];
+  const complianceDocuments = profileData?.complianceDocuments ?? [];
+  const socialMediaEntries = useMemo(
+    () => Object.entries(stationProfile.socialMedia ?? {}),
+    [stationProfile.socialMedia],
+  );
 
   const statusColors = {
     excellent: {
@@ -281,13 +272,22 @@ const Profile: React.FC = () => {
         </button>
       </div>
 
+      {profileError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-900/20 dark:text-red-200">
+          {profileError}
+        </div>
+      )}
+      {isLoadingProfile && !profileError && !profileData && (
+        <div className="text-sm text-gray-500 dark:text-gray-400">Loading station profile...</div>
+      )}
+
       {/* Profile Header Card */}
       <Card className="bg-gradient-to-br from-slate-50/90 via-gray-50/80 to-zinc-50/90 dark:from-slate-900/95 dark:via-slate-800/90 dark:to-slate-900/95 backdrop-blur-sm rounded-xl shadow-lg border border-slate-200/50 dark:border-slate-600/60 p-8">
         <div className="flex items-start space-x-8">
           <div className="flex-shrink-0">
             <div className="relative">
               <img
-                src={stationProfile.logo}
+                src={stationProfile.logo || `https://ui-avatars.com/api/?background=0D8ABC&color=fff&name=${encodeURIComponent(stationProfile.name || 'Station')}` }
                 alt={stationProfile.name}
                 className="w-32 h-32 object-cover rounded-xl shadow-lg"
               />
@@ -304,29 +304,31 @@ const Profile: React.FC = () => {
                 <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
                   {stationProfile.name}
                 </h2>
-                <p className="text-lg text-gray-600 dark:text-gray-300 mb-4 italic">
-                  "{stationProfile.tagline}"
-                </p>
+                {stationProfile.tagline ? (
+                  <p className="text-lg text-gray-600 dark:text-gray-300 mb-4 italic">
+                    "{stationProfile.tagline}"
+                  </p>
+                ) : null}
                 <p className="text-gray-600 dark:text-gray-300 mb-6 max-w-2xl">
-                  {stationProfile.description}
+                  {stationProfile.description || 'No station description provided yet.'}
                 </p>
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="flex items-center space-x-2">
                     <MapPin className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm text-gray-600 dark:text-gray-300">{stationProfile.location}</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-300">{stationProfile.location || '—'}</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <RadioIcon className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm text-gray-600 dark:text-gray-300">{stationProfile.frequency}</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-300">{stationProfile.frequency || '—'}</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <Calendar className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm text-gray-600 dark:text-gray-300">Est. {stationProfile.established}</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-300">{stationProfile.established ? `Est. ${stationProfile.established}` : 'Est. —'}</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <Award className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm text-gray-600 dark:text-gray-300">{stationProfile.rating}★ Rating</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-300">{typeof stationProfile.rating === 'number' ? `${stationProfile.rating.toFixed(1)}★ Rating` : '—'}</span>
                   </div>
                 </div>
 
@@ -334,19 +336,19 @@ const Profile: React.FC = () => {
                 <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-gray-200 dark:border-slate-600">
                   <div className="flex items-center space-x-2">
                     <Building2 className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm text-gray-600 dark:text-gray-300 font-medium">{stationProfile.stationType}</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-300 font-medium">{stationProfile.stationType || '—'}</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <Globe className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm text-gray-600 dark:text-gray-300">{stationProfile.coverageArea}</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-300">{stationProfile.coverageArea || '—'}</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <User className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm text-gray-600 dark:text-gray-300">{stationProfile.contactName} - {stationProfile.contactTitle}</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-300">{stationProfile.contactName || '—'}{stationProfile.contactTitle ? ` - ${stationProfile.contactTitle}` : ''}</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <Mail className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm text-gray-600 dark:text-gray-300">{stationProfile.email}</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-300">{stationProfile.email || '—'}</span>
                   </div>
                 </div>
               </div>
@@ -585,7 +587,7 @@ const Profile: React.FC = () => {
                     License Expiry Date
                   </label>
                   <p className="text-sm text-gray-900 dark:text-white bg-gray-50 dark:bg-slate-800 p-2 rounded">
-                    {new Date(stationProfile.licenseExpiry).toLocaleDateString()}
+                    {stationProfile.licenseExpiry ? new Date(stationProfile.licenseExpiry).toLocaleDateString() : '—'}
                   </p>
                 </div>
                 <div>
@@ -611,19 +613,19 @@ const Profile: React.FC = () => {
                   <div className="space-y-2">
                     <div className="flex items-center space-x-2 text-sm">
                       <User className="w-4 h-4 text-gray-400" />
-                      <span className="text-gray-600 dark:text-gray-300">{stationProfile.contactName} - {stationProfile.contactTitle}</span>
+                      <span className="text-gray-600 dark:text-gray-300">{stationProfile.contactName || '—'}{stationProfile.contactTitle ? ` - ${stationProfile.contactTitle}` : ''}</span>
                     </div>
                     <div className="flex items-center space-x-2 text-sm">
                       <Phone className="w-4 h-4 text-gray-400" />
-                      <span className="text-gray-600 dark:text-gray-300">{stationProfile.phone}</span>
+                      <span className="text-gray-600 dark:text-gray-300">{stationProfile.phone || '—'}</span>
                     </div>
                     <div className="flex items-center space-x-2 text-sm">
                       <Mail className="w-4 h-4 text-gray-400" />
-                      <span className="text-gray-600 dark:text-gray-300">{stationProfile.email}</span>
+                      <span className="text-gray-600 dark:text-gray-300">{stationProfile.email || '—'}</span>
                     </div>
                     <div className="flex items-center space-x-2 text-sm">
                       <Globe className="w-4 h-4 text-gray-400" />
-                      <span className="text-gray-600 dark:text-gray-300">{stationProfile.website}</span>
+                      <span className="text-gray-600 dark:text-gray-300">{stationProfile.website || '—'}</span>
                     </div>
                   </div>
                 </div>
@@ -636,22 +638,26 @@ const Profile: React.FC = () => {
                 Social Media
               </h3>
               <div className="space-y-3">
-                {Object.entries(stationProfile.socialMedia).map(([platform, url]) => (
-                  <a
-                    key={platform}
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center space-x-3 p-3 bg-gray-50 dark:bg-slate-800 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors duration-200"
-                  >
-                    <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
-                      <span className="text-xs font-bold text-blue-600 dark:text-blue-400 capitalize">
-                        {platform.charAt(0)}
-                      </span>
-                    </div>
-                    <span className="text-sm text-gray-700 dark:text-gray-300 capitalize">{platform}</span>
-                  </a>
-                ))}
+                {socialMediaEntries.length > 0 ? (
+                  socialMediaEntries.map(([platform, url]) => (
+                    <a
+                      key={platform}
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center space-x-3 p-3 bg-gray-50 dark:bg-slate-800 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors duration-200"
+                    >
+                      <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
+                        <span className="text-xs font-bold text-blue-600 dark:text-blue-400 capitalize">
+                          {platform.charAt(0)}
+                        </span>
+                      </div>
+                      <span className="text-sm text-gray-700 dark:text-gray-300 capitalize">{platform}</span>
+                    </a>
+                  ))
+                ) : (
+                  <p className="text-sm text-gray-600 dark:text-gray-300">No social media links provided.</p>
+                )}
               </div>
             </Card>
 
@@ -703,20 +709,20 @@ const Profile: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="flex items-center space-x-2">
                     <User className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm text-gray-600 dark:text-gray-300">{stationProfile.complianceOfficer}</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-300">{stationProfile.complianceOfficer || '—'}</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <Mail className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm text-gray-600 dark:text-gray-300">{stationProfile.complianceOfficerEmail}</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-300">{stationProfile.complianceOfficerEmail || '—'}</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <Phone className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm text-gray-600 dark:text-gray-300">{stationProfile.complianceOfficerPhone}</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-300">{stationProfile.complianceOfficerPhone || '—'}</span>
                   </div>
                 </div>
                 <div className="mt-3 flex items-center space-x-2">
                   <Phone className="w-4 h-4 text-gray-400" />
-                  <span className="text-sm text-gray-600 dark:text-gray-300">Emergency: {stationProfile.emergencyContact}</span>
+                  <span className="text-sm text-gray-600 dark:text-gray-300">Emergency: {stationProfile.emergencyContact || '—'}</span>
                 </div>
               </div>
             </Card>
