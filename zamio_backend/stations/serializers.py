@@ -617,6 +617,64 @@ class StationProfileStaffSerializer(serializers.ModelSerializer):
         return StationStaff.resolve_role_key(getattr(obj, 'permission_level', ''))
 
 
+class StationProfileStaffSerializer(serializers.ModelSerializer):
+    status = serializers.SerializerMethodField()
+    joinDate = serializers.SerializerMethodField()
+    avatar = serializers.SerializerMethodField()
+    permissions = serializers.SerializerMethodField()
+    roleType = serializers.SerializerMethodField()
+
+    class Meta:
+        model = StationStaff
+        fields = [
+            'id',
+            'name',
+            'role',
+            'email',
+            'phone',
+            'status',
+            'joinDate',
+            'avatar',
+            'permissions',
+            'roleType',
+        ]
+
+    def get_status(self, obj):
+        return 'Active' if getattr(obj, 'active', False) else 'Inactive'
+
+    def get_joinDate(self, obj):
+        if obj.hire_date:
+            return obj.hire_date.isoformat()
+        if obj.created_at:
+            return obj.created_at.date().isoformat()
+        return None
+
+    def get_avatar(self, obj):
+        name = obj.name or ''
+        if name:
+            return f"https://ui-avatars.com/api/?background=0D8ABC&color=fff&name={quote_plus(name)}"
+        return "https://ui-avatars.com/api/?background=0D8ABC&color=fff&name=Staff"
+
+    def get_permissions(self, obj):
+        permissions = []
+        if obj.can_upload_playlogs:
+            permissions.append('playlogs')
+        if obj.can_manage_streams:
+            permissions.append('streams')
+        if obj.can_view_analytics:
+            permissions.append('analytics')
+        if obj.permission_level == 'admin':
+            permissions.append('admin')
+        return permissions
+
+    def get_roleType(self, obj):
+        if obj.permission_level == 'admin':
+            return 'admin'
+        if obj.permission_level == 'edit':
+            return 'manager'
+        return 'reporter'
+
+
 class StationComplianceSerializer(serializers.ModelSerializer):
     """Serializer for compliance-related station information"""
 
