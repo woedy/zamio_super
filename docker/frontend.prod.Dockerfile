@@ -28,5 +28,6 @@ RUN npm run build --workspace ${WORKSPACE_NAME}
 FROM nginx:1.27-alpine
 ARG WORKSPACE_DIR
 COPY --from=build /workspace/${WORKSPACE_DIR}/dist /usr/share/nginx/html
+COPY docker/nginx/spa.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]

@@ -118,7 +118,7 @@ def get_station_disputes_view(request):
     }
     order_field = sort_map.get(sort_by, 'created_at')
     if sort_order == 'desc':
-        order_field = f'-{order_field.lstrip('-')}'
+        order_field = f"-{order_field.lstrip('-')}"
     else:
         order_field = order_field.lstrip('-')
     disputes_qs = disputes_qs.order_by(order_field, '-created_at')
