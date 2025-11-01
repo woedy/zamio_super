@@ -979,7 +979,8 @@ def complete_add_staff_view(request):
 
     # Validate and collect staff entries
     valid_roles = [c[0] for c in StationStaff.STAFF_ROLES]
-    to_create = []
+    role_defaults = StationStaff.role_defaults()
+    created_staff = []
     for item in staff_payload:
         try:
             name = (item.get('name') or '').strip()
@@ -989,13 +990,32 @@ def complete_add_staff_view(request):
             continue
         if not name or role not in valid_roles:
             continue
-        to_create.append(StationStaff(station=station, name=name, email=email, role=role))
+        first_name, last_name = '', ''
+        parts = name.split(' ', 1)
+        if parts:
+            first_name = parts[0]
+            if len(parts) > 1:
+                last_name = parts[1]
 
-    if to_create:
-        StationStaff.objects.bulk_create(to_create)
+        staff = StationStaff(
+            station=station,
+            first_name=first_name,
+            last_name=last_name,
+            email=email,
+            role=role,
+            permission_level=StationStaff.resolve_permission_level(role),
+            active=True,
+        )
+        default_permissions = role_defaults.get(
+            StationStaff.resolve_role_key(staff.permission_level),
+            role_defaults.get('reporter', []),
+        )
+        staff.apply_permissions(default_permissions)
+        staff.save()
+        created_staff.append(staff)
 
     # Mark this step as complete when at least one entry is present; otherwise keep current state
-    if to_create:
+    if created_staff:
         station.staff_completed = True
 
     # Move to next onboarding step

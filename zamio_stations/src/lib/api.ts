@@ -495,6 +495,91 @@ export interface StationProfilePayload {
   complianceDocuments: StationComplianceDocumentEntry[];
 }
 
+export interface StationStaffRoleDefinition {
+  id: string;
+  label: string;
+  description?: string;
+}
+
+export interface StationStaffPermissionDefinition {
+  id: string;
+  label: string;
+  description?: string;
+}
+
+export interface StationStaffSummary {
+  totalStaff: number;
+  activeStaff: number;
+  inactiveStaff: number;
+  adminCount: number;
+  managerCount: number;
+  reporterCount: number;
+}
+
+export interface StationStaffRecord {
+  id: number | string;
+  stationName?: string;
+  firstName: string;
+  lastName: string;
+  fullName?: string;
+  email: string | null;
+  phone: string | null;
+  role: 'admin' | 'manager' | 'reporter' | string;
+  roleLabel?: string;
+  permissionLevel?: string;
+  permissions: string[];
+  permissionLabels?: string[];
+  isActive: boolean;
+  joinDate?: string | null;
+  avatar?: string | null;
+  department?: string | null;
+  emergencyContact?: string | null;
+  emergencyPhone?: string | null;
+  hireDate?: string | null;
+  employeeId?: string | null;
+}
+
+export interface StationStaffFilters {
+  roles: StationStaffRoleDefinition[];
+  permissions: StationStaffPermissionDefinition[];
+  statuses: { id: string; label: string }[];
+  roleDefaults: Record<string, string[]>;
+}
+
+export interface StationStaffListPayload {
+  staff: {
+    results: StationStaffRecord[];
+    pagination: StationLogPagination;
+  };
+  summary: StationStaffSummary;
+  filters: StationStaffFilters;
+}
+
+export interface FetchStationStaffParams {
+  stationId: string;
+  search?: string;
+  role?: string;
+  status?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface UpsertStationStaffPayload {
+  stationId: string;
+  staffId?: string | number;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+  role: 'admin' | 'manager' | 'reporter';
+  permissions?: string[];
+  department?: string;
+  emergencyContact?: string;
+  emergencyPhone?: string;
+  employeeId?: string;
+  hireDate?: string;
+}
+
 export const fetchStationOnboardingStatus = async (stationId: string) => {
   const { data } = await authApi.get<ApiEnvelope<StationOnboardingStatus>>(
     `/api/accounts/enhanced-station-onboarding-status/${stationId}/`,
@@ -510,6 +595,89 @@ export const fetchStationProfile = async (stationId: string) => {
     },
   );
 
+  return data;
+};
+
+export const fetchStationStaff = async (
+  params: FetchStationStaffParams,
+) => {
+  const { stationId, search, role, status, page, pageSize } = params;
+  const { data } = await authApi.get<ApiEnvelope<StationStaffListPayload>>(
+    '/api/stations/get-station-staff-list/',
+    {
+      params: {
+        station_id: stationId,
+        search,
+        role,
+        status,
+        page,
+        page_size: pageSize,
+      },
+    },
+  );
+
+  return data;
+};
+
+const normalizeStaffPayload = (payload: UpsertStationStaffPayload) => ({
+  station_id: payload.stationId,
+  staff_id: payload.staffId,
+  first_name: payload.firstName,
+  last_name: payload.lastName,
+  email: payload.email,
+  phone: payload.phone,
+  role: payload.role,
+  permissions: payload.permissions,
+  department: payload.department,
+  emergency_contact: payload.emergencyContact,
+  emergency_phone: payload.emergencyPhone,
+  employee_id: payload.employeeId,
+  hire_date: payload.hireDate,
+});
+
+export const createStationStaff = async (
+  payload: UpsertStationStaffPayload,
+) => {
+  const body = normalizeStaffPayload(payload);
+  const { data } = await authApi.post<ApiEnvelope<StationStaffRecord>>(
+    '/api/stations/add-station-staff/',
+    body,
+  );
+  return data;
+};
+
+export const updateStationStaff = async (
+  payload: UpsertStationStaffPayload & { staffId: string | number },
+) => {
+  const body = normalizeStaffPayload(payload);
+  const { data } = await authApi.post<ApiEnvelope<StationStaffRecord>>(
+    '/api/stations/edit-station-staff/',
+    body,
+  );
+  return data;
+};
+
+export const archiveStationStaff = async (staffId: string | number) => {
+  const { data } = await authApi.post<ApiEnvelope>(
+    '/api/stations/archive-station-staff/',
+    {
+      staff_id: staffId,
+    },
+  );
+  return data;
+};
+
+export const toggleStationStaffActive = async (
+  staffId: string | number,
+  active: boolean,
+) => {
+  const { data } = await authApi.post<ApiEnvelope<StationStaffRecord>>(
+    '/api/stations/activate-station-staff/',
+    {
+      staff_id: staffId,
+      active,
+    },
+  );
   return data;
 };
 

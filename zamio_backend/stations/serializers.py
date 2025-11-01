@@ -429,25 +429,192 @@ class StationDisputeSerializer(serializers.ModelSerializer):
         ]
 
 
-class StationStaffSerializer(serializers.ModelSerializer):
-    station_name = serializers.CharField(source='station.name', read_only=True)
+class StationStaffManagementSerializer(serializers.ModelSerializer):
+    stationName = serializers.CharField(source='station.name', read_only=True)
+    firstName = serializers.SerializerMethodField()
+    lastName = serializers.SerializerMethodField()
+    fullName = serializers.SerializerMethodField()
+    role = serializers.SerializerMethodField()
+    roleLabel = serializers.SerializerMethodField()
+    permissionLevel = serializers.CharField(source='permission_level', read_only=True)
+    permissions = serializers.SerializerMethodField()
+    permissionLabels = serializers.SerializerMethodField()
+    isActive = serializers.SerializerMethodField()
+    joinDate = serializers.SerializerMethodField()
+    avatar = serializers.SerializerMethodField()
+    emergencyContact = serializers.CharField(source='emergency_contact', read_only=True)
+    emergencyPhone = serializers.CharField(source='emergency_phone', read_only=True)
+    hireDate = serializers.SerializerMethodField()
+    employeeId = serializers.CharField(source='employee_id', read_only=True)
 
     class Meta:
         model = StationStaff
         fields = [
-            'id', 'name', 'email', 'phone', 'role', 'permission_level',
-            'emergency_contact', 'emergency_phone', 'hire_date', 'employee_id',
-            'department', 'can_upload_playlogs', 'can_manage_streams',
-            'can_view_analytics', 'active', 'station_name', 'created_at'
+            'id',
+            'stationName',
+            'firstName',
+            'lastName',
+            'fullName',
+            'email',
+            'phone',
+            'role',
+            'roleLabel',
+            'permissionLevel',
+            'permissions',
+            'permissionLabels',
+            'isActive',
+            'joinDate',
+            'avatar',
+            'department',
+            'emergencyContact',
+            'emergencyPhone',
+            'hireDate',
+            'employeeId',
         ]
 
+    ROLE_LABELS = {
+        'admin': 'Administrator',
+        'manager': 'Manager',
+        'reporter': 'Reporter',
+    }
 
-class StationStaffDetailsSerializer(serializers.ModelSerializer):
-    station_name = serializers.CharField(source='station.name', read_only=True)
+    PERMISSION_LABELS = {
+        'reports': 'View Reports',
+        'monitoring': 'Monitor Streams',
+        'staff': 'Manage Staff',
+        'settings': 'Manage Settings',
+        'payments': 'Manage Payments',
+        'compliance': 'Compliance Tools',
+    }
+
+    def _split_name(self, obj):
+        first_name = (getattr(obj, 'first_name', '') or '').strip()
+        last_name = (getattr(obj, 'last_name', '') or '').strip()
+        if not first_name and not last_name:
+            name = (getattr(obj, 'name', '') or '').strip()
+            if name:
+                parts = name.split(' ', 1)
+                first_name = parts[0]
+                if len(parts) > 1:
+                    last_name = parts[1]
+        return first_name, last_name
+
+    def get_firstName(self, obj):
+        first_name, _ = self._split_name(obj)
+        return first_name
+
+    def get_lastName(self, obj):
+        _, last_name = self._split_name(obj)
+        return last_name
+
+    def get_fullName(self, obj):
+        composed = obj.compose_full_name() if hasattr(obj, 'compose_full_name') else (obj.name or '').strip()
+        if composed:
+            return composed
+        first_name, last_name = self._split_name(obj)
+        return ' '.join(filter(None, [first_name, last_name])).strip()
+
+    def get_role(self, obj):
+        return StationStaff.resolve_role_key(getattr(obj, 'permission_level', ''))
+
+    def get_roleLabel(self, obj):
+        role_key = self.get_role(obj)
+        return self.ROLE_LABELS.get(role_key, role_key.title())
+
+    def get_permissions(self, obj):
+        if hasattr(obj, 'get_permission_ids'):
+            return obj.get_permission_ids()
+
+        permissions = []
+        for permission, field_name in StationStaff.PERMISSION_MAP.items():
+            if getattr(obj, field_name, False):
+                permissions.append(permission)
+        return sorted(set(permissions))
+
+    def get_permissionLabels(self, obj):
+        return [self.PERMISSION_LABELS.get(permission, permission.title()) for permission in self.get_permissions(obj)]
+
+    def get_isActive(self, obj):
+        return bool(getattr(obj, 'active', False))
+
+    def get_joinDate(self, obj):
+        if getattr(obj, 'hire_date', None):
+            return obj.hire_date.isoformat()
+        if getattr(obj, 'created_at', None):
+            try:
+                return obj.created_at.date().isoformat()
+            except AttributeError:
+                return None
+        return None
+
+    def get_hireDate(self, obj):
+        if getattr(obj, 'hire_date', None):
+            return obj.hire_date.isoformat()
+        return None
+
+    def get_avatar(self, obj):
+        name = self.get_fullName(obj)
+        if name:
+            return f"https://ui-avatars.com/api/?background=0D8ABC&color=fff&name={quote_plus(name)}"
+        return "https://ui-avatars.com/api/?background=0D8ABC&color=fff&name=Staff"
+
+
+class StationStaffDetailsSerializer(StationStaffManagementSerializer):
+    pass
+
+
+class StationProfileStaffSerializer(serializers.ModelSerializer):
+    status = serializers.SerializerMethodField()
+    joinDate = serializers.SerializerMethodField()
+    avatar = serializers.SerializerMethodField()
+    permissions = serializers.SerializerMethodField()
+    roleType = serializers.SerializerMethodField()
 
     class Meta:
         model = StationStaff
-        fields = '__all__'
+        fields = [
+            'id',
+            'name',
+            'role',
+            'email',
+            'phone',
+            'status',
+            'joinDate',
+            'avatar',
+            'permissions',
+            'roleType',
+        ]
+
+    def get_status(self, obj):
+        return 'Active' if getattr(obj, 'active', False) else 'Inactive'
+
+    def get_joinDate(self, obj):
+        if obj.hire_date:
+            return obj.hire_date.isoformat()
+        if obj.created_at:
+            return obj.created_at.date().isoformat()
+        return None
+
+    def get_avatar(self, obj):
+        name = obj.name or ''
+        if name:
+            return f"https://ui-avatars.com/api/?background=0D8ABC&color=fff&name={quote_plus(name)}"
+        return "https://ui-avatars.com/api/?background=0D8ABC&color=fff&name=Staff"
+
+    def get_permissions(self, obj):
+        if hasattr(obj, 'get_permission_ids'):
+            permission_ids = obj.get_permission_ids()
+        else:
+            permission_ids = []
+            for permission, field_name in StationStaff.PERMISSION_MAP.items():
+                if getattr(obj, field_name, False):
+                    permission_ids.append(permission)
+
+        labels_map = StationStaffManagementSerializer.PERMISSION_LABELS
+        return [labels_map.get(permission, permission.title()) for permission in permission_ids]
+
+    def get_roleType(self, obj):
+        return StationStaff.resolve_role_key(getattr(obj, 'permission_level', ''))
 
 
 class StationProfileStaffSerializer(serializers.ModelSerializer):
