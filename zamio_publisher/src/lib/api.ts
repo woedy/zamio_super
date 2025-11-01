@@ -290,6 +290,71 @@ export interface PublisherDashboardParams {
   end_date?: string;
 }
 
+export interface PublisherLogPagination {
+  count: number;
+  page_number: number;
+  page_size: number;
+  total_pages: number;
+  next: number | null;
+  previous: number | null;
+  has_next: boolean;
+  has_previous: boolean;
+}
+
+export interface PublisherPlayLogRecord {
+  id: number | string;
+  track_title: string;
+  artist: string | null;
+  publisher_catalog_id: string | null;
+  station_name: string | null;
+  station_region: string | null;
+  matched_at: string | null;
+  stop_time: string | null;
+  duration: string | null;
+  plays: number;
+  royalty_amount: number;
+  status: string | null;
+  license_type: string | null;
+  territory: string | null;
+}
+
+export interface PublisherMatchLogRecord {
+  id: number | string;
+  song: string;
+  artist: string | null;
+  publisher_catalog_id: string | null;
+  station: string | null;
+  station_region: string | null;
+  matched_at: string | null;
+  confidence: number | null;
+  status: string | null;
+  license_status: string | null;
+}
+
+export interface PublisherLogsCollection<T> {
+  results: T[];
+  pagination: PublisherLogPagination;
+}
+
+export interface PublisherLogsPayload {
+  playLogs?: PublisherLogsCollection<PublisherPlayLogRecord>;
+  matchLogs?: PublisherLogsCollection<PublisherMatchLogRecord>;
+}
+
+export interface PublisherLogsParams {
+  publisherId: string;
+  search?: string;
+  playPage?: number;
+  matchPage?: number;
+  playPageSize?: number;
+  matchPageSize?: number;
+  playSortBy?: string;
+  playSortOrder?: 'asc' | 'desc';
+  matchSortBy?: string;
+  matchSortOrder?: 'asc' | 'desc';
+  logPageState?: 'playlogs' | 'matchlogs' | 'all';
+}
+
 export const registerPublisher = async <T = Record<string, unknown>>(
   payload: RegisterPublisherPayload,
 ) => {
@@ -331,6 +396,62 @@ export const fetchPublisherDashboard = async (
 
   const { data } = await authApi.get<ApiEnvelope<PublisherDashboardPayload>>(
     '/api/publishers/dashboard/',
+    { params: query },
+  );
+
+  return data;
+};
+
+export const fetchPublisherLogs = async ({
+  publisherId,
+  search,
+  playPage,
+  matchPage,
+  playPageSize,
+  matchPageSize,
+  playSortBy,
+  playSortOrder,
+  matchSortBy,
+  matchSortOrder,
+  logPageState,
+}: PublisherLogsParams) => {
+  const query: Record<string, string | number> = {
+    publisher_id: publisherId,
+  };
+
+  if (search) {
+    query.search = search;
+  }
+  if (typeof playPage === 'number') {
+    query.play_page = playPage;
+  }
+  if (typeof matchPage === 'number') {
+    query.match_page = matchPage;
+  }
+  if (typeof playPageSize === 'number') {
+    query.play_page_size = playPageSize;
+  }
+  if (typeof matchPageSize === 'number') {
+    query.match_page_size = matchPageSize;
+  }
+  if (playSortBy) {
+    query.play_sort_by = playSortBy;
+  }
+  if (playSortOrder) {
+    query.play_sort_order = playSortOrder;
+  }
+  if (matchSortBy) {
+    query.match_sort_by = matchSortBy;
+  }
+  if (matchSortOrder) {
+    query.match_sort_order = matchSortOrder;
+  }
+  if (logPageState) {
+    query.log_page_state = logPageState;
+  }
+
+  const { data } = await authApi.get<ApiEnvelope<PublisherLogsPayload>>(
+    '/api/publishers/playlogs/',
     { params: query },
   );
 

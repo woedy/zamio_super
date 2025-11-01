@@ -18,6 +18,7 @@ from publishers.views.publisher_dashboard_views import (
     get_publisher_detail_view,
     get_publisher_dashboard_view,
 )
+from publishers.views.publisher_playlog_views import get_publisher_playlogs_view
 
 app_name = 'publishers'
 
@@ -40,6 +41,7 @@ api_urlpatterns = [
     path('analytics/', get_publisher_analytics_view, name='publisher-analytics'),
     path('detail/', get_publisher_detail_view, name='publisher-detail'),
     path('dashboard/', get_publisher_dashboard_view, name='publisher-dashboard'),
+    path('playlogs/', get_publisher_playlogs_view, name='publisher-playlogs'),
 ]
 
 urlpatterns = api_urlpatterns
