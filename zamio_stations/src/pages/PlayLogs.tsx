@@ -1,316 +1,375 @@
-import React, { useState, useMemo } from 'react';
-import { Activity, Eye, Search, Clock, RadioTower, Music, TrendingUp, Filter, Download, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Activity,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  Clock,
+  Download,
+  Eye,
+  Filter,
+  Flag,
+  Loader2,
+  Music,
+  RadioTower,
+  Search,
+  TrendingUp,
+} from 'lucide-react';
 
-// Type definitions for better type safety
-interface PlayLogData {
-  id: number;
-  track_title: string;
-  artist: string;
-  station_name: string;
-  matched_at: string;
-  stop_time: string;
-  duration: string;
-  plays: number;
-  royalty_amount: number;
-  status: 'Confirmed' | 'Pending' | 'Failed';
-  attribution_source: 'Partner' | 'Internal';
-  partner_name?: string;
-}
+import { useAuth } from '../lib/auth';
+import {
+  fetchStationLogs,
+  flagStationPlayLog,
+  type StationLogPagination,
+  type StationLogsPayload,
+  type StationMatchLogRecord,
+  type StationPlayLogRecord,
+} from '../lib/api';
 
-interface MatchLogData {
-  id: number;
-  song: string;
-  artist: string;
-  station: string;
-  matched_at: string;
-  confidence: number;
-  status: 'Verified' | 'Pending' | 'Flagged';
-}
+const ITEMS_PER_PAGE = 10;
 
-// Mock data for Play Logs (Station perspective)
-const playLogsData: PlayLogData[] = [
-  {
-    id: 1,
-    track_title: 'Ghana Na Woti',
-    artist: 'King Promise',
-    station_name: 'Peace FM',
-    matched_at: '2024-10-16T10:30:00Z',
-    stop_time: '2024-10-16T10:33:45Z',
-    duration: '3:45',
-    plays: 12,
-    royalty_amount: 4.50,
-    status: 'Confirmed',
-    attribution_source: 'Partner',
-    partner_name: 'Ghana Music Rights'
-  },
-  {
-    id: 2,
-    track_title: 'Obra',
-    artist: 'Samini',
-    station_name: 'Hitz FM',
-    matched_at: '2024-10-16T11:15:00Z',
-    stop_time: '2024-10-16T11:18:30Z',
-    duration: '3:30',
-    plays: 8,
-    royalty_amount: 3.20,
-    status: 'Confirmed',
-    attribution_source: 'Internal'
-  },
-  {
-    id: 3,
-    track_title: 'Krom Aye De',
-    artist: 'Okra Tom Dawidi',
-    station_name: 'Adom FM',
-    matched_at: '2024-10-16T12:45:00Z',
-    stop_time: '2024-10-16T12:49:15Z',
-    duration: '4:15',
-    plays: 15,
-    royalty_amount: 5.75,
-    status: 'Pending',
-    attribution_source: 'Partner',
-    partner_name: 'Ghana Music Rights'
-  },
-  {
-    id: 4,
-    track_title: 'Love & Light',
-    artist: 'Kuami Eugene',
-    station_name: 'Joy FM',
-    matched_at: '2024-10-16T14:20:00Z',
-    stop_time: '2024-10-16T14:23:45Z',
-    duration: '3:45',
-    plays: 22,
-    royalty_amount: 8.25,
-    status: 'Confirmed',
-    attribution_source: 'Internal'
-  },
-  {
-    id: 5,
-    track_title: 'Dance Floor',
-    artist: 'Kofi Kinaata',
-    station_name: 'Okay FM',
-    matched_at: '2024-10-16T15:10:00Z',
-    stop_time: '2024-10-16T15:13:20Z',
-    duration: '3:20',
-    plays: 18,
-    royalty_amount: 6.75,
-    status: 'Confirmed',
-    attribution_source: 'Partner',
-    partner_name: 'Ghana Music Rights'
-  },
-  {
-    id: 6,
-    track_title: 'Angela',
-    artist: 'Kuami Eugene',
-    station_name: 'Peace FM',
-    matched_at: '2024-10-16T16:30:00Z',
-    stop_time: '2024-10-16T16:33:45Z',
-    duration: '3:45',
-    plays: 9,
-    royalty_amount: 3.38,
-    status: 'Confirmed',
-    attribution_source: 'Internal'
-  },
-  {
-    id: 7,
-    track_title: 'My Level',
-    artist: 'Shatta Wale',
-    station_name: 'Hitz FM',
-    matched_at: '2024-10-16T17:45:00Z',
-    stop_time: '2024-10-16T17:48:30Z',
-    duration: '3:30',
-    plays: 14,
-    royalty_amount: 5.25,
-    status: 'Pending',
-    attribution_source: 'Partner',
-    partner_name: 'Ghana Music Rights'
-  },
-  {
-    id: 8,
-    track_title: 'Billionaire',
-    artist: 'Bisa Kdei',
-    station_name: 'Adom FM',
-    matched_at: '2024-10-16T18:20:00Z',
-    stop_time: '2024-10-16T18:24:15Z',
-    duration: '4:15',
-    plays: 11,
-    royalty_amount: 4.13,
-    status: 'Confirmed',
-    attribution_source: 'Internal'
+type TabKey = 'playlogs' | 'matchlogs';
+
+type SortState = { sortBy: string; sortOrder: 'asc' | 'desc' };
+
+const buildEmptyPagination = (pageSize = ITEMS_PER_PAGE): StationLogPagination => ({
+  count: 0,
+  page_number: 1,
+  page_size: pageSize,
+  total_pages: 0,
+  next: null,
+  previous: null,
+  has_next: false,
+  has_previous: false,
+});
+
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'GHS',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value ?? 0);
+
+const parseDate = (value: string | null) => {
+  if (!value) {
+    return null;
   }
-];
 
-// Mock data for Match Logs (Station perspective)
-const matchLogsData: MatchLogData[] = [
-  {
-    id: 1,
-    song: 'Ghana Na Woti',
-    artist: 'King Promise',
-    station: 'Peace FM',
-    matched_at: '2024-10-16T10:30:00Z',
-    confidence: 96,
-    status: 'Verified'
-  },
-  {
-    id: 2,
-    song: 'Obra',
-    artist: 'Samini',
-    station: 'Hitz FM',
-    matched_at: '2024-10-16T11:15:00Z',
-    confidence: 94,
-    status: 'Verified'
-  },
-  {
-    id: 3,
-    song: 'Krom Aye De',
-    artist: 'Okra Tom Dawidi',
-    station: 'Adom FM',
-    matched_at: '2024-10-16T12:45:00Z',
-    confidence: 92,
-    status: 'Pending'
-  },
-  {
-    id: 4,
-    song: 'Angela',
-    artist: 'Kuami Eugene',
-    station: 'Peace FM',
-    matched_at: '2024-10-16T16:30:00Z',
-    confidence: 89,
-    status: 'Verified'
-  },
-  {
-    id: 5,
-    song: 'My Level',
-    artist: 'Shatta Wale',
-    station: 'Hitz FM',
-    matched_at: '2024-10-16T17:45:00Z',
-    confidence: 87,
-    status: 'Flagged'
+  const normalized = value.replace(' ~ ', 'T');
+  const parsed = new Date(normalized);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
   }
-];
 
-const PlayLogs: React.FC = () => {
-  const [activeTab, setActiveTab] = useState('playlogs');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(3);
-  const [sortBy, setSortBy] = useState('matched_at');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  return parsed;
+};
 
-  // Filter and sort data
-  const filteredAndSortedData = useMemo(() => {
-    let data: (PlayLogData | MatchLogData)[] = activeTab === 'playlogs' ? playLogsData : matchLogsData;
+const formatDateTime = (value: string | null) => {
+  const parsed = parseDate(value);
+  if (!parsed) {
+    return value ? value.replace(' ~ ', ' ') : '—';
+  }
+  return parsed.toLocaleString();
+};
 
-    // Apply search filter
-    if (searchTerm) {
-      data = data.filter(item => {
-        const searchLower = searchTerm.toLowerCase();
-        if (activeTab === 'playlogs') {
-          const playLog = item as PlayLogData;
-          return (
-            playLog.track_title.toLowerCase().includes(searchLower) ||
-            playLog.artist.toLowerCase().includes(searchLower) ||
-            playLog.station_name.toLowerCase().includes(searchLower) ||
-            playLog.status.toLowerCase().includes(searchLower)
-          );
-        } else {
-          const matchLog = item as MatchLogData;
-          return (
-            matchLog.song.toLowerCase().includes(searchLower) ||
-            matchLog.artist.toLowerCase().includes(searchLower) ||
-            matchLog.station.toLowerCase().includes(searchLower) ||
-            matchLog.status.toLowerCase().includes(searchLower)
-          );
+const resolveLogsError = (maybeError: unknown) => {
+  if (!maybeError) {
+    return 'Unable to load logs. Please try again later.';
+  }
+
+  if (typeof maybeError === 'object' && maybeError !== null) {
+    const response = (maybeError as { response?: unknown }).response;
+    if (response && typeof response === 'object') {
+      const data = (response as { data?: unknown }).data;
+      if (data && typeof data === 'object') {
+        const message = (data as { message?: unknown }).message;
+        if (typeof message === 'string' && message.trim().length > 0) {
+          return message;
         }
-      });
+
+        const errors = (data as { errors?: unknown }).errors;
+        if (errors && typeof errors === 'object') {
+          const entries = Object.entries(errors as Record<string, unknown>);
+          const firstEntry = entries[0];
+          if (firstEntry) {
+            const [, errorValue] = firstEntry;
+            if (typeof errorValue === 'string' && errorValue.length > 0) {
+              return errorValue;
+            }
+            if (Array.isArray(errorValue) && errorValue.length > 0) {
+              const candidate = errorValue[0];
+              if (typeof candidate === 'string' && candidate.length > 0) {
+                return candidate;
+              }
+            }
+          }
+        }
+      }
     }
 
-    // Apply sorting
-    data.sort((a, b) => {
-      let aValue, bValue;
+    const message = (maybeError as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim().length > 0) {
+      return message;
+    }
+  }
 
-      if (activeTab === 'playlogs') {
-        const playLogA = a as PlayLogData;
-        const playLogB = b as PlayLogData;
-        switch (sortBy) {
-          case 'track_title':
-            aValue = playLogA.track_title;
-            bValue = playLogB.track_title;
-            break;
-          case 'station_name':
-            aValue = playLogA.station_name;
-            bValue = playLogB.station_name;
-            break;
-          case 'royalty_amount':
-            aValue = playLogA.royalty_amount;
-            bValue = playLogB.royalty_amount;
-            break;
-          case 'plays':
-            aValue = playLogA.plays;
-            bValue = playLogB.plays;
-            break;
-          default:
-            aValue = new Date(playLogA.matched_at);
-            bValue = new Date(playLogB.matched_at);
-        }
-      } else {
-        const matchLogA = a as MatchLogData;
-        const matchLogB = b as MatchLogData;
-        switch (sortBy) {
-          case 'song':
-            aValue = matchLogA.song;
-            bValue = matchLogB.song;
-            break;
-          case 'station':
-            aValue = matchLogA.station;
-            bValue = matchLogB.station;
-            break;
-          case 'confidence':
-            aValue = matchLogA.confidence;
-            bValue = matchLogB.confidence;
-            break;
-          default:
-            aValue = new Date(matchLogA.matched_at);
-            bValue = new Date(matchLogB.matched_at);
-        }
+  return 'Unable to load logs. Please try again later.';
+};
+
+const getPlayStatusClasses = (status: string) => {
+  switch (status?.toLowerCase()) {
+    case 'confirmed':
+      return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400';
+    case 'flagged':
+      return 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400';
+    case 'resolved':
+      return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
+    case 'pending':
+    default:
+      return 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300';
+  }
+};
+
+const getMatchStatusClasses = (status: string | null | undefined) => {
+  switch (status?.toLowerCase()) {
+    case 'verified':
+      return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400';
+    case 'flagged':
+      return 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400';
+    case 'pending':
+    default:
+      return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
+  }
+};
+
+const PlayLogs: React.FC = () => {
+  const { user } = useAuth();
+  const stationId = useMemo(() => {
+    if (user && typeof user === 'object' && user !== null) {
+      const candidate = user['station_id'];
+      if (typeof candidate === 'string' && candidate.length > 0) {
+        return candidate;
+      }
+    }
+    return null;
+  }, [user]);
+
+  const [activeTab, setActiveTab] = useState<TabKey>('playlogs');
+  const [searchInput, setSearchInput] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [playSort, setPlaySort] = useState<SortState>({ sortBy: 'matched_at', sortOrder: 'desc' });
+  const [matchSort, setMatchSort] = useState<SortState>({ sortBy: 'matched_at', sortOrder: 'desc' });
+  const [playPage, setPlayPage] = useState(1);
+  const [matchPage, setMatchPage] = useState(1);
+  const [playLogs, setPlayLogs] = useState<StationPlayLogRecord[]>([]);
+  const [matchLogs, setMatchLogs] = useState<StationMatchLogRecord[]>([]);
+  const [playPagination, setPlayPagination] = useState<StationLogPagination>(() => buildEmptyPagination());
+  const [matchPagination, setMatchPagination] = useState<StationLogPagination>(() => buildEmptyPagination());
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [flaggingLogs, setFlaggingLogs] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearch(searchInput.trim()), 300);
+    return () => clearTimeout(handle);
+  }, [searchInput]);
+
+  useEffect(() => {
+    setPlayPage(1);
+    setMatchPage(1);
+  }, [debouncedSearch]);
+
+  const loadLogs = useCallback(async () => {
+    if (!stationId) {
+      setPlayLogs([]);
+      setMatchLogs([]);
+      setPlayPagination(buildEmptyPagination());
+      setMatchPagination(buildEmptyPagination());
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const envelope = await fetchStationLogs({
+        stationId,
+        search: debouncedSearch || undefined,
+        playPage,
+        matchPage,
+        playPageSize: ITEMS_PER_PAGE,
+        matchPageSize: ITEMS_PER_PAGE,
+        playSortBy: playSort.sortBy,
+        playSortOrder: playSort.sortOrder,
+        matchSortBy: matchSort.sortBy,
+        matchSortOrder: matchSort.sortOrder,
+      });
+
+      const payload = (envelope?.data ?? null) as StationLogsPayload | null;
+
+      setPlayLogs(payload?.playLogs?.results ?? []);
+      setMatchLogs(payload?.matchLogs?.results ?? []);
+      setPlayPagination(payload?.playLogs?.pagination ?? buildEmptyPagination());
+      setMatchPagination(payload?.matchLogs?.pagination ?? buildEmptyPagination());
+    } catch (fetchError) {
+      setError(resolveLogsError(fetchError));
+      setPlayLogs([]);
+      setMatchLogs([]);
+      setPlayPagination(buildEmptyPagination());
+      setMatchPagination(buildEmptyPagination());
+    } finally {
+      setIsLoading(false);
+    }
+  }, [
+    stationId,
+    debouncedSearch,
+    playPage,
+    matchPage,
+    playSort.sortBy,
+    playSort.sortOrder,
+    matchSort.sortBy,
+    matchSort.sortOrder,
+  ]);
+
+  useEffect(() => {
+    loadLogs();
+  }, [loadLogs]);
+
+  const handleFlagLog = useCallback(
+    async (log: StationPlayLogRecord) => {
+      if (!log || log.id === null || log.id === undefined) {
+        return;
       }
 
-      if (typeof aValue === 'string') {
-        return sortOrder === 'asc'
-          ? aValue.localeCompare(bValue)
-          : bValue.localeCompare(aValue);
-      } else {
-        return sortOrder === 'asc' ? aValue - bValue : bValue - aValue;
+      if (typeof window === 'undefined') {
+        return;
       }
-    });
 
-    return data;
-  }, [activeTab, searchTerm, sortBy, sortOrder]);
+      const comment = window.prompt(
+        'Provide a reason for flagging this play log for dispute review.',
+        '',
+      );
 
-  // Pagination
-  const totalPages = Math.ceil(filteredAndSortedData.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedData = filteredAndSortedData.slice(startIndex, startIndex + itemsPerPage);
+      if (comment === null) {
+        return;
+      }
+
+      const trimmedComment = comment.trim();
+      if (!trimmedComment) {
+        setActionError('A comment is required to flag a play log for dispute.');
+        return;
+      }
+
+      const logKey = String(log.id);
+
+      setFlaggingLogs((previous) => ({ ...previous, [logKey]: true }));
+      setActionMessage(null);
+      setActionError(null);
+
+      try {
+        await flagStationPlayLog({ playlogId: log.id, comment: trimmedComment });
+        setActionMessage('Play log flagged for dispute. Our team will review it shortly.');
+        await loadLogs();
+      } catch (flagError) {
+        setActionError(resolveLogsError(flagError));
+      } finally {
+        setFlaggingLogs((previous) => {
+          const next = { ...previous };
+          delete next[logKey];
+          return next;
+        });
+      }
+    },
+    [loadLogs],
+  );
+
+  const activeData = activeTab === 'playlogs' ? playLogs : matchLogs;
+  const activePagination = activeTab === 'playlogs' ? playPagination : matchPagination;
+  const activeSort = activeTab === 'playlogs' ? playSort : matchSort;
+
+  const totalEntries = activePagination?.count ?? 0;
+  const totalPages = activePagination?.total_pages ?? 0;
+  const currentPage = activePagination?.page_number ?? 1;
+  const pageSize = activePagination?.page_size ?? ITEMS_PER_PAGE;
+
+  const startEntry = totalEntries === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const endEntry = totalEntries === 0 ? 0 : Math.min(currentPage * pageSize, totalEntries);
+
+  const pageNumbers = useMemo(() => {
+    if (!totalPages) {
+      return [];
+    }
+
+    const visibleCount = Math.min(5, totalPages);
+    const start = Math.max(1, Math.min(totalPages - visibleCount + 1, currentPage - Math.floor(visibleCount / 2)));
+    return Array.from({ length: visibleCount }, (_, index) => start + index).filter((page) => page >= 1 && page <= totalPages);
+  }, [totalPages, currentPage]);
 
   const handleSort = (column: string) => {
-    if (sortBy === column) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    if (activeTab === 'playlogs') {
+      if (playSort.sortBy === column) {
+        setPlaySort((prev) => ({ sortBy: prev.sortBy, sortOrder: prev.sortOrder === 'asc' ? 'desc' : 'asc' }));
+      } else {
+        setPlaySort({ sortBy: column, sortOrder: 'asc' });
+      }
+      setPlayPage(1);
     } else {
-      setSortBy(column);
-      setSortOrder('asc');
+      if (matchSort.sortBy === column) {
+        setMatchSort((prev) => ({ sortBy: prev.sortBy, sortOrder: prev.sortOrder === 'asc' ? 'desc' : 'asc' }));
+      } else {
+        setMatchSort({ sortBy: column, sortOrder: 'asc' });
+      }
+      setMatchPage(1);
     }
   };
 
   const getSortIcon = (column: string) => {
-    if (sortBy !== column) return <ArrowUpDown className="w-3 h-3" />;
-    return sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />;
+    if (activeSort.sortBy !== column) {
+      return <ArrowUpDown className="w-3 h-3" />;
+    }
+    return activeSort.sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />;
   };
 
-  const TabButton = ({ id, label, icon: Icon, isActive, onClick }: {
-    id: string;
+  const handlePreviousPage = () => {
+    if (activeTab === 'playlogs') {
+      setPlayPage((prev) => Math.max(prev - 1, 1));
+    } else {
+      setMatchPage((prev) => Math.max(prev - 1, 1));
+    }
+  };
+
+  const handleNextPage = () => {
+    if (activeTab === 'playlogs') {
+      setPlayPage((prev) => Math.min(prev + 1, Math.max(totalPages, 1)));
+    } else {
+      setMatchPage((prev) => Math.min(prev + 1, Math.max(totalPages, 1)));
+    }
+  };
+
+  const handleGoToPage = (page: number) => {
+    if (activeTab === 'playlogs') {
+      setPlayPage(page);
+    } else {
+      setMatchPage(page);
+    }
+  };
+
+  const TabButton = ({
+    id,
+    label,
+    icon: Icon,
+    isActive,
+    onClick,
+  }: {
+    id: TabKey;
     label: string;
-    icon: any;
+    icon: React.ElementType;
     isActive: boolean;
-    onClick: (id: string) => void;
+    onClick: (id: TabKey) => void;
   }) => (
     <button
       onClick={() => onClick(id)}
@@ -327,52 +386,77 @@ const PlayLogs: React.FC = () => {
 
   return (
     <>
-      {/* Page header - matching dashboard style */}
       <div className="border-b border-gray-200 dark:border-slate-700 mb-8">
         <div className="px-6 py-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div>
               <h1 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-white">Play & Match Logs</h1>
               <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-300 font-light leading-relaxed">
                 Track your music performance and detection across all platforms
               </p>
             </div>
-            <div className="flex items-center space-x-3">
-              <select className="px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                <option value="all">All Time</option>
-                <option value="monthly">This Month</option>
-                <option value="weekly">This Week</option>
-              </select>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="relative">
+                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="search"
+                  placeholder="Search logs"
+                  value={searchInput}
+                  onChange={(event) => setSearchInput(event.target.value)}
+                  className="pl-9 pr-3 py-2 rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div className="flex items-center space-x-3">
+                <button
+                  type="button"
+                  className="inline-flex items-center space-x-2 px-3 py-2 rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs sm:text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 transition"
+                >
+                  <Filter className="w-4 h-4" />
+                  <span>Filters</span>
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex items-center space-x-2 px-3 py-2 rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs sm:text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 transition"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Export</span>
+                </button>
+                <select className="px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  <option value="all">All Time</option>
+                  <option value="monthly">This Month</option>
+                  <option value="weekly">This Week</option>
+                </select>
+              </div>
             </div>
           </div>
+          {error && (
+            <div className="mt-4 px-4 py-3 rounded-md bg-red-50 text-red-600 border border-red-100 text-sm">
+              {error}
+            </div>
+          )}
+          {!error && actionError && (
+            <div className="mt-4 px-4 py-3 rounded-md bg-red-50 text-red-600 border border-red-100 text-sm">
+              {actionError}
+            </div>
+          )}
+          {actionMessage && (
+            <div className="mt-4 px-4 py-3 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-sm">
+              {actionMessage}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Content - matching dashboard layout */}
       <div>
-        {/* Tab Navigation */}
         <div className="flex justify-center mb-8">
           <div className="flex space-x-4 bg-white/60 dark:bg-slate-800/60 p-2 rounded-xl border border-gray-200 dark:border-slate-600 backdrop-blur-sm">
-            <TabButton
-              id="playlogs"
-              label="Play Logs"
-              icon={Activity}
-              isActive={activeTab === 'playlogs'}
-              onClick={setActiveTab}
-            />
-            <TabButton
-              id="matchlogs"
-              label="Match Logs"
-              icon={Eye}
-              isActive={activeTab === 'matchlogs'}
-              onClick={setActiveTab}
-            />
+            <TabButton id="playlogs" label="Play Logs" icon={Activity} isActive={activeTab === 'playlogs'} onClick={setActiveTab} />
+            <TabButton id="matchlogs" label="Match Logs" icon={Eye} isActive={activeTab === 'matchlogs'} onClick={setActiveTab} />
           </div>
         </div>
 
-        {/* Content */}
         <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl rounded-2xl p-8 border border-gray-200/50 dark:border-slate-700/30 shadow-2xl">
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
             <div className="flex items-center space-x-3">
               {activeTab === 'playlogs' ? (
                 <Activity className="w-6 h-6 text-blue-600 dark:text-blue-400" />
@@ -384,10 +468,10 @@ const PlayLogs: React.FC = () => {
               </h2>
             </div>
             <div className="flex items-center space-x-4 text-sm text-gray-600 dark:text-gray-400">
-              <span>{filteredAndSortedData.length} total entries</span>
+              <span>{totalEntries} total entries</span>
               <select
-                value={sortBy}
-                onChange={(e) => handleSort(e.target.value)}
+                value={activeSort.sortBy}
+                onChange={(event) => handleSort(event.target.value)}
                 className="bg-white dark:bg-slate-800 text-gray-900 dark:text-white px-3 py-1 rounded border border-gray-200 dark:border-slate-600"
               >
                 <option value="matched_at">Date</option>
@@ -409,7 +493,6 @@ const PlayLogs: React.FC = () => {
             </div>
           </div>
 
-          {/* Responsive Table */}
           <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-slate-700">
             <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-slate-600 scrollbar-track-transparent">
               <table className="min-w-full">
@@ -454,6 +537,9 @@ const PlayLogs: React.FC = () => {
                         <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                           Status
                         </th>
+                        <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden sm:table-cell">
+                          Actions
+                        </th>
                       </>
                     ) : (
                       <>
@@ -477,62 +563,124 @@ const PlayLogs: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white dark:bg-slate-900 divide-y divide-gray-200 dark:divide-slate-700">
-                  {paginatedData.map((log) => (
+                  {isLoading && (
+                    <tr>
+                      <td
+                        colSpan={activeTab === 'playlogs' ? 7 : 5}
+                        className="px-3 sm:px-6 py-10 text-center text-gray-500 dark:text-gray-400"
+                      >
+                        Loading logs...
+                      </td>
+                    </tr>
+                  )}
+                  {!isLoading && activeData.map((log) => (
                     <tr key={log.id} className="hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors duration-200">
                       {activeTab === 'playlogs' ? (
                         <>
                           <td className="px-3 sm:px-6 py-2 sm:py-4">
                             <div className="flex flex-col">
                               <span className="text-gray-900 dark:text-white font-medium text-xs sm:text-sm truncate max-w-[120px] sm:max-w-none">
-                                {(log as PlayLogData).track_title}
+                                {(log as StationPlayLogRecord).track_title}
                               </span>
-                              <span className="text-gray-500 dark:text-gray-400 text-xs truncate">by {(log as PlayLogData).artist}</span>
-                              {(log as PlayLogData).attribution_source === 'Partner' && (
+                              <span className="text-gray-500 dark:text-gray-400 text-xs truncate">
+                                by {(log as StationPlayLogRecord).artist || 'Unknown Artist'}
+                              </span>
+                              {(log as StationPlayLogRecord).attribution_source === 'Partner' && (
                                 <span className="inline-flex items-center mt-1 px-3 py-1.5 rounded-full text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
-                                  Partner: {(log as PlayLogData).partner_name || 'Ghana Music Rights'}
+                                  Partner: {(log as StationPlayLogRecord).partner_name || 'Partner Network'}
                                 </span>
                               )}
+                              <div className="sm:hidden mt-3">
+                                {(() => {
+                                  const playLog = log as StationPlayLogRecord;
+                                  const normalizedStatus = (playLog.status || '').toLowerCase();
+                                  const isFlagging = Boolean(flaggingLogs[String(playLog.id ?? '')]);
+                                  const isAlreadyFlagged = normalizedStatus === 'flagged';
+
+                                  return (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleFlagLog(playLog)}
+                                      disabled={isFlagging || isAlreadyFlagged}
+                                      className="inline-flex items-center space-x-2 px-3 py-1.5 rounded-md border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 disabled:opacity-60 disabled:cursor-not-allowed transition"
+                                    >
+                                      {isFlagging ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                      ) : (
+                                        <Flag className="w-4 h-4" />
+                                      )}
+                                      <span>{isAlreadyFlagged ? 'Flagged' : 'Flag'}</span>
+                                    </button>
+                                  );
+                                })()}
+                              </div>
                             </div>
                           </td>
                           <td className="px-3 sm:px-6 py-2 sm:py-4 text-gray-900 dark:text-white text-xs sm:text-sm font-medium truncate max-w-[100px] sm:max-w-none">
-                            {(log as PlayLogData).station_name}
+                            {(log as StationPlayLogRecord).station_name || '—'}
                           </td>
                           <td className="px-3 sm:px-6 py-2 sm:py-4 text-gray-600 dark:text-gray-300 text-xs sm:text-sm hidden md:table-cell">
                             <div className="flex flex-col">
-                              <span className="sm:hidden">{new Date((log as PlayLogData).matched_at).toLocaleDateString()}</span>
-                              <span className="hidden sm:inline">{new Date((log as PlayLogData).matched_at).toLocaleString()}</span>
+                              <span className="sm:hidden">{formatDateTime((log as StationPlayLogRecord).matched_at)}</span>
+                              <span className="hidden sm:inline">{formatDateTime((log as StationPlayLogRecord).matched_at)}</span>
+                              <span className="text-xs text-gray-400 dark:text-gray-500">Stop: {formatDateTime((log as StationPlayLogRecord).stop_time)}</span>
                             </div>
                           </td>
-                          <td className="px-3 sm:px-6 py-2 sm:py-4 text-gray-600 dark:text-gray-300 text-xs sm:text-sm hidden sm:table-cell">
-                            {(log as PlayLogData).duration}
+                          <td className="px-3 sm:px-6 py-2 sm:py-4 text-gray-900 dark:text-white text-xs sm:text-sm hidden sm:table-cell">
+                            {(log as StationPlayLogRecord).duration || '—'}
+                          </td>
+                          <td className="px-3 sm:px-6 py-2 sm:py-4 text-gray-900 dark:text-white text-xs sm:text-sm font-semibold">
+                            {formatCurrency((log as StationPlayLogRecord).royalty_amount || 0)}
                           </td>
                           <td className="px-3 sm:px-6 py-2 sm:py-4">
-                            <span className="text-emerald-600 dark:text-emerald-400 font-semibold text-xs sm:text-sm">
-                              ₵{(log as PlayLogData).royalty_amount.toFixed(2)}
+                            <span className={`inline-flex px-3 py-1.5 text-xs font-semibold rounded-full ${getPlayStatusClasses((log as StationPlayLogRecord).status)}`}>
+                              {(log as StationPlayLogRecord).status || 'Pending'}
                             </span>
                           </td>
-                          <td className="px-3 sm:px-6 py-2 sm:py-4">
-                            <span className={`inline-flex px-3 py-1.5 text-xs font-semibold rounded-full ${
-                              (log as PlayLogData).status === 'Confirmed'
-                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
-                                : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400'
-                            }`}>
-                              {(log as PlayLogData).status}
-                            </span>
+                          <td className="px-3 sm:px-6 py-2 sm:py-4 hidden sm:table-cell">
+                            {(() => {
+                              const playLog = log as StationPlayLogRecord;
+                              const normalizedStatus = (playLog.status || '').toLowerCase();
+                              const isFlagging = Boolean(flaggingLogs[String(playLog.id ?? '')]);
+                              const isAlreadyFlagged = normalizedStatus === 'flagged';
+
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => handleFlagLog(playLog)}
+                                  disabled={isFlagging || isAlreadyFlagged}
+                                  className="inline-flex items-center space-x-2 px-3 py-1.5 rounded-md border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 disabled:opacity-60 disabled:cursor-not-allowed transition"
+                                >
+                                  {isFlagging ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <Flag className="w-4 h-4" />
+                                  )}
+                                  <span>{isAlreadyFlagged ? 'Flagged' : 'Flag'}</span>
+                                </button>
+                              );
+                            })()}
                           </td>
                         </>
                       ) : (
                         <>
-                          <td className="px-3 sm:px-6 py-2 sm:py-4 text-gray-900 dark:text-white font-medium text-xs sm:text-sm truncate max-w-[120px]">
-                            {(log as MatchLogData).song}
+                          <td className="px-3 sm:px-6 py-2 sm:py-4">
+                            <div className="flex flex-col">
+                              <span className="text-gray-900 dark:text-white font-medium text-xs sm:text-sm truncate max-w-[140px] sm:max-w-none">
+                                {(log as StationMatchLogRecord).track_title}
+                              </span>
+                              <span className="text-gray-500 dark:text-gray-400 text-xs truncate">
+                                {(log as StationMatchLogRecord).artist || 'Unknown Artist'}
+                              </span>
+                            </div>
                           </td>
-                          <td className="px-3 sm:px-6 py-2 sm:py-4 text-gray-600 dark:text-gray-300 text-xs sm:text-sm hidden sm:table-cell truncate max-w-[100px]">
-                            {(log as MatchLogData).station}
+                          <td className="px-3 sm:px-6 py-2 sm:py-4 text-gray-900 dark:text-white text-xs sm:text-sm font-medium hidden sm:table-cell">
+                            {(log as StationMatchLogRecord).station_name || '—'}
                           </td>
                           <td className="px-3 sm:px-6 py-2 sm:py-4 text-gray-600 dark:text-gray-300 text-xs sm:text-sm hidden md:table-cell">
                             <div className="flex flex-col">
-                              <span className="sm:hidden">{new Date((log as MatchLogData).matched_at).toLocaleDateString()}</span>
-                              <span className="hidden sm:inline">{new Date((log as MatchLogData).matched_at).toLocaleString()}</span>
+                              <span className="sm:hidden">{formatDateTime((log as StationMatchLogRecord).matched_at)}</span>
+                              <span className="hidden sm:inline">{formatDateTime((log as StationMatchLogRecord).matched_at)}</span>
                             </div>
                           </td>
                           <td className="px-3 sm:px-6 py-2 sm:py-4">
@@ -540,29 +688,30 @@ const PlayLogs: React.FC = () => {
                               <div className="w-8 sm:w-12 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 sm:h-2">
                                 <div
                                   className="bg-gradient-to-r from-blue-500 to-indigo-500 h-1.5 sm:h-2 rounded-full transition-all duration-300"
-                                  style={{ width: `${(log as MatchLogData).confidence}%` }}
-                                ></div>
+                                  style={{ width: `${Math.max(0, Math.min(100, (log as StationMatchLogRecord).confidence ?? 0))}%` }}
+                                />
                               </div>
-                              <span className="text-gray-900 dark:text-white font-medium text-xs sm:text-sm">{(log as MatchLogData).confidence}%</span>
+                              <span className="text-gray-900 dark:text-white font-medium text-xs sm:text-sm">
+                                {(log as StationMatchLogRecord).confidence != null
+                                  ? `${Math.round((log as StationMatchLogRecord).confidence ?? 0)}%`
+                                  : '—'}
+                              </span>
                             </div>
                           </td>
                           <td className="px-3 sm:px-6 py-2 sm:py-4">
-                            <span className={`inline-flex px-3 py-1.5 text-xs font-semibold rounded-full ${
-                              (log as MatchLogData).status === 'Verified'
-                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
-                                : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400'
-                            }`}>
-                              {(log as MatchLogData).status}
+                            <span className={`inline-flex px-3 py-1.5 text-xs font-semibold rounded-full ${getMatchStatusClasses((log as StationMatchLogRecord).status)}`}>
+                              {(log as StationMatchLogRecord).status || 'Pending'}
                             </span>
                           </td>
                         </>
                       )}
                     </tr>
                   ))}
-                  {paginatedData.length === 0 && (
+
+                  {!isLoading && activeData.length === 0 && (
                     <tr>
                       <td
-                        colSpan={activeTab === 'playlogs' ? 6 : 5}
+                        colSpan={activeTab === 'playlogs' ? 7 : 5}
                         className="px-3 sm:px-6 py-8 sm:py-16 text-center text-gray-500 dark:text-gray-400"
                       >
                         No logs found matching your search criteria.
@@ -574,17 +723,16 @@ const PlayLogs: React.FC = () => {
             </div>
           </div>
 
-          {/* Enhanced Pagination - More Visible */}
           {totalPages > 1 && (
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-8 pt-6 border-t border-gray-200 dark:border-slate-700 bg-gray-50/30 dark:bg-slate-800/30 -mx-8 px-8 py-4 rounded-b-2xl">
               <div className="text-sm text-gray-600 dark:text-gray-400 font-medium">
-                Showing <span className="text-blue-600 dark:text-blue-400 font-semibold">{startIndex + 1}</span> to{' '}
-                <span className="text-blue-600 dark:text-blue-400 font-semibold">{Math.min(startIndex + itemsPerPage, filteredAndSortedData.length)}</span> of{' '}
-                <span className="text-blue-600 dark:text-blue-400 font-semibold">{filteredAndSortedData.length}</span> entries
+                Showing <span className="text-blue-600 dark:text-blue-400 font-semibold">{startEntry}</span> to{' '}
+                <span className="text-blue-600 dark:text-blue-400 font-semibold">{endEntry}</span> of{' '}
+                <span className="text-blue-600 dark:text-blue-400 font-semibold">{totalEntries}</span> entries
               </div>
               <div className="flex items-center space-x-2">
                 <button
-                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                  onClick={handlePreviousPage}
                   disabled={currentPage === 1}
                   className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
                 >
@@ -595,28 +743,23 @@ const PlayLogs: React.FC = () => {
                 </button>
 
                 <div className="flex items-center space-x-1">
-                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                    const pageNum = Math.max(1, Math.min(totalPages - 4, currentPage - 2)) + i;
-                    if (pageNum > totalPages) return null;
-
-                    return (
-                      <button
-                        key={pageNum}
-                        onClick={() => setCurrentPage(pageNum)}
-                        className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm ${
-                          currentPage === pageNum
-                            ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md transform scale-105'
-                            : 'text-gray-600 dark:text-gray-400 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 border border-gray-200 dark:border-slate-600 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md'
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    );
-                  })}
+                  {pageNumbers.map((pageNumber) => (
+                    <button
+                      key={pageNumber}
+                      onClick={() => handleGoToPage(pageNumber)}
+                      className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm ${
+                        currentPage === pageNumber
+                          ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md transform scale-105'
+                          : 'text-gray-600 dark:text-gray-400 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 border border-gray-200 dark:border-slate-600 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md'
+                      }`}
+                    >
+                      {pageNumber}
+                    </button>
+                  ))}
                 </div>
 
                 <button
-                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                  onClick={handleNextPage}
                   disabled={currentPage === totalPages}
                   className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
                 >
@@ -629,11 +772,10 @@ const PlayLogs: React.FC = () => {
             </div>
           )}
 
-          {/* Show pagination info even when only one page */}
-          {totalPages === 1 && filteredAndSortedData.length > 0 && (
+          {totalPages === 1 && totalEntries > 0 && (
             <div className="flex justify-center mt-6 pt-6 border-t border-gray-200 dark:border-slate-700">
               <div className="text-sm text-gray-500 dark:text-gray-400">
-                Showing all {filteredAndSortedData.length} entries
+                Showing all {totalEntries} entries
               </div>
             </div>
           )}
