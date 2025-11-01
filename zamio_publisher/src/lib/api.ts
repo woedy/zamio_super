@@ -166,6 +166,130 @@ export interface PublisherArtistSearchResult {
   [key: string]: unknown;
 }
 
+export interface PublisherDashboardStat {
+  value?: number;
+  change?: number;
+  target?: number;
+  targetLabel?: string | null;
+}
+
+export interface PublisherDashboardStatsBlock {
+  totalPerformances?: PublisherDashboardStat;
+  totalEarnings?: PublisherDashboardStat;
+  worksInCatalog?: PublisherDashboardStat;
+  activeStations?: PublisherDashboardStat;
+  [key: string]: PublisherDashboardStat | undefined;
+}
+
+export interface PublisherDashboardTrendPoint {
+  period?: string | null;
+  label?: string | null;
+  airplay?: number;
+  streaming?: number;
+  total?: number;
+}
+
+export interface PublisherDashboardTopSong {
+  trackId?: number | string | null;
+  title?: string | null;
+  artist?: string | null;
+  plays?: number;
+  earnings?: number;
+  stations?: number;
+  [key: string]: unknown;
+}
+
+export interface PublisherDashboardRegionPerformance {
+  region?: string | null;
+  plays?: number;
+  earnings?: number;
+  stations?: number;
+  growth?: number;
+  [key: string]: unknown;
+}
+
+export interface PublisherDashboardStationBreakdown {
+  stationId?: number | string | null;
+  name?: string | null;
+  region?: string | null;
+  plays?: number;
+  percentage?: number;
+  [key: string]: unknown;
+}
+
+export interface PublisherDashboardActivityItem {
+  id?: string | number;
+  type?: string | null;
+  title?: string | null;
+  description?: string | null;
+  timestamp?: string | null;
+  time?: string | null;
+  [key: string]: unknown;
+}
+
+export interface PublisherDashboardRosterSummary {
+  writerCount?: number;
+  agreementCount?: number;
+  publisherSplit?: number;
+  writerSplit?: number;
+  unclaimedLogs?: number;
+  disputes?: number;
+  [key: string]: unknown;
+}
+
+export interface PublisherDashboardTopArtist {
+  artistId?: number | string | null;
+  name?: string | null;
+  plays?: number;
+  revenue?: number;
+  trend?: number;
+  [key: string]: unknown;
+}
+
+export interface PublisherDashboardPerformanceScore {
+  overall?: number;
+  publishingGrowth?: number;
+  revenueGrowth?: number;
+  catalogQuality?: number;
+  [key: string]: unknown;
+}
+
+export interface PublisherDashboardTargets {
+  performancesTarget?: number;
+  earningsTarget?: number;
+  catalogTarget?: number;
+  stationTarget?: number;
+  [key: string]: unknown;
+}
+
+export interface PublisherDashboardMetadata {
+  period?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  [key: string]: unknown;
+}
+
+export interface PublisherDashboardPayload {
+  stats?: PublisherDashboardStatsBlock;
+  playsOverTime?: PublisherDashboardTrendPoint[];
+  topSongs?: PublisherDashboardTopSong[];
+  regionPerformance?: PublisherDashboardRegionPerformance[];
+  topStations?: PublisherDashboardStationBreakdown[];
+  recentActivity?: PublisherDashboardActivityItem[];
+  roster?: PublisherDashboardRosterSummary;
+  topArtists?: PublisherDashboardTopArtist[];
+  performanceScore?: PublisherDashboardPerformanceScore;
+  targets?: PublisherDashboardTargets;
+  metadata?: PublisherDashboardMetadata;
+  [key: string]: unknown;
+}
+
+export interface PublisherDashboardParams {
+  period?: string;
+  start_date?: string;
+  end_date?: string;
+}
+
 export const registerPublisher = async <T = Record<string, unknown>>(
   payload: RegisterPublisherPayload,
 ) => {
@@ -184,6 +308,32 @@ export const fetchPublisherOnboardingStatus = async (publisherId: string) => {
   const { data } = await authApi.get<ApiEnvelope<PublisherOnboardingStatus>>(
     `/api/accounts/publisher-onboarding-status/${publisherId}/`,
   );
+  return data;
+};
+
+export const fetchPublisherDashboard = async (
+  publisherId: string,
+  params: PublisherDashboardParams = {},
+) => {
+  const query: Record<string, string> = {
+    publisher_id: publisherId,
+  };
+
+  if (params.period) {
+    query.period = params.period;
+  }
+  if (params.start_date) {
+    query.start_date = params.start_date;
+  }
+  if (params.end_date) {
+    query.end_date = params.end_date;
+  }
+
+  const { data } = await authApi.get<ApiEnvelope<PublisherDashboardPayload>>(
+    '/api/publishers/dashboard/',
+    { params: query },
+  );
+
   return data;
 };
 
