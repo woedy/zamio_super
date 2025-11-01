@@ -232,9 +232,193 @@ class StationMatchCacheSerializer(serializers.ModelSerializer):
         return 'Pending'
 
 
+class StationDisputeSerializer(serializers.ModelSerializer):
+    track_title = serializers.CharField(source='playlog.track.title', read_only=True)
+    artist_name = serializers.SerializerMethodField()
+    start_time = serializers.SerializerMethodField()
+    stop_time = serializers.SerializerMethodField()
+    duration = serializers.SerializerMethodField()
+    confidence = serializers.SerializerMethodField()
+    earnings = serializers.SerializerMethodField()
+    status = serializers.SerializerMethodField()
+    comment = serializers.SerializerMethodField()
+    timestamp = serializers.SerializerMethodField()
+    cover_art = serializers.SerializerMethodField()
+    audio_file_mp3 = serializers.SerializerMethodField()
+    release_date = serializers.SerializerMethodField()
+    plays = serializers.SerializerMethodField()
+    title = serializers.SerializerMethodField()
+    play_logs = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Dispute
+        fields = [
+            'id',
+            'track_title',
+            'artist_name',
+            'start_time',
+            'stop_time',
+            'duration',
+            'confidence',
+            'earnings',
+            'status',
+            'comment',
+            'timestamp',
+            'cover_art',
+            'audio_file_mp3',
+            'release_date',
+            'plays',
+            'title',
+            'play_logs',
+        ]
+
+    @staticmethod
+    def _format_datetime(value):
+        if not value:
+            return None
+        return value.strftime('%Y-%m-%d ~ %H:%M:%S')
+
+    @staticmethod
+    def normalize_confidence_value(value):
+        if value is None:
+            return None
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return None
+        if numeric <= 1:
+            numeric *= 100
+        return round(numeric, 2)
+
+    def get_artist_name(self, obj):
+        track = getattr(obj.playlog, 'track', None)
+        if not track:
+            return None
+        artist = getattr(track, 'artist', None)
+        if not artist:
+            return None
+        if getattr(artist, 'stage_name', None):
+            return artist.stage_name
+        user = getattr(artist, 'user', None)
+        if user and (user.first_name or user.last_name):
+            return f"{user.first_name or ''} {user.last_name or ''}".strip() or None
+        if user and user.username:
+            return user.username
+        if user and user.email:
+            return user.email
+        return None
+
+    def get_start_time(self, obj):
+        playlog = getattr(obj, 'playlog', None)
+        if not playlog:
+            return None
+        return self._format_datetime(playlog.start_time or playlog.played_at or playlog.created_at)
+
+    def get_stop_time(self, obj):
+        playlog = getattr(obj, 'playlog', None)
+        if not playlog:
+            return None
+        return self._format_datetime(playlog.stop_time)
+
+    def get_duration(self, obj):
+        playlog = getattr(obj, 'playlog', None)
+        if not playlog or not playlog.duration:
+            return None
+        total_seconds = int(playlog.duration.total_seconds())
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        if hours:
+            return f"{hours:02}:{minutes:02}:{seconds:02}"
+        return f"{minutes:02}:{seconds:02}"
+
+    def get_confidence(self, obj):
+        playlog = getattr(obj, 'playlog', None)
+        if not playlog:
+            return None
+        return self.normalize_confidence_value(getattr(playlog, 'avg_confidence_score', None))
+
+    def get_earnings(self, obj):
+        playlog = getattr(obj, 'playlog', None)
+        if not playlog or playlog.royalty_amount is None:
+            return 0.0
+        try:
+            return float(playlog.royalty_amount)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def get_status(self, obj):
+        status_value = getattr(obj, 'dispute_status', None) or 'Pending'
+        return status_value.title() if isinstance(status_value, str) else status_value
+
+    def get_comment(self, obj):
+        return obj.dispute_comments or obj.resolve_comments or ''
+
+    def get_timestamp(self, obj):
+        return self._format_datetime(getattr(obj, 'updated_at', None) or getattr(obj, 'created_at', None))
+
+    def _build_absolute_uri(self, file_field):
+        if not file_field:
+            return None
+        try:
+            url = file_field.url
+        except Exception:
+            return None
+        request = self.context.get('request') if isinstance(self.context, dict) else None
+        if request:
+            return request.build_absolute_uri(url)
+        return url
+
+    def get_cover_art(self, obj):
+        track = getattr(obj.playlog, 'track', None)
+        if not track:
+            return None
+        return self._build_absolute_uri(getattr(track, 'cover_art', None))
+
+    def get_audio_file_mp3(self, obj):
+        track = getattr(obj.playlog, 'track', None)
+        if not track:
+            return None
+        audio_file = getattr(track, 'audio_file_mp3', None) or getattr(track, 'audio_file', None)
+        return self._build_absolute_uri(audio_file)
+
+    def get_release_date(self, obj):
+        track = getattr(obj.playlog, 'track', None)
+        if not track or not track.release_date:
+            return None
+        return track.release_date.isoformat()
+
+    def get_plays(self, obj):
+        plays = getattr(obj, 'track_total_plays', None)
+        if plays is None:
+            return 0
+        try:
+            return int(plays)
+        except (TypeError, ValueError):
+            return 0
+
+    def get_title(self, obj):
+        track = getattr(obj.playlog, 'track', None)
+        if not track:
+            return None
+        return track.title
+
+    def get_play_logs(self, obj):
+        playlog = getattr(obj, 'playlog', None)
+        if not playlog:
+            return []
+        station = getattr(playlog, 'station', None)
+        return [
+            {
+                'time': self.get_start_time(obj),
+                'station': getattr(station, 'name', None),
+                'region': getattr(station, 'region', None),
+            }
+        ]
+
+
 class StationStaffSerializer(serializers.ModelSerializer):
     station_name = serializers.CharField(source='station.name', read_only=True)
-    
+
     class Meta:
         model = StationStaff
         fields = [

@@ -346,6 +346,63 @@ export interface StationLogsParams {
   logPageState?: 'playlogs' | 'matchlogs' | 'all';
 }
 
+export interface StationDisputePlayLog {
+  time: string | null;
+  station: string | null;
+  region: string | null;
+}
+
+export interface StationDisputeRecord {
+  id: number | string;
+  track_title: string | null;
+  artist_name: string | null;
+  start_time: string | null;
+  stop_time: string | null;
+  duration: string | null;
+  confidence: number | null;
+  earnings: number;
+  status: string | null;
+  comment: string | null;
+  timestamp: string | null;
+  cover_art: string | null;
+  audio_file_mp3: string | null;
+  release_date: string | null;
+  plays: number;
+  title: string | null;
+  play_logs: StationDisputePlayLog[];
+}
+
+export interface StationDisputeSummary {
+  total: number;
+  resolved: number;
+  flagged: number;
+  pending: number;
+  pending_review: number;
+  average_confidence: number;
+}
+
+export interface StationDisputeCollection {
+  results: StationDisputeRecord[];
+  pagination: StationLogPagination;
+}
+
+export interface StationDisputesPayload {
+  disputes: StationDisputeCollection;
+  summary: StationDisputeSummary;
+  status_choices: string[];
+}
+
+export interface StationDisputesParams {
+  stationId: string;
+  search?: string;
+  status?: string;
+  period?: 'daily' | 'weekly' | 'monthly' | 'all-time';
+  page?: number;
+  pageSize?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+}
+
 export const fetchStationOnboardingStatus = async (stationId: string) => {
   const { data } = await authApi.get<ApiEnvelope<StationOnboardingStatus>>(
     `/api/accounts/enhanced-station-onboarding-status/${stationId}/`,
@@ -420,6 +477,50 @@ export const fetchStationLogs = async ({
 
   const { data } = await authApi.get<ApiEnvelope<StationLogsPayload>>(
     '/api/stations/playlogs/',
+    { params: query },
+  );
+
+  return data;
+};
+
+export const fetchStationDisputes = async ({
+  stationId,
+  search,
+  status,
+  period,
+  page,
+  pageSize,
+  sortBy,
+  sortOrder,
+}: StationDisputesParams) => {
+  const query: Record<string, string | number> = {
+    station_id: stationId,
+  };
+
+  if (search) {
+    query.search = search;
+  }
+  if (status) {
+    query.status = status;
+  }
+  if (period) {
+    query.period = period;
+  }
+  if (typeof page === 'number') {
+    query.page = page;
+  }
+  if (typeof pageSize === 'number') {
+    query.page_size = pageSize;
+  }
+  if (sortBy) {
+    query.sort_by = sortBy;
+  }
+  if (sortOrder) {
+    query.sort_order = sortOrder;
+  }
+
+  const { data } = await authApi.get<ApiEnvelope<StationDisputesPayload>>(
+    '/api/stations/disputes/',
     { params: query },
   );
 
