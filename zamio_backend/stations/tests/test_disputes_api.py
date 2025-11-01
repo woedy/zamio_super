@@ -232,3 +232,78 @@ class StationDisputesAPITestCase(TestCase):
         self.assertEqual(summary.get('resolved'), 0)
         self.assertEqual(summary.get('flagged'), 0)
 
+    def test_station_dispute_detail_returns_payload_with_token(self) -> None:
+        url = reverse(
+            'stations:get_station_dispute_detail_view',
+            kwargs={'dispute_id': self.pending_dispute.pk},
+        )
+        response = self.client.get(
+            url,
+            {
+                'station_id': self.station.station_id,
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload.get('message'), 'Successful')
+
+        data = payload.get('data') or {}
+        self.assertEqual(data.get('id'), self.pending_dispute.pk)
+        self.assertEqual(data.get('track_title'), 'Dispute Track')
+        self.assertIn('play_logs', data)
+        self.assertIsInstance(data.get('play_logs'), list)
+        self.assertIn('audio_file_mp3', data)
+
+    def test_station_dispute_detail_allows_jwt_authentication(self) -> None:
+        url = reverse(
+            'stations:get_station_dispute_detail_view',
+            kwargs={'dispute_id': self.pending_dispute.pk},
+        )
+        response = self.jwt_client.get(
+            url,
+            {
+                'station_id': self.station.station_id,
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_station_dispute_detail_requires_station_id(self) -> None:
+        url = reverse(
+            'stations:get_station_dispute_detail_view',
+            kwargs={'dispute_id': self.pending_dispute.pk},
+        )
+        response = self.client.get(url, format='json')
+
+        self.assertEqual(response.status_code, 400)
+        payload = response.json()
+        errors = payload.get('errors') or {}
+        self.assertIn('station_id', errors)
+
+    def test_station_dispute_detail_not_found_for_other_station(self) -> None:
+        other_station = Station.objects.create(
+            user=self.station_user,
+            name='Other Station',
+            station_id='ST-DISP-999',
+            country='Ghana',
+        )
+
+        url = reverse(
+            'stations:get_station_dispute_detail_view',
+            kwargs={'dispute_id': self.pending_dispute.pk},
+        )
+        response = self.client.get(
+            url,
+            {
+                'station_id': other_station.station_id,
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 404)
+        payload = response.json()
+        self.assertEqual(payload.get('message'), 'Dispute not found.')
+

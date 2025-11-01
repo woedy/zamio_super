@@ -32,6 +32,17 @@ type TabKey = 'playlogs' | 'matchlogs';
 
 type SortState = { sortBy: string; sortOrder: 'asc' | 'desc' };
 
+interface FlagPlayLogModalProps {
+  isOpen: boolean;
+  log: StationPlayLogRecord | null;
+  comment: string;
+  onCommentChange: (value: string) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+  isSubmitting: boolean;
+  error: string | null;
+}
+
 const buildEmptyPagination = (pageSize = ITEMS_PER_PAGE): StationLogPagination => ({
   count: 0,
   page_number: 1,
@@ -172,6 +183,9 @@ const PlayLogs: React.FC = () => {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [flaggingLogs, setFlaggingLogs] = useState<Record<string, boolean>>({});
+  const [flagModalLog, setFlagModalLog] = useState<StationPlayLogRecord | null>(null);
+  const [flagModalComment, setFlagModalComment] = useState('');
+  const [flagModalError, setFlagModalError] = useState<string | null>(null);
 
   useEffect(() => {
     const handle = setTimeout(() => setDebouncedSearch(searchInput.trim()), 300);
@@ -239,53 +253,59 @@ const PlayLogs: React.FC = () => {
     loadLogs();
   }, [loadLogs]);
 
-  const handleFlagLog = useCallback(
-    async (log: StationPlayLogRecord) => {
-      if (!log || log.id === null || log.id === undefined) {
-        return;
-      }
+  const openFlagModal = useCallback((log: StationPlayLogRecord) => {
+    if (!log || log.id === null || log.id === undefined) {
+      return;
+    }
 
-      if (typeof window === 'undefined') {
-        return;
-      }
+    setFlagModalLog(log);
+    setFlagModalComment('');
+    setFlagModalError(null);
+    setActionMessage(null);
+    setActionError(null);
+  }, []);
 
-      const comment = window.prompt(
-        'Provide a reason for flagging this play log for dispute review.',
-        '',
-      );
+  const closeFlagModal = useCallback(() => {
+    setFlagModalLog(null);
+    setFlagModalComment('');
+    setFlagModalError(null);
+  }, []);
 
-      if (comment === null) {
-        return;
-      }
+  const confirmFlagLog = useCallback(async () => {
+    if (!flagModalLog || flagModalLog.id === null || flagModalLog.id === undefined) {
+      return;
+    }
 
-      const trimmedComment = comment.trim();
-      if (!trimmedComment) {
-        setActionError('A comment is required to flag a play log for dispute.');
-        return;
-      }
+    const trimmedComment = flagModalComment.trim();
+    if (!trimmedComment) {
+      setFlagModalError('A comment is required to flag this play log for dispute.');
+      return;
+    }
 
-      const logKey = String(log.id);
+    const logKey = String(flagModalLog.id);
 
-      setFlaggingLogs((previous) => ({ ...previous, [logKey]: true }));
-      setActionMessage(null);
-      setActionError(null);
+    setFlaggingLogs((previous) => ({ ...previous, [logKey]: true }));
+    setFlagModalError(null);
+    setActionMessage(null);
+    setActionError(null);
 
-      try {
-        await flagStationPlayLog({ playlogId: log.id, comment: trimmedComment });
-        setActionMessage('Play log flagged for dispute. Our team will review it shortly.');
-        await loadLogs();
-      } catch (flagError) {
-        setActionError(resolveLogsError(flagError));
-      } finally {
-        setFlaggingLogs((previous) => {
-          const next = { ...previous };
-          delete next[logKey];
-          return next;
-        });
-      }
-    },
-    [loadLogs],
-  );
+    try {
+      await flagStationPlayLog({ playlogId: flagModalLog.id, comment: trimmedComment });
+      setActionMessage('Play log flagged for dispute. Our team will review it shortly.');
+      await loadLogs();
+      closeFlagModal();
+    } catch (flagError) {
+      const resolved = resolveLogsError(flagError);
+      setActionError(resolved);
+      setFlagModalError(resolved);
+    } finally {
+      setFlaggingLogs((previous) => {
+        const next = { ...previous };
+        delete next[logKey];
+        return next;
+      });
+    }
+  }, [flagModalLog, flagModalComment, closeFlagModal, loadLogs]);
 
   const activeData = activeTab === 'playlogs' ? playLogs : matchLogs;
   const activePagination = activeTab === 'playlogs' ? playPagination : matchPagination;
@@ -600,7 +620,7 @@ const PlayLogs: React.FC = () => {
                                   return (
                                     <button
                                       type="button"
-                                      onClick={() => handleFlagLog(playLog)}
+                                      onClick={() => openFlagModal(playLog)}
                                       disabled={isFlagging || isAlreadyFlagged}
                                       className="inline-flex items-center space-x-2 px-3 py-1.5 rounded-md border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 disabled:opacity-60 disabled:cursor-not-allowed transition"
                                     >
@@ -647,7 +667,7 @@ const PlayLogs: React.FC = () => {
                               return (
                                 <button
                                   type="button"
-                                  onClick={() => handleFlagLog(playLog)}
+                                onClick={() => openFlagModal(playLog)}
                                   disabled={isFlagging || isAlreadyFlagged}
                                   className="inline-flex items-center space-x-2 px-3 py-1.5 rounded-md border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 disabled:opacity-60 disabled:cursor-not-allowed transition"
                                 >
@@ -781,7 +801,105 @@ const PlayLogs: React.FC = () => {
           )}
         </div>
       </div>
+
+      <FlagPlayLogModal
+        isOpen={Boolean(flagModalLog)}
+        log={flagModalLog}
+        comment={flagModalComment}
+        onCommentChange={setFlagModalComment}
+        onConfirm={confirmFlagLog}
+        onCancel={closeFlagModal}
+        isSubmitting={flagModalLog ? Boolean(flaggingLogs[String(flagModalLog.id ?? '')]) : false}
+        error={flagModalError}
+      />
     </>
+  );
+};
+
+const FlagPlayLogModal: React.FC<FlagPlayLogModalProps> = ({
+  isOpen,
+  log,
+  comment,
+  onCommentChange,
+  onConfirm,
+  onCancel,
+  isSubmitting,
+  error,
+}) => {
+  if (!isOpen || !log) {
+    return null;
+  }
+
+  const trackTitle = log.track_title || 'Unknown track';
+  const artistName = log.artist || 'Unknown artist';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 px-4 py-6">
+      <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5 dark:bg-slate-900 dark:ring-white/10">
+        <div className="border-b border-slate-200/70 bg-slate-50 px-6 py-4 dark:border-slate-700/60 dark:bg-slate-800">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Flag play log for dispute</h2>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+            Provide a brief reason so our review team understands the issue.
+          </p>
+        </div>
+        <div className="space-y-5 px-6 py-5">
+          <div className="rounded-xl bg-slate-100 px-4 py-3 dark:bg-slate-800/70">
+            <p className="text-sm font-medium text-slate-900 dark:text-white">{trackTitle}</p>
+            <p className="text-sm text-slate-600 dark:text-slate-300">{artistName}</p>
+            {log.matched_at && (
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Matched at {formatDateTime(log.matched_at)}</p>
+            )}
+          </div>
+
+          <div>
+            <label htmlFor="flag-comment" className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-200">
+              Comment <span className="text-rose-500">*</span>
+            </label>
+            {error && (
+              <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700 dark:border-rose-900/50 dark:bg-rose-900/30 dark:text-rose-300">
+                {error}
+              </div>
+            )}
+            <textarea
+              id="flag-comment"
+              className="h-28 w-full resize-none rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+              placeholder="Share why this play log should be reviewed..."
+              value={comment}
+              onChange={(event) => onCommentChange(event.target.value)}
+              disabled={isSubmitting}
+            />
+            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              Comments help us validate disputes faster. Include any context the reviewers should know.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center justify-end gap-3 border-t border-slate-200/70 bg-slate-50 px-6 py-4 dark:border-slate-700/60 dark:bg-slate-800">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="inline-flex items-center justify-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+            disabled={isSubmitting}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="inline-flex items-center justify-center rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-white disabled:cursor-not-allowed disabled:opacity-70 dark:bg-red-500 dark:hover:bg-red-600 dark:focus:ring-offset-slate-900"
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Flagging...
+              </>
+            ) : (
+              'Submit flag'
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 };
 

@@ -202,3 +202,64 @@ def get_station_disputes_view(request):
     payload['data'] = data
     return Response(payload, status=status.HTTP_200_OK)
 
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
+def get_station_dispute_detail_view(request, dispute_id):
+    payload = {}
+    errors = {}
+
+    station_id = (request.query_params.get('station_id') or '').strip()
+    if not station_id:
+        errors['station_id'] = ['Station ID is required.']
+        station = None
+    else:
+        try:
+            station = Station.objects.get(station_id=station_id)
+        except Station.DoesNotExist:
+            errors['station_id'] = ['Station not found.']
+            station = None
+
+    if errors:
+        payload['message'] = 'Errors'
+        payload['errors'] = errors
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
+    dispute = (
+        Dispute.objects.filter(
+            pk=dispute_id,
+            playlog__station=station,
+            is_archived=False,
+        )
+        .select_related(
+            'playlog',
+            'playlog__track',
+            'playlog__track__artist',
+            'playlog__station',
+        )
+        .annotate(
+            track_total_plays=Count(
+                'playlog__track__track_playlog',
+                filter=Q(
+                    playlog__track__track_playlog__is_archived=False,
+                    playlog__track__track_playlog__station=station,
+                ),
+            )
+        )
+        .first()
+    )
+
+    if not dispute:
+        payload['message'] = 'Dispute not found.'
+        return Response(payload, status=status.HTTP_404_NOT_FOUND)
+
+    serializer = StationDisputeSerializer(
+        dispute,
+        context={'request': request, 'station': station},
+    )
+
+    payload['message'] = 'Successful'
+    payload['data'] = serializer.data
+    return Response(payload, status=status.HTTP_200_OK)
+

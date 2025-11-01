@@ -408,6 +408,11 @@ export interface StationDisputesParams {
   sortOrder?: 'asc' | 'desc';
 }
 
+export interface StationDisputeDetailParams {
+  stationId: string;
+  disputeId: number | string;
+}
+
 export const fetchStationOnboardingStatus = async (stationId: string) => {
   const { data } = await authApi.get<ApiEnvelope<StationOnboardingStatus>>(
     `/api/accounts/enhanced-station-onboarding-status/${stationId}/`,
@@ -539,6 +544,22 @@ export const fetchStationDisputes = async ({
   const { data } = await authApi.get<ApiEnvelope<StationDisputesPayload>>(
     '/api/stations/disputes/',
     { params: query },
+  );
+
+  return data;
+};
+
+export const fetchStationDisputeDetail = async ({
+  stationId,
+  disputeId,
+}: StationDisputeDetailParams) => {
+  const { data } = await authApi.get<ApiEnvelope<StationDisputeRecord>>(
+    `/api/stations/disputes/${disputeId}/`,
+    {
+      params: {
+        station_id: stationId,
+      },
+    },
   );
 
   return data;
