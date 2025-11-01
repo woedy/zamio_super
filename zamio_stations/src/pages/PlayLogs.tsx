@@ -8,6 +8,8 @@ import {
   Download,
   Eye,
   Filter,
+  Flag,
+  Loader2,
   Music,
   RadioTower,
   Search,
@@ -17,6 +19,7 @@ import {
 import { useAuth } from '../lib/auth';
 import {
   fetchStationLogs,
+  flagStationPlayLog,
   type StationLogPagination,
   type StationLogsPayload,
   type StationMatchLogRecord,
@@ -166,6 +169,9 @@ const PlayLogs: React.FC = () => {
   const [matchPagination, setMatchPagination] = useState<StationLogPagination>(() => buildEmptyPagination());
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [flaggingLogs, setFlaggingLogs] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const handle = setTimeout(() => setDebouncedSearch(searchInput.trim()), 300);
@@ -232,6 +238,55 @@ const PlayLogs: React.FC = () => {
   useEffect(() => {
     loadLogs();
   }, [loadLogs]);
+
+  const handleFlagLog = useCallback(
+    async (log: StationPlayLogRecord) => {
+      if (!log || log.id === null || log.id === undefined) {
+        return;
+      }
+    }
+
+      if (typeof window === 'undefined') {
+        return;
+      }
+
+      const comment = window.prompt(
+        'Provide a reason for flagging this play log for dispute review.',
+        '',
+      );
+
+      if (comment === null) {
+        return;
+      }
+
+      const trimmedComment = comment.trim();
+      if (!trimmedComment) {
+        setActionError('A comment is required to flag a play log for dispute.');
+        return;
+      }
+
+      const logKey = String(log.id);
+
+      setFlaggingLogs((previous) => ({ ...previous, [logKey]: true }));
+      setActionMessage(null);
+      setActionError(null);
+
+      try {
+        await flagStationPlayLog({ playlogId: log.id, comment: trimmedComment });
+        setActionMessage('Play log flagged for dispute. Our team will review it shortly.');
+        await loadLogs();
+      } catch (flagError) {
+        setActionError(resolveLogsError(flagError));
+      } finally {
+        setFlaggingLogs((previous) => {
+          const next = { ...previous };
+          delete next[logKey];
+          return next;
+        });
+      }
+    },
+    [loadLogs],
+  );
 
   const activeData = activeTab === 'playlogs' ? playLogs : matchLogs;
   const activePagination = activeTab === 'playlogs' ? playPagination : matchPagination;
@@ -380,6 +435,16 @@ const PlayLogs: React.FC = () => {
               {error}
             </div>
           )}
+          {!error && actionError && (
+            <div className="mt-4 px-4 py-3 rounded-md bg-red-50 text-red-600 border border-red-100 text-sm">
+              {actionError}
+            </div>
+          )}
+          {actionMessage && (
+            <div className="mt-4 px-4 py-3 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-sm">
+              {actionMessage}
+            </div>
+          )}
         </div>
       </div>
 
@@ -473,6 +538,9 @@ const PlayLogs: React.FC = () => {
                         <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                           Status
                         </th>
+                        <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden sm:table-cell">
+                          Actions
+                        </th>
                       </>
                     ) : (
                       <>
@@ -499,7 +567,7 @@ const PlayLogs: React.FC = () => {
                   {isLoading && (
                     <tr>
                       <td
-                        colSpan={activeTab === 'playlogs' ? 6 : 5}
+                        colSpan={activeTab === 'playlogs' ? 7 : 5}
                         className="px-3 sm:px-6 py-10 text-center text-gray-500 dark:text-gray-400"
                       >
                         Loading logs...
@@ -523,6 +591,30 @@ const PlayLogs: React.FC = () => {
                                   Partner: {(log as StationPlayLogRecord).partner_name || 'Partner Network'}
                                 </span>
                               )}
+                              <div className="sm:hidden mt-3">
+                                {(() => {
+                                  const playLog = log as StationPlayLogRecord;
+                                  const normalizedStatus = (playLog.status || '').toLowerCase();
+                                  const isFlagging = Boolean(flaggingLogs[String(playLog.id ?? '')]);
+                                  const isAlreadyFlagged = normalizedStatus === 'flagged';
+
+                                  return (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleFlagLog(playLog)}
+                                      disabled={isFlagging || isAlreadyFlagged}
+                                      className="inline-flex items-center space-x-2 px-3 py-1.5 rounded-md border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 disabled:opacity-60 disabled:cursor-not-allowed transition"
+                                    >
+                                      {isFlagging ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                      ) : (
+                                        <Flag className="w-4 h-4" />
+                                      )}
+                                      <span>{isAlreadyFlagged ? 'Flagged' : 'Flag'}</span>
+                                    </button>
+                                  );
+                                })()}
+                              </div>
                             </div>
                           </td>
                           <td className="px-3 sm:px-6 py-2 sm:py-4 text-gray-900 dark:text-white text-xs sm:text-sm font-medium truncate max-w-[100px] sm:max-w-none">
@@ -545,6 +637,30 @@ const PlayLogs: React.FC = () => {
                             <span className={`inline-flex px-3 py-1.5 text-xs font-semibold rounded-full ${getPlayStatusClasses((log as StationPlayLogRecord).status)}`}>
                               {(log as StationPlayLogRecord).status || 'Pending'}
                             </span>
+                          </td>
+                          <td className="px-3 sm:px-6 py-2 sm:py-4 hidden sm:table-cell">
+                            {(() => {
+                              const playLog = log as StationPlayLogRecord;
+                              const normalizedStatus = (playLog.status || '').toLowerCase();
+                              const isFlagging = Boolean(flaggingLogs[String(playLog.id ?? '')]);
+                              const isAlreadyFlagged = normalizedStatus === 'flagged';
+
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => handleFlagLog(playLog)}
+                                  disabled={isFlagging || isAlreadyFlagged}
+                                  className="inline-flex items-center space-x-2 px-3 py-1.5 rounded-md border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 disabled:opacity-60 disabled:cursor-not-allowed transition"
+                                >
+                                  {isFlagging ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <Flag className="w-4 h-4" />
+                                  )}
+                                  <span>{isAlreadyFlagged ? 'Flagged' : 'Flag'}</span>
+                                </button>
+                              );
+                            })()}
                           </td>
                         </>
                       ) : (
@@ -596,7 +712,7 @@ const PlayLogs: React.FC = () => {
                   {!isLoading && activeData.length === 0 && (
                     <tr>
                       <td
-                        colSpan={activeTab === 'playlogs' ? 6 : 5}
+                        colSpan={activeTab === 'playlogs' ? 7 : 5}
                         className="px-3 sm:px-6 py-8 sm:py-16 text-center text-gray-500 dark:text-gray-400"
                       >
                         No logs found matching your search criteria.

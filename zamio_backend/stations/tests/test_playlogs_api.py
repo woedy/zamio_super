@@ -11,7 +11,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from artists.models import Artist, Genre, Track
-from music_monitor.models import MatchCache, PlayLog
+from music_monitor.models import Dispute, MatchCache, PlayLog
 from stations.models import Station
 
 
@@ -236,3 +236,81 @@ class StationPlaylogsAPITestCase(TestCase):
         payload = response.json()
         self.assertEqual(payload.get('message'), 'Errors')
         self.assertIn('station', payload.get('errors') or {})
+
+    def test_flag_playlog_creates_dispute_with_token_auth(self) -> None:
+        url = reverse('music_monitor:flag_match_for_dispute')
+        response = self.client.post(
+            url,
+            {
+                'playlog_id': self.playlog_recent.id,
+                'comment': 'Incorrect identification',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.playlog_recent.refresh_from_db()
+        self.assertTrue(self.playlog_recent.flagged)
+
+        disputes = Dispute.objects.filter(playlog=self.playlog_recent, is_archived=False)
+        self.assertEqual(disputes.count(), 1)
+        dispute = disputes.first()
+        self.assertIsNotNone(dispute)
+        if dispute is not None:
+            self.assertEqual(dispute.dispute_status, 'Flagged')
+            self.assertEqual(dispute.dispute_comments, 'Incorrect identification')
+
+    def test_flag_playlog_allows_jwt_authentication(self) -> None:
+        url = reverse('music_monitor:flag_match_for_dispute')
+        response = self.jwt_client.post(
+            url,
+            {
+                'playlog_id': self.playlog_recent.id,
+                'comment': 'Flag via bearer token',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.playlog_recent.refresh_from_db()
+        self.assertTrue(self.playlog_recent.flagged)
+
+    def test_flag_playlog_rejects_foreign_station(self) -> None:
+        other_user = get_user_model().objects.create_user(
+            email='other-station@example.com',
+            password='strong-password',
+            first_name='Other',
+            last_name='Station',
+        )
+        other_user.user_type = 'Station'
+        other_user.save(update_fields=['user_type'])
+
+        Station.objects.create(
+            user=other_user,
+            name='Shield FM',
+            station_id='ST-LOG-999',
+            country='Ghana',
+            region='Greater Accra',
+            active=True,
+        )
+
+        other_token, _ = Token.objects.get_or_create(user=other_user)
+        other_client = APIClient()
+        other_client.credentials(HTTP_AUTHORIZATION=f'Token {other_token.key}')
+
+        url = reverse('music_monitor:flag_match_for_dispute')
+        response = other_client.post(
+            url,
+            {
+                'playlog_id': self.playlog_recent.id,
+                'comment': 'Trying to flag someone else log',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.playlog_recent.refresh_from_db()
+        self.assertFalse(self.playlog_recent.flagged)
+        self.assertFalse(
+            Dispute.objects.filter(playlog=self.playlog_recent, is_archived=False).exists()
+        )

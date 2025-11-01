@@ -346,6 +346,11 @@ export interface StationLogsParams {
   logPageState?: 'playlogs' | 'matchlogs' | 'all';
 }
 
+export interface FlagStationPlayLogPayload {
+  playlogId: number | string;
+  comment: string;
+}
+
 export interface StationDisputePlayLog {
   time: string | null;
   station: string | null;
@@ -478,6 +483,18 @@ export const fetchStationLogs = async ({
   const { data } = await authApi.get<ApiEnvelope<StationLogsPayload>>(
     '/api/stations/playlogs/',
     { params: query },
+  );
+
+  return data;
+};
+
+export const flagStationPlayLog = async ({ playlogId, comment }: FlagStationPlayLogPayload) => {
+  const { data } = await authApi.post<ApiEnvelope>(
+    '/api/music-monitor/flag-playlog/',
+    {
+      playlog_id: playlogId,
+      comment,
+    },
   );
 
   return data;
