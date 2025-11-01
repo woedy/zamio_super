@@ -413,10 +413,103 @@ export interface StationDisputeDetailParams {
   disputeId: number | string;
 }
 
+export interface StationProfileInfo {
+  id: string;
+  name: string;
+  tagline?: string | null;
+  description?: string | null;
+  logo?: string | null;
+  coverImage?: string | null;
+  location?: string | null;
+  address?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  website?: string | null;
+  frequency?: string | null;
+  established?: string | null;
+  licenseNumber?: string | null;
+  licenseExpiry?: string | null;
+  status?: string | null;
+  rating?: number | null;
+  weeklyReach?: number | null;
+  stationType?: string | null;
+  coverageArea?: string | null;
+  contactName?: string | null;
+  contactTitle?: string | null;
+  complianceOfficer?: string | null;
+  complianceOfficerEmail?: string | null;
+  complianceOfficerPhone?: string | null;
+  emergencyContact?: string | null;
+  socialMedia?: Record<string, string>;
+}
+
+export interface StationProfileStats {
+  totalDetections: number;
+  monthlyDetections: number;
+  accuracy: number;
+  uptime: number;
+  revenue: number;
+  activeStaff: number;
+  broadcasts: number;
+  avgDailyListeners: number;
+  weeklyReach: number;
+}
+
+export interface StationProfileActivity {
+  id: string;
+  type: string;
+  title: string;
+  description?: string | null;
+  time?: string | null;
+  status?: string | null;
+}
+
+export interface StationProfileStaffMember {
+  id: number | string;
+  name: string;
+  role: string | null;
+  email: string | null;
+  phone: string | null;
+  status: string;
+  joinDate?: string | null;
+  avatar?: string | null;
+  permissions: string[];
+  roleType: string | null;
+}
+
+export interface StationComplianceDocumentEntry {
+  id: number | string;
+  name: string;
+  type: string;
+  status: string;
+  uploadedAt?: string | null;
+  fileSize?: string | null;
+  expiryDate?: string | null;
+}
+
+export interface StationProfilePayload {
+  profile: StationProfileInfo;
+  stats: StationProfileStats;
+  recentActivity: StationProfileActivity[];
+  staff: StationProfileStaffMember[];
+  complianceDocuments: StationComplianceDocumentEntry[];
+}
+
 export const fetchStationOnboardingStatus = async (stationId: string) => {
   const { data } = await authApi.get<ApiEnvelope<StationOnboardingStatus>>(
     `/api/accounts/enhanced-station-onboarding-status/${stationId}/`,
   );
+  return data;
+};
+
+export const fetchStationProfile = async (stationId: string) => {
+  const { data } = await authApi.get<ApiEnvelope<StationProfilePayload>>(
+    '/api/stations/profile/',
+    {
+      params: { station_id: stationId },
+    },
+  );
+
   return data;
 };
 

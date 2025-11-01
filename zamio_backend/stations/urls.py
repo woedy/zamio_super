@@ -6,6 +6,7 @@ from stations.views.station_dispute_views import (
     get_station_dispute_detail_view,
     get_station_disputes_view,
 )
+from stations.views.station_profile_views import get_station_profile_view
 from stations.views.station_programs_staff_views import add_program_staff, archive_program_staff, delete_program_staff, edit_program_staff, get_all_archived_program_staff_view, get_all_program_staff_view, get_program_staff_details_view, unarchive_program_staff
 from stations.views.station_programs_views import add_station_program, archive_station_program, delete_station_program, edit_station_program, get_all_archived_station_programs_view, get_all_station_programs_view, get_station_program_details_view, unarchive_station_program
 from stations.views.station_views import (
@@ -85,6 +86,7 @@ urlpatterns = [
     path('get-all-archived-program-staff/', get_all_archived_program_staff_view, name='get_all_archived_program_staff'),
     
     path('dashboard/', get_station_dashboard_data, name='get_station_dashboard_data'),
+    path('profile/', get_station_profile_view, name='get_station_profile_view'),
     path('playlogs/', get_all_station_playlog_view, name='get_all_station_playlog_view'),
     path('disputes/', get_station_disputes_view, name='get_station_disputes_view'),
     path('disputes/<int:dispute_id>/', get_station_dispute_detail_view, name='get_station_dispute_detail_view'),

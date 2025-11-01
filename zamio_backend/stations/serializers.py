@@ -1,7 +1,20 @@
 from rest_framework import serializers
 
 from music_monitor.models import MatchCache, PlayLog, Dispute
-from .models import Station, StationProgram, ProgramStaff, StationStaff, Complaint, ComplaintUpdate
+from urllib.parse import quote_plus
+
+from django.template.defaultfilters import filesizeformat
+from django.utils import timezone
+
+from .models import (
+    Station,
+    StationProgram,
+    ProgramStaff,
+    StationStaff,
+    StationComplianceDocument,
+    Complaint,
+    ComplaintUpdate,
+)
 
 # Station Serializer
 class AllStationSerializer(serializers.ModelSerializer):
@@ -424,22 +437,80 @@ class StationStaffSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'email', 'phone', 'role', 'permission_level',
             'emergency_contact', 'emergency_phone', 'hire_date', 'employee_id',
-            'department', 'can_upload_playlogs', 'can_manage_streams', 
+            'department', 'can_upload_playlogs', 'can_manage_streams',
             'can_view_analytics', 'active', 'station_name', 'created_at'
         ]
 
 
 class StationStaffDetailsSerializer(serializers.ModelSerializer):
     station_name = serializers.CharField(source='station.name', read_only=True)
-    
+
     class Meta:
         model = StationStaff
         fields = '__all__'
 
 
+class StationProfileStaffSerializer(serializers.ModelSerializer):
+    status = serializers.SerializerMethodField()
+    joinDate = serializers.SerializerMethodField()
+    avatar = serializers.SerializerMethodField()
+    permissions = serializers.SerializerMethodField()
+    roleType = serializers.SerializerMethodField()
+
+    class Meta:
+        model = StationStaff
+        fields = [
+            'id',
+            'name',
+            'role',
+            'email',
+            'phone',
+            'status',
+            'joinDate',
+            'avatar',
+            'permissions',
+            'roleType',
+        ]
+
+    def get_status(self, obj):
+        return 'Active' if getattr(obj, 'active', False) else 'Inactive'
+
+    def get_joinDate(self, obj):
+        if obj.hire_date:
+            return obj.hire_date.isoformat()
+        if obj.created_at:
+            return obj.created_at.date().isoformat()
+        return None
+
+    def get_avatar(self, obj):
+        name = obj.name or ''
+        if name:
+            return f"https://ui-avatars.com/api/?background=0D8ABC&color=fff&name={quote_plus(name)}"
+        return "https://ui-avatars.com/api/?background=0D8ABC&color=fff&name=Staff"
+
+    def get_permissions(self, obj):
+        permissions = []
+        if obj.can_upload_playlogs:
+            permissions.append('playlogs')
+        if obj.can_manage_streams:
+            permissions.append('streams')
+        if obj.can_view_analytics:
+            permissions.append('analytics')
+        if obj.permission_level == 'admin':
+            permissions.append('admin')
+        return permissions
+
+    def get_roleType(self, obj):
+        if obj.permission_level == 'admin':
+            return 'admin'
+        if obj.permission_level == 'edit':
+            return 'manager'
+        return 'reporter'
+
+
 class StationComplianceSerializer(serializers.ModelSerializer):
     """Serializer for compliance-related station information"""
-    
+
     class Meta:
         model = Station
         fields = [
@@ -448,6 +519,35 @@ class StationComplianceSerializer(serializers.ModelSerializer):
             'verification_status', 'verified_at', 'verification_notes',
             'station_class', 'station_type', 'coverage_area', 'estimated_listeners'
         ]
+
+
+class StationComplianceDocumentSerializer(serializers.ModelSerializer):
+    uploadedAt = serializers.SerializerMethodField()
+    fileSize = serializers.SerializerMethodField()
+    expiryDate = serializers.SerializerMethodField()
+    type = serializers.CharField(source='document_type')
+
+    class Meta:
+        model = StationComplianceDocument
+        fields = ['id', 'name', 'type', 'status', 'uploadedAt', 'fileSize', 'expiryDate']
+
+    def get_uploadedAt(self, obj):
+        if obj.uploaded_at:
+            return obj.uploaded_at.isoformat()
+        return None
+
+    def get_fileSize(self, obj):
+        size = obj.file_size
+        if size is None and obj.file and hasattr(obj.file, 'size'):
+            size = obj.file.size
+        if size is None:
+            return None
+        return filesizeformat(size)
+
+    def get_expiryDate(self, obj):
+        if obj.expiry_date:
+            return obj.expiry_date.isoformat()
+        return None
 
 
 class ComplaintSerializer(serializers.ModelSerializer):
