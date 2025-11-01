@@ -1,178 +1,194 @@
-import { useEffect, useRef, useState } from 'react';
+import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Card } from '@zamio/ui';
-import { Clock, BarChart3, Calendar, MapPin, Music, Play, Pause, Volume2, TrendingUp, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
+import {
+  Clock,
+  BarChart3,
+  Calendar,
+  MapPin,
+  Music,
+  Play,
+  Pause,
+  Volume2,
+  TrendingUp,
+  AlertTriangle,
+  CheckCircle,
+  XCircle,
+  Loader2,
+} from 'lucide-react';
 
-// Demo data for Match Dispute Management
-const demoDisputes = [
-  {
-    id: 1,
-    track_title: 'Midnight Vibes',
-    artist_name: 'Ghana Artists Collective',
-    start_time: '2024-01-15 14:30:00',
-    stop_time: '2024-01-15 14:33:45',
-    duration: '3:45',
-    confidence: 98,
-    earnings: 2.50,
-    status: 'Flagged',
-    comment: 'Low confidence match detected',
-    timestamp: '2024-01-15 14:35:00',
-    cover_art: '/demo-images/midnight-vibes.jpg',
-    audio_file_mp3: '/demo-audio/midnight-vibes.mp3',
-    release_date: '2023-12-01',
-    plays: 15,
-    title: 'Midnight Vibes',
-    playLogs: [
-      { time: '2024-01-15 14:30:00', station: 'Peace FM', region: 'Accra' },
-      { time: '2024-01-15 12:15:00', station: 'Hitz FM', region: 'Kumasi' },
-    ]
-  },
-  {
-    id: 2,
-    track_title: 'Ghana My Home',
-    artist_name: 'Pat Thomas',
-    start_time: '2024-01-15 12:15:00',
-    stop_time: '2024-01-15 12:19:12',
-    duration: '4:12',
-    confidence: 96,
-    earnings: 2.80,
-    status: 'Resolved',
-    comment: 'Verified match - no issues',
-    timestamp: '2024-01-15 12:20:00',
-    cover_art: '/demo-images/ghana-my-home.jpg',
-    audio_file_mp3: '/demo-audio/ghana-my-home.mp3',
-    release_date: '2023-11-15',
-    plays: 22,
-    title: 'Ghana My Home',
-    playLogs: [
-      { time: '2024-01-15 12:15:00', station: 'Hitz FM', region: 'Kumasi' },
-      { time: '2024-01-15 10:45:00', station: 'Joy FM', region: 'Accra' },
-    ]
-  },
-  {
-    id: 3,
-    track_title: 'Love Letter',
-    artist_name: 'Sarkodie ft. Efya',
-    start_time: '2024-01-15 10:45:00',
-    stop_time: '2024-01-15 10:48:28',
-    duration: '3:28',
-    confidence: 94,
-    earnings: 2.20,
-    status: 'Flagged',
-    comment: 'Potential duplicate detection',
-    timestamp: '2024-01-15 10:50:00',
-    cover_art: '/demo-images/love-letter.jpg',
-    audio_file_mp3: '/demo-audio/love-letter.mp3',
-    release_date: '2023-10-20',
-    plays: 18,
-    title: 'Love Letter',
-    playLogs: [
-      { time: '2024-01-15 10:45:00', station: 'Joy FM', region: 'Accra' },
-      { time: '2024-01-15 09:20:00', station: 'Adom FM', region: 'Tema' },
-    ]
-  },
-  {
-    id: 4,
-    track_title: 'Midnight Vibes',
-    artist_name: 'Ghana Artists Collective',
-    start_time: '2024-01-15 09:20:00',
-    stop_time: '2024-01-15 09:23:45',
-    duration: '3:45',
-    confidence: 92,
-    earnings: 2.50,
-    status: 'Pending',
-    comment: 'Under review by admin',
-    timestamp: '2024-01-15 09:25:00',
-    cover_art: '/demo-images/midnight-vibes.jpg',
-    audio_file_mp3: '/demo-audio/midnight-vibes.mp3',
-    release_date: '2023-12-01',
-    plays: 15,
-    title: 'Midnight Vibes',
-    playLogs: [
-      { time: '2024-01-15 09:20:00', station: 'Adom FM', region: 'Tema' },
-      { time: '2024-01-15 08:10:00', station: 'Okay FM', region: 'Cape Coast' },
-    ]
-  },
-  {
-    id: 5,
-    track_title: 'Ghana My Home',
-    artist_name: 'Pat Thomas',
-    start_time: '2024-01-15 08:10:00',
-    stop_time: '2024-01-15 08:14:12',
-    duration: '4:12',
-    confidence: 89,
-    earnings: 2.80,
-    status: 'Dispute',
-    comment: 'Artist disputes this match',
-    timestamp: '2024-01-15 08:15:00',
-    cover_art: '/demo-images/ghana-my-home.jpg',
-    audio_file_mp3: '/demo-audio/ghana-my-home.mp3',
-    release_date: '2023-11-15',
-    plays: 22,
-    title: 'Ghana My Home',
-    playLogs: [
-      { time: '2024-01-15 08:10:00', station: 'Okay FM', region: 'Cape Coast' },
-    ]
+import { useAuth } from '../../lib/auth';
+import {
+  fetchStationDisputeDetail,
+  type StationDisputeRecord,
+} from '../../lib/api';
+
+const resolveDisputeError = (maybeError: unknown): string => {
+  if (!maybeError) {
+    return 'Unable to load dispute details. Please try again later.';
   }
-];
+
+  if (typeof maybeError === 'object' && maybeError !== null) {
+    const response = (maybeError as { response?: unknown }).response;
+    if (response && typeof response === 'object') {
+      const data = (response as { data?: unknown }).data;
+      if (data && typeof data === 'object') {
+        const message = (data as { message?: unknown }).message;
+        if (typeof message === 'string' && message.trim().length > 0) {
+          return message;
+        }
+
+        const errors = (data as { errors?: unknown }).errors;
+        if (errors && typeof errors === 'object') {
+          const entries = Object.entries(errors as Record<string, unknown>);
+          const firstEntry = entries[0];
+          if (firstEntry) {
+            const [, errorValue] = firstEntry;
+            if (typeof errorValue === 'string' && errorValue.length > 0) {
+              return errorValue;
+            }
+            if (Array.isArray(errorValue) && errorValue.length > 0) {
+              const candidate = errorValue[0];
+              if (typeof candidate === 'string' && candidate.length > 0) {
+                return candidate;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    const message = (maybeError as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim().length > 0) {
+      return message;
+    }
+  }
+
+  return 'Unable to load dispute details. Please try again later.';
+};
+
+const parseDisputeDate = (value: string | null | undefined) => {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = value.includes(' ~ ') ? value.replace(' ~ ', 'T') : value;
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed;
+};
+
+const formatDisputeDateTime = (value: string | null | undefined) => {
+  const parsed = parseDisputeDate(value);
+  if (!parsed) {
+    return value ? value.replace(' ~ ', ' ') : '—';
+  }
+  return parsed.toLocaleString();
+};
+
+const formatDisputeDate = (value: string | null | undefined) => {
+  const parsed = parseDisputeDate(value);
+  if (!parsed) {
+    return value ? value.split('T')[0] : '—';
+  }
+  return parsed.toLocaleDateString();
+};
+
+const formatDisputeCurrency = (value: number | null | undefined) =>
+  new Intl.NumberFormat('en-GH', {
+    style: 'currency',
+    currency: 'GHS',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value ?? 0);
 
 export default function DisputeDetails() {
-  const [loading, setLoading] = useState(false);
-  const [dispute, setDispute] = useState({});
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [itemToReview, setItemToReview] = useState(null);
-  const [comment, setComment] = useState("");
-  const [alert, setAlert] = useState({ message: '', type: '' });
-  const [inputError, setInputError] = useState('');
+  const { user } = useAuth();
+  const stationId = useMemo(() => {
+    if (user && typeof user === 'object' && user !== null) {
+      const candidate = user['station_id'];
+      if (typeof candidate === 'string' && candidate.length > 0) {
+        return candidate;
+      }
+    }
+    return null;
+  }, [user]);
 
   const location = useLocation();
   const { dispute_id } = location.state || {};
+  const disputeId = dispute_id ?? null;
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [dispute, setDispute] = useState<StationDisputeRecord | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [itemToReview, setItemToReview] = useState<number | string | null>(null);
+  const [comment, setComment] = useState('');
+  const [alert, setAlert] = useState<{ message: string; type: string }>({ message: '', type: '' });
+  const [inputError, setInputError] = useState('');
 
   // Audio Player
-  const audioRef = useRef(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
-  const [audioUrl, setAudioUrl] = useState(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio) return;
+    if (!audio) {
+      return undefined;
+    }
 
-    const setAudioData = () => {
-      setDuration(audio.duration);
+    const handleLoadedMetadata = () => {
+      setDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
     };
 
-    const updateTime = () => {
+    const handleTimeUpdate = () => {
       setCurrentTime(audio.currentTime);
     };
 
-    audio.addEventListener('loadedmetadata', setAudioData);
-    audio.addEventListener('timeupdate', updateTime);
+    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+    audio.addEventListener('timeupdate', handleTimeUpdate);
 
     return () => {
-      audio.removeEventListener('loadedmetadata', setAudioData);
-      audio.removeEventListener('timeupdate', updateTime);
+      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      audio.removeEventListener('timeupdate', handleTimeUpdate);
     };
   }, [audioUrl]);
 
   const togglePlay = () => {
     const audio = audioRef.current;
+    if (!audio) {
+      return;
+    }
+
     if (isPlaying) {
       audio.pause();
     } else {
-      audio.play();
+      void audio.play().catch(() => undefined);
     }
-    setIsPlaying(!isPlaying);
+    setIsPlaying((previous) => !previous);
   };
 
-  const handleRangeChange = (e) => {
-    const time = e.target.value;
+  const handleRangeChange = (event: ChangeEvent<HTMLInputElement>) => {
+    if (!audioRef.current) {
+      return;
+    }
+
+    const time = Number(event.target.value);
+    if (Number.isNaN(time)) {
+      return;
+    }
+
     audioRef.current.currentTime = time;
     setCurrentTime(time);
   };
 
-  const formatTime = (time) => {
+  const formatTime = (time: number) => {
     const minutes = Math.floor(time / 60)
       .toString()
       .padStart(2, '0');
@@ -182,36 +198,77 @@ export default function DisputeDetails() {
     return `${minutes}:${seconds}`;
   };
 
-  useEffect(() => {
-    // Load dispute data from demo data
-    const selectedDispute = demoDisputes.find(d => d.id === dispute_id);
-    if (selectedDispute) {
-      setDispute(selectedDispute);
-      setAudioUrl(selectedDispute.audio_file_mp3);
-    }
-  }, [dispute_id]);
-
-  const handleReview = async (itemId) => {
-    if (comment === '') {
-      setInputError('Your comment is required.');
+  const loadDispute = useCallback(async () => {
+    if (!stationId) {
       return;
     }
 
-    // Simulate API call
-    setTimeout(() => {
+    if (!disputeId) {
+      setError('We could not determine which dispute to load.');
+      setDispute(null);
+      setAudioUrl(null);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const envelope = await fetchStationDisputeDetail({
+        stationId,
+        disputeId,
+      });
+
+      const record = (envelope?.data ?? null) as StationDisputeRecord | null;
+
+      setDispute(record);
+      setAudioUrl(record?.audio_file_mp3 ?? null);
+      setIsPlaying(false);
+      setCurrentTime(0);
+    } catch (fetchError) {
+      setError(resolveDisputeError(fetchError));
+      setDispute(null);
+      setAudioUrl(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [stationId, disputeId]);
+
+  useEffect(() => {
+    loadDispute();
+  }, [loadDispute]);
+
+  const handleReview = useCallback(
+    (itemId: number | string | null) => {
+      const trimmedComment = comment.trim();
+      if (!trimmedComment) {
+        setInputError('Your comment is required.');
+        return;
+      }
+
+      setInputError('');
+
+      setDispute((previous) => {
+        if (!previous || previous.id !== itemId) {
+          return previous;
+        }
+
+        return {
+          ...previous,
+          status: 'Resolved',
+          comment: trimmedComment,
+        };
+      });
+
       setAlert({ message: 'Dispute marked as resolved', type: 'success' });
       setIsModalOpen(false);
       setItemToReview(null);
+      setComment('');
+    },
+    [comment],
+  );
 
-      // Update dispute status in demo data
-      const updatedDisputes = demoDisputes.map(d =>
-        d.id === itemId ? { ...d, status: 'Resolved' } : d
-      );
-      // In a real app, you'd update the state properly here
-    }, 1000);
-  };
-
-  const openReviewModal = (itemId) => {
+  const openReviewModal = (itemId: number | string | null) => {
     setItemToReview(itemId);
     setIsModalOpen(true);
   };
@@ -224,6 +281,16 @@ export default function DisputeDetails() {
   const closeAlert = () => {
     setAlert({ message: '', type: '' });
   };
+
+  const playLogs = useMemo(() => dispute?.play_logs ?? [], [dispute]);
+  const releaseDateDisplay = useMemo(() => formatDisputeDate(dispute?.release_date), [dispute?.release_date]);
+  const confidenceDisplay = useMemo(() => {
+    if (dispute?.confidence == null) {
+      return '—';
+    }
+    return `${Math.round(dispute.confidence)}%`;
+  }, [dispute?.confidence]);
+  const earningsDisplay = useMemo(() => formatDisputeCurrency(dispute?.earnings ?? 0), [dispute?.earnings]);
 
   const statusColors = {
     excellent: {
@@ -252,7 +319,7 @@ export default function DisputeDetails() {
     }
   };
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string | null | undefined) => {
     switch (status?.toLowerCase()) {
       case 'resolved':
         return statusColors.excellent;
@@ -329,6 +396,31 @@ export default function DisputeDetails() {
 
   return (
     <div className="space-y-8">
+      {error && (
+        <Card className="border border-rose-200 bg-rose-50/80 p-4 dark:border-rose-900/40 dark:bg-rose-950/30">
+          <div className="flex items-start justify-between">
+            <div className="flex items-start space-x-3">
+              <XCircle className="h-5 w-5 text-rose-500 dark:text-rose-300" />
+              <p className="text-sm text-rose-700 dark:text-rose-200">{error}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setError(null)}
+              className="text-rose-400 transition hover:text-rose-600 dark:text-rose-300 dark:hover:text-rose-100"
+            >
+              ×
+            </button>
+          </div>
+        </Card>
+      )}
+
+      {loading && (
+        <div className="flex items-center space-x-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700 shadow-sm dark:border-blue-900/40 dark:bg-blue-900/20 dark:text-blue-200">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>Loading dispute details...</span>
+        </div>
+      )}
+
       {/* Header Section */}
       <div className="flex items-center justify-between">
         <div>
@@ -372,38 +464,46 @@ export default function DisputeDetails() {
           <Card className="bg-gradient-to-br from-slate-50/90 via-gray-50/80 to-zinc-50/90 dark:from-slate-900/95 dark:via-slate-800/90 dark:to-slate-900/95 backdrop-blur-sm rounded-xl shadow-lg border border-slate-200/50 dark:border-slate-600/60 p-8">
             <div className="flex items-start space-x-6">
               <div className="flex-shrink-0">
-                <img
-                  src={dispute?.cover_art}
-                  alt={dispute.title}
-                  className="w-32 h-32 object-cover rounded-xl shadow-lg"
-                />
+                {dispute?.cover_art ? (
+                  <img
+                    src={dispute.cover_art}
+                    alt={dispute?.title ?? 'Track cover art'}
+                    className="h-32 w-32 rounded-xl object-cover shadow-lg"
+                  />
+                ) : (
+                  <div className="flex h-32 w-32 items-center justify-center rounded-xl bg-slate-200/70 shadow-inner dark:bg-slate-700/60">
+                    <Music className="h-10 w-10 text-slate-500 dark:text-slate-300" />
+                  </div>
+                )}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between">
                   <div>
-                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-                      {dispute.title}
+                    <h2 className="mb-2 text-2xl font-bold text-gray-900 dark:text-white">
+                      {dispute?.title ?? 'Unknown Track'}
                     </h2>
-                    <p className="text-lg text-gray-600 dark:text-gray-300 mb-4">
-                      {dispute.artist_name}
+                    <p className="mb-4 text-lg text-gray-600 dark:text-gray-300">
+                      {dispute?.artist_name ?? 'Unknown Artist'}
                     </p>
 
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                       <div className="flex items-center space-x-2">
                         <Clock className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm text-gray-600 dark:text-gray-300">{dispute.duration}</span>
+                        <span className="text-sm text-gray-600 dark:text-gray-300">{dispute?.duration ?? '—'}</span>
                       </div>
                       <div className="flex items-center space-x-2">
                         <Calendar className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm text-gray-600 dark:text-gray-300">{dispute.release_date}</span>
+                        <span className="text-sm text-gray-600 dark:text-gray-300">{releaseDateDisplay}</span>
                       </div>
                       <div className="flex items-center space-x-2">
                         <BarChart3 className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm text-gray-600 dark:text-gray-300">{dispute.plays} plays</span>
+                        <span className="text-sm text-gray-600 dark:text-gray-300">{(dispute?.plays ?? 0).toLocaleString()} plays</span>
                       </div>
                       <div className="flex items-center space-x-2">
                         <TrendingUp className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm text-gray-600 dark:text-gray-300">{dispute.confidence}% confidence</span>
+                        <span className="text-sm text-gray-600 dark:text-gray-300">
+                          {confidenceDisplay === '—' ? 'Confidence unavailable' : `${confidenceDisplay} confidence`}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -420,7 +520,7 @@ export default function DisputeDetails() {
                       {dispute?.status || 'Pending'}
                     </div>
 
-                    {dispute?.status !== 'Resolved' && (
+                    {dispute?.status !== 'Resolved' && dispute?.id != null && (
                       <button
                         onClick={() => openReviewModal(dispute.id)}
                         className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-red-600 hover:bg-red-700 transition-all duration-200 hover:scale-105"
@@ -431,10 +531,10 @@ export default function DisputeDetails() {
                   </div>
                 </div>
 
-                {dispute.comment && (
+                {dispute?.comment && (
                   <div className="mt-4 p-4 bg-gray-50 dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-600">
                     <p className="text-sm text-gray-600 dark:text-gray-300">
-                      <span className="font-medium">Comment:</span> {dispute.comment}
+                      <span className="font-medium">Comment:</span> {dispute?.comment}
                     </p>
                   </div>
                 )}
@@ -537,23 +637,32 @@ export default function DisputeDetails() {
               Play History
             </h3>
             <div className="space-y-3">
-              {dispute?.playLogs?.map((log, i) => (
-                <div key={i} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-600">
+              {playLogs.map((log, index) => (
+                <div
+                  key={`${log.time ?? 'log'}-${index}`}
+                  className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-slate-600 dark:bg-slate-800"
+                >
                   <div>
                     <div className="text-sm font-medium text-gray-900 dark:text-white">
-                      {log.station}
+                      {log.station ?? 'Unknown station'}
                     </div>
                     <div className="text-xs text-gray-500 dark:text-gray-400">
-                      {new Date(log.time).toLocaleString()}
+                      {formatDisputeDateTime(log.time)}
                     </div>
                   </div>
                   <div className="text-right">
                     <div className="text-xs text-gray-400 dark:text-gray-500">
-                      {log.region}
+                      {log.region ?? '—'}
                     </div>
                   </div>
                 </div>
               ))}
+
+              {playLogs.length === 0 && (
+                <div className="rounded-lg border border-dashed border-gray-200 bg-white/60 p-4 text-center text-sm text-gray-500 dark:border-slate-600 dark:bg-slate-900/40 dark:text-gray-400">
+                  No recent play history was found for this dispute.
+                </div>
+              )}
             </div>
           </Card>
 
@@ -564,21 +673,21 @@ export default function DisputeDetails() {
               Dispute Statistics
             </h3>
             <div className="space-y-4">
-              <div className="flex justify-between items-center">
+              <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-600 dark:text-gray-300">Confidence Score</span>
-                <span className="text-sm font-medium text-gray-900 dark:text-white">{dispute.confidence}%</span>
+                <span className="text-sm font-medium text-gray-900 dark:text-white">{confidenceDisplay}</span>
               </div>
-              <div className="flex justify-between items-center">
+              <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-600 dark:text-gray-300">Total Earnings</span>
-                <span className="text-sm font-medium text-green-600 dark:text-green-400">₵{dispute.earnings?.toFixed(2)}</span>
+                <span className="text-sm font-medium text-green-600 dark:text-green-400">{earningsDisplay}</span>
               </div>
-              <div className="flex justify-between items-center">
+              <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-600 dark:text-gray-300">Play Duration</span>
-                <span className="text-sm font-medium text-gray-900 dark:text-white">{dispute.duration}</span>
+                <span className="text-sm font-medium text-gray-900 dark:text-white">{dispute?.duration ?? '—'}</span>
               </div>
-              <div className="flex justify-between items-center">
+              <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-600 dark:text-gray-300">Total Plays</span>
-                <span className="text-sm font-medium text-gray-900 dark:text-white">{dispute.plays}</span>
+                <span className="text-sm font-medium text-gray-900 dark:text-white">{(dispute?.plays ?? 0).toLocaleString()}</span>
               </div>
             </div>
           </Card>
