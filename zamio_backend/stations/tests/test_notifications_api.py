@@ -182,3 +182,45 @@ class StationNotificationsAPITestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         self.medium_priority_notification.refresh_from_db()
         self.assertTrue(self.medium_priority_notification.is_archived)
+
+    def test_station_notifications_station_namespace_alias(self) -> None:
+        url = reverse('stations:get_station_notifications_view')
+        response = self.client.get(url, {'station_id': self.station.station_id})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload.get('message'), 'Successful')
+
+    def test_mark_read_station_namespace_alias(self) -> None:
+        url = reverse('stations:mark_station_notification_read_view')
+        response = self.client.post(
+            url,
+            {
+                'station_id': self.station.station_id,
+                'notification_id': self.high_priority_notification.id,
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, 200)
+
+    def test_mark_all_read_station_namespace_alias(self) -> None:
+        url = reverse('stations:mark_all_station_notifications_read_view')
+        response = self.client.post(
+            url,
+            {
+                'station_id': self.station.station_id,
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, 200)
+
+    def test_delete_station_notification_station_namespace_alias(self) -> None:
+        url = reverse('stations:delete_station_notification_view')
+        response = self.client.delete(
+            url,
+            {
+                'station_id': self.station.station_id,
+                'notification_id': self.medium_priority_notification.id,
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, 200)

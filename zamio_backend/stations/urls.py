@@ -28,6 +28,12 @@ from stations.views.station_staff_views import (
     archive_station_staff,
     activate_station_staff,
 )
+from notifications.api.station_notifications_view import (
+    get_station_notifications_view as station_notifications_list_view,
+    mark_station_notification_read_view as station_notification_mark_read_view,
+    mark_all_station_notifications_read_view as station_notifications_mark_all_view,
+    delete_station_notification_view as station_notification_delete_view,
+)
 from stations.views.station_compliance_views import (
     update_station_compliance,
     get_stations_for_verification,
@@ -90,6 +96,10 @@ urlpatterns = [
     path('playlogs/', get_all_station_playlog_view, name='get_all_station_playlog_view'),
     path('disputes/', get_station_disputes_view, name='get_station_disputes_view'),
     path('disputes/<int:dispute_id>/', get_station_dispute_detail_view, name='get_station_dispute_detail_view'),
+    path('notifications/', station_notifications_list_view, name='get_station_notifications_view'),
+    path('notifications/mark-read/', station_notification_mark_read_view, name='mark_station_notification_read_view'),
+    path('notifications/mark-all-read/', station_notifications_mark_all_view, name='mark_all_station_notifications_read_view'),
+    path('notifications/delete/', station_notification_delete_view, name='delete_station_notification_view'),
 
     # Station Stream Links
     path('get-station-stream-links/', get_station_stream_links_view, name='get_station_stream_links_view'),
