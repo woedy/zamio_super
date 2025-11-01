@@ -1,7 +1,7 @@
 """
 URL patterns for publishers app
 """
-from django.urls import path, include
+from django.urls import path
 from publishers.api.contract_views import (
     ContractUploadView,
     ContractDownloadView,
@@ -42,6 +42,4 @@ api_urlpatterns = [
     path('dashboard/', get_publisher_dashboard_view, name='publisher-dashboard'),
 ]
 
-urlpatterns = [
-    path('api/publishers/', include(api_urlpatterns)),
-]
+urlpatterns = api_urlpatterns
