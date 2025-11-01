@@ -1,295 +1,281 @@
-import React, { useState, useMemo } from 'react';
-import { Activity, Eye, Search, Clock, Radio, Music, TrendingUp, Filter, Download, ArrowUpDown, ArrowUp, ArrowDown, Building2 } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Activity,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  Building2,
+  Clock,
+  Eye,
+  Loader2,
+  Music,
+  Search,
+  TrendingUp,
+} from 'lucide-react';
 
-// Type definitions for publisher-focused data
-interface PublisherPlayLogData {
-  id: number;
-  track_title: string;
-  artist: string;
-  publisher_catalog_id: string;
-  station_name: string;
-  station_region: string;
-  matched_at: string;
-  stop_time: string;
-  duration: string;
-  plays: number;
-  royalty_amount: number;
-  status: 'Confirmed' | 'Pending' | 'Disputed';
-  license_type: 'Mechanical' | 'Performance' | 'Sync';
-  territory: string;
-}
+import { useAuth } from '../lib/auth';
+import {
+  fetchPublisherLogs,
+  type PublisherLogsPayload,
+  type PublisherLogPagination,
+  type PublisherMatchLogRecord,
+  type PublisherPlayLogRecord,
+} from '../lib/api';
 
-interface PublisherMatchLogData {
-  id: number;
-  song: string;
-  artist: string;
-  publisher_catalog_id: string;
-  station: string;
-  station_region: string;
-  matched_at: string;
-  confidence: number;
-  status: 'Verified' | 'Pending' | 'Disputed' | 'Rejected';
-  license_status: 'Active' | 'Expired' | 'Pending';
-}
+const ITEMS_PER_PAGE = 10;
 
-// Publisher-focused mock data
-const publisherPlayLogsData: PublisherPlayLogData[] = [
-  {
-    id: 1,
-    track_title: 'Ghana Na Woti',
-    artist: 'King Promise',
-    publisher_catalog_id: 'PUB-001-2024',
-    station_name: 'Peace FM',
-    station_region: 'Greater Accra',
-    matched_at: '2024-10-16T10:30:00Z',
-    stop_time: '2024-10-16T10:33:45Z',
-    duration: '3:45',
-    plays: 12,
-    royalty_amount: 45.60,
-    status: 'Confirmed',
-    license_type: 'Performance',
-    territory: 'Ghana'
-  },
-  {
-    id: 2,
-    track_title: 'Obra',
-    artist: 'Samini',
-    publisher_catalog_id: 'PUB-002-2024',
-    station_name: 'Hitz FM',
-    station_region: 'Greater Accra',
-    matched_at: '2024-10-16T11:15:00Z',
-    stop_time: '2024-10-16T11:18:30Z',
-    duration: '3:30',
-    plays: 8,
-    royalty_amount: 32.40,
-    status: 'Confirmed',
-    license_type: 'Performance',
-    territory: 'Ghana'
-  },
-  {
-    id: 3,
-    track_title: 'Krom Aye De',
-    artist: 'Okra Tom Dawidi',
-    publisher_catalog_id: 'PUB-003-2024',
-    station_name: 'Adom FM',
-    station_region: 'Ashanti',
-    matched_at: '2024-10-16T12:45:00Z',
-    stop_time: '2024-10-16T12:49:15Z',
-    duration: '4:15',
-    plays: 15,
-    royalty_amount: 57.50,
-    status: 'Pending',
-    license_type: 'Performance',
-    territory: 'Ghana'
-  },
-  {
-    id: 4,
-    track_title: 'Love & Light',
-    artist: 'Kuami Eugene',
-    publisher_catalog_id: 'PUB-004-2024',
-    station_name: 'Joy FM',
-    station_region: 'Greater Accra',
-    matched_at: '2024-10-16T14:20:00Z',
-    stop_time: '2024-10-16T14:23:45Z',
-    duration: '3:45',
-    plays: 22,
-    royalty_amount: 82.50,
-    status: 'Confirmed',
-    license_type: 'Performance',
-    territory: 'Ghana'
-  },
-  {
-    id: 5,
-    track_title: 'Dance Floor',
-    artist: 'Kofi Kinaata',
-    publisher_catalog_id: 'PUB-005-2024',
-    station_name: 'Okay FM',
-    station_region: 'Greater Accra',
-    matched_at: '2024-10-16T15:10:00Z',
-    stop_time: '2024-10-16T15:13:20Z',
-    duration: '3:20',
-    plays: 18,
-    royalty_amount: 67.50,
-    status: 'Confirmed',
-    license_type: 'Performance',
-    territory: 'Ghana'
+type TabKey = 'playlogs' | 'matchlogs';
+
+type SortState = {
+  sortBy: string;
+  sortOrder: 'asc' | 'desc';
+};
+
+const buildEmptyPagination = (pageSize = ITEMS_PER_PAGE): PublisherLogPagination => ({
+  count: 0,
+  page_number: 1,
+  page_size: pageSize,
+  total_pages: 0,
+  next: null,
+  previous: null,
+  has_next: false,
+  has_previous: false,
+});
+
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'GHS',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number.isFinite(value) ? value : 0);
+
+const resolveLogsError = (maybeError: unknown) => {
+  if (!maybeError) {
+    return 'Unable to load logs. Please try again later.';
   }
-];
 
-const publisherMatchLogsData: PublisherMatchLogData[] = [
-  {
-    id: 1,
-    song: 'Ghana Na Woti',
-    artist: 'King Promise',
-    publisher_catalog_id: 'PUB-001-2024',
-    station: 'Peace FM',
-    station_region: 'Greater Accra',
-    matched_at: '2024-10-16T10:30:00Z',
-    confidence: 96,
-    status: 'Verified',
-    license_status: 'Active'
-  },
-  {
-    id: 2,
-    song: 'Obra',
-    artist: 'Samini',
-    publisher_catalog_id: 'PUB-002-2024',
-    station: 'Hitz FM',
-    station_region: 'Greater Accra',
-    matched_at: '2024-10-16T11:15:00Z',
-    confidence: 94,
-    status: 'Verified',
-    license_status: 'Active'
-  },
-  {
-    id: 3,
-    song: 'Angela',
-    artist: 'Kuami Eugene',
-    publisher_catalog_id: 'PUB-004-2024',
-    station: 'Peace FM',
-    station_region: 'Greater Accra',
-    matched_at: '2024-10-16T16:30:00Z',
-    confidence: 89,
-    status: 'Pending',
-    license_status: 'Active'
-  },
-  {
-    id: 4,
-    song: 'My Level',
-    artist: 'Shatta Wale',
-    publisher_catalog_id: 'PUB-006-2024',
-    station: 'Hitz FM',
-    station_region: 'Greater Accra',
-    matched_at: '2024-10-16T17:45:00Z',
-    confidence: 87,
-    status: 'Disputed',
-    license_status: 'Active'
-  }
-];
-
-const PublisherPlayLogs: React.FC = () => {
-  const [activeTab, setActiveTab] = useState('playlogs');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(3);
-  const [sortBy, setSortBy] = useState('matched_at');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-
-  // Filter and sort data
-  const filteredAndSortedData = useMemo(() => {
-    let data: (PublisherPlayLogData | PublisherMatchLogData)[] = activeTab === 'playlogs' ? publisherPlayLogsData : publisherMatchLogsData;
-
-    // Apply search filter
-    if (searchTerm) {
-      data = data.filter(item => {
-        const searchLower = searchTerm.toLowerCase();
-        if (activeTab === 'playlogs') {
-          const playLog = item as PublisherPlayLogData;
-          return (
-            playLog.track_title.toLowerCase().includes(searchLower) ||
-            playLog.artist.toLowerCase().includes(searchLower) ||
-            playLog.station_name.toLowerCase().includes(searchLower) ||
-            playLog.publisher_catalog_id.toLowerCase().includes(searchLower)
-          );
-        } else {
-          const matchLog = item as PublisherMatchLogData;
-          return (
-            matchLog.song.toLowerCase().includes(searchLower) ||
-            matchLog.artist.toLowerCase().includes(searchLower) ||
-            matchLog.station.toLowerCase().includes(searchLower) ||
-            matchLog.publisher_catalog_id.toLowerCase().includes(searchLower)
-          );
+  if (typeof maybeError === 'object' && maybeError !== null) {
+    const response = (maybeError as { response?: unknown }).response;
+    if (response && typeof response === 'object') {
+      const data = (response as { data?: unknown }).data;
+      if (data && typeof data === 'object') {
+        const message = (data as { message?: unknown }).message;
+        if (typeof message === 'string' && message.trim().length > 0) {
+          return message;
         }
-      });
+
+        const errors = (data as { errors?: unknown }).errors;
+        if (errors && typeof errors === 'object') {
+          const entries = Object.entries(errors as Record<string, unknown>);
+          const firstEntry = entries[0];
+          if (firstEntry) {
+            const [, errorValue] = firstEntry;
+            if (typeof errorValue === 'string' && errorValue.length > 0) {
+              return errorValue;
+            }
+            if (Array.isArray(errorValue) && errorValue.length > 0) {
+              const candidate = errorValue[0];
+              if (typeof candidate === 'string' && candidate.length > 0) {
+                return candidate;
+              }
+            }
+          }
+        }
+      }
     }
 
-    // Apply sorting
-    data.sort((a, b) => {
-      let aValue, bValue;
+    const message = (maybeError as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim().length > 0) {
+      return message;
+    }
+  }
 
-      if (activeTab === 'playlogs') {
-        const playLogA = a as PublisherPlayLogData;
-        const playLogB = b as PublisherPlayLogData;
-        switch (sortBy) {
-          case 'track_title':
-            aValue = playLogA.track_title;
-            bValue = playLogB.track_title;
-            break;
-          case 'station_name':
-            aValue = playLogA.station_name;
-            bValue = playLogB.station_name;
-            break;
-          case 'royalty_amount':
-            aValue = playLogA.royalty_amount;
-            bValue = playLogB.royalty_amount;
-            break;
-          case 'plays':
-            aValue = playLogA.plays;
-            bValue = playLogB.plays;
-            break;
-          default:
-            aValue = new Date(playLogA.matched_at);
-            bValue = new Date(playLogB.matched_at);
-        }
-      } else {
-        const matchLogA = a as PublisherMatchLogData;
-        const matchLogB = b as PublisherMatchLogData;
-        switch (sortBy) {
-          case 'song':
-            aValue = matchLogA.song;
-            bValue = matchLogB.song;
-            break;
-          case 'station':
-            aValue = matchLogA.station;
-            bValue = matchLogB.station;
-            break;
-          case 'confidence':
-            aValue = matchLogA.confidence;
-            bValue = matchLogB.confidence;
-            break;
-          default:
-            aValue = new Date(matchLogA.matched_at);
-            bValue = new Date(matchLogB.matched_at);
-        }
+  return 'Unable to load logs. Please try again later.';
+};
+
+const formatDateTime = (value: string | null) => {
+  if (!value) {
+    return '—';
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  return parsed.toLocaleString();
+};
+
+const getPlayStatusClasses = (status: string | null | undefined) => {
+  switch ((status || '').toLowerCase()) {
+    case 'confirmed':
+      return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400';
+    case 'disputed':
+      return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
+    case 'pending':
+      return 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400';
+    default:
+      return 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300';
+  }
+};
+
+const getMatchStatusClasses = (status: string | null | undefined) => {
+  switch ((status || '').toLowerCase()) {
+    case 'verified':
+      return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400';
+    case 'disputed':
+      return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
+    case 'pending':
+    default:
+      return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
+  }
+};
+
+const PublisherPlayLogs: React.FC = () => {
+  const { user } = useAuth();
+
+  const publisherId = useMemo(() => {
+    if (user && typeof user === 'object' && user !== null) {
+      const candidate = (user as Record<string, unknown>)['publisher_id'];
+      if (typeof candidate === 'string' && candidate.length > 0) {
+        return candidate;
       }
+    }
+    return null;
+  }, [user]);
 
-      if (typeof aValue === 'string') {
-        return sortOrder === 'asc'
-          ? aValue.localeCompare(bValue)
-          : bValue.localeCompare(aValue);
-      } else {
-        return sortOrder === 'asc' ? aValue - bValue : bValue - aValue;
-      }
-    });
+  const [activeTab, setActiveTab] = useState<TabKey>('playlogs');
+  const [searchInput, setSearchInput] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [playSort, setPlaySort] = useState<SortState>({ sortBy: 'matched_at', sortOrder: 'desc' });
+  const [matchSort, setMatchSort] = useState<SortState>({ sortBy: 'matched_at', sortOrder: 'desc' });
+  const [playPage, setPlayPage] = useState(1);
+  const [matchPage, setMatchPage] = useState(1);
+  const [playLogs, setPlayLogs] = useState<PublisherPlayLogRecord[]>([]);
+  const [matchLogs, setMatchLogs] = useState<PublisherMatchLogRecord[]>([]);
+  const [playPagination, setPlayPagination] = useState<PublisherLogPagination>(() => buildEmptyPagination());
+  const [matchPagination, setMatchPagination] = useState<PublisherLogPagination>(() => buildEmptyPagination());
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-    return data;
-  }, [activeTab, searchTerm, sortBy, sortOrder]);
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearch(searchInput.trim()), 300);
+    return () => clearTimeout(handle);
+  }, [searchInput]);
 
-  // Pagination
-  const totalPages = Math.ceil(filteredAndSortedData.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedData = filteredAndSortedData.slice(startIndex, startIndex + itemsPerPage);
+  useEffect(() => {
+    setPlayPage(1);
+    setMatchPage(1);
+  }, [debouncedSearch]);
+
+  const loadLogs = useCallback(async () => {
+    if (!publisherId) {
+      setError('Your publisher ID is missing. Please sign out and sign in again.');
+      setPlayLogs([]);
+      setMatchLogs([]);
+      setPlayPagination(buildEmptyPagination());
+      setMatchPagination(buildEmptyPagination());
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const envelope = await fetchPublisherLogs({
+        publisherId,
+        search: debouncedSearch || undefined,
+        playPage,
+        matchPage,
+        playPageSize: ITEMS_PER_PAGE,
+        matchPageSize: ITEMS_PER_PAGE,
+        playSortBy: playSort.sortBy,
+        playSortOrder: playSort.sortOrder,
+        matchSortBy: matchSort.sortBy,
+        matchSortOrder: matchSort.sortOrder,
+        logPageState: 'all',
+      });
+
+      const payload = (envelope?.data ?? null) as PublisherLogsPayload | null;
+
+      setPlayLogs(payload?.playLogs?.results ?? []);
+      setMatchLogs(payload?.matchLogs?.results ?? []);
+      setPlayPagination(payload?.playLogs?.pagination ?? buildEmptyPagination());
+      setMatchPagination(payload?.matchLogs?.pagination ?? buildEmptyPagination());
+    } catch (fetchError) {
+      setError(resolveLogsError(fetchError));
+      setPlayLogs([]);
+      setMatchLogs([]);
+      setPlayPagination(buildEmptyPagination());
+      setMatchPagination(buildEmptyPagination());
+    } finally {
+      setIsLoading(false);
+    }
+  }, [
+    publisherId,
+    debouncedSearch,
+    playPage,
+    matchPage,
+    playSort.sortBy,
+    playSort.sortOrder,
+    matchSort.sortBy,
+    matchSort.sortOrder,
+  ]);
+
+  useEffect(() => {
+    loadLogs();
+  }, [loadLogs]);
 
   const handleSort = (column: string) => {
-    if (sortBy === column) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    if (activeTab === 'playlogs') {
+      setPlaySort(current =>
+        current.sortBy === column
+          ? { sortBy: column, sortOrder: current.sortOrder === 'asc' ? 'desc' : 'asc' }
+          : { sortBy: column, sortOrder: 'asc' },
+      );
+      setPlayPage(1);
     } else {
-      setSortBy(column);
-      setSortOrder('asc');
+      setMatchSort(current =>
+        current.sortBy === column
+          ? { sortBy: column, sortOrder: current.sortOrder === 'asc' ? 'desc' : 'asc' }
+          : { sortBy: column, sortOrder: 'asc' },
+      );
+      setMatchPage(1);
     }
   };
 
   const getSortIcon = (column: string) => {
-    if (sortBy !== column) return <ArrowUpDown className="w-3 h-3" />;
+    const { sortBy, sortOrder } = activeTab === 'playlogs' ? playSort : matchSort;
+    if (sortBy !== column) {
+      return <ArrowUpDown className="w-3 h-3" />;
+    }
     return sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />;
   };
 
+  const currentPagination = activeTab === 'playlogs' ? playPagination : matchPagination;
+  const displayedLogs = activeTab === 'playlogs' ? playLogs : matchLogs;
+  const currentPage = currentPagination.page_number || 1;
+  const totalPages = currentPagination.total_pages || 0;
+  const pageSize = currentPagination.page_size || ITEMS_PER_PAGE;
+  const totalEntries = currentPagination.count || 0;
+  const startIndex = totalEntries === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const endIndex = totalEntries === 0 ? 0 : Math.min(currentPage * pageSize, totalEntries);
+
+  const handlePageChange = (page: number) => {
+    if (activeTab === 'playlogs') {
+      setPlayPage(page);
+    } else {
+      setMatchPage(page);
+    }
+  };
+
   const TabButton = ({ id, label, icon: Icon, isActive, onClick }: {
-    id: string;
+    id: TabKey;
     label: string;
-    icon: any;
+    icon: typeof Activity;
     isActive: boolean;
-    onClick: (id: string) => void;
+    onClick: (id: TabKey) => void;
   }) => (
     <button
       onClick={() => onClick(id)}
@@ -304,12 +290,32 @@ const PublisherPlayLogs: React.FC = () => {
     </button>
   );
 
+  const pageButtons = useMemo(() => {
+    if (totalPages <= 1) {
+      return [1];
+    }
+
+    const maxButtons = 5;
+    const halfWindow = Math.floor(maxButtons / 2);
+    let start = Math.max(1, currentPage - halfWindow);
+    let end = Math.min(totalPages, start + maxButtons - 1);
+
+    if (end - start + 1 < maxButtons) {
+      start = Math.max(1, end - maxButtons + 1);
+    }
+
+    const pages: number[] = [];
+    for (let page = start; page <= end; page += 1) {
+      pages.push(page);
+    }
+    return pages;
+  }, [currentPage, totalPages]);
+
   return (
     <>
-      {/* Publisher-focused header */}
       <div className="border-b border-gray-200 dark:border-slate-700 mb-8">
         <div className="px-6 py-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
               <h1 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-white">Catalog Performance Logs</h1>
               <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-300 font-light leading-relaxed">
@@ -317,6 +323,16 @@ const PublisherPlayLogs: React.FC = () => {
               </p>
             </div>
             <div className="flex items-center space-x-3">
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="search"
+                  value={searchInput}
+                  onChange={(event) => setSearchInput(event.target.value)}
+                  placeholder="Search logs..."
+                  className="pl-9 pr-3 py-2 w-48 md:w-64 text-sm rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
               <select className="px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
                 <option value="all">All Territories</option>
                 <option value="ghana">Ghana</option>
@@ -327,31 +343,16 @@ const PublisherPlayLogs: React.FC = () => {
         </div>
       </div>
 
-      {/* Content */}
       <div>
-        {/* Tab Navigation */}
         <div className="flex justify-center mb-8">
           <div className="flex space-x-4 bg-white/60 dark:bg-slate-800/60 p-2 rounded-xl border border-gray-200 dark:border-slate-600 backdrop-blur-sm">
-            <TabButton
-              id="playlogs"
-              label="Play Logs"
-              icon={Activity}
-              isActive={activeTab === 'playlogs'}
-              onClick={setActiveTab}
-            />
-            <TabButton
-              id="matchlogs"
-              label="Match Logs"
-              icon={Eye}
-              isActive={activeTab === 'matchlogs'}
-              onClick={setActiveTab}
-            />
+            <TabButton id="playlogs" label="Play Logs" icon={Activity} isActive={activeTab === 'playlogs'} onClick={setActiveTab} />
+            <TabButton id="matchlogs" label="Match Logs" icon={Eye} isActive={activeTab === 'matchlogs'} onClick={setActiveTab} />
           </div>
         </div>
 
-        {/* Content */}
         <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl rounded-2xl p-8 border border-gray-200/50 dark:border-slate-700/30 shadow-2xl">
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
             <div className="flex items-center space-x-3">
               {activeTab === 'playlogs' ? (
                 <Activity className="w-6 h-6 text-green-600 dark:text-green-400" />
@@ -361,12 +362,13 @@ const PublisherPlayLogs: React.FC = () => {
               <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">
                 {activeTab === 'playlogs' ? 'Publisher Play Logs' : 'Publisher Match Logs'}
               </h2>
+              {isLoading && <Loader2 className="w-5 h-5 animate-spin text-emerald-500" />}
             </div>
             <div className="flex items-center space-x-4 text-sm text-gray-600 dark:text-gray-400">
-              <span>{filteredAndSortedData.length} total entries</span>
+              <span>{totalEntries} total entries</span>
               <select
-                value={sortBy}
-                onChange={(e) => handleSort(e.target.value)}
+                value={activeTab === 'playlogs' ? playSort.sortBy : matchSort.sortBy}
+                onChange={(event) => handleSort(event.target.value)}
                 className="bg-white dark:bg-slate-800 text-gray-900 dark:text-white px-3 py-1 rounded border border-gray-200 dark:border-slate-600"
               >
                 <option value="matched_at">Date</option>
@@ -388,7 +390,12 @@ const PublisherPlayLogs: React.FC = () => {
             </div>
           </div>
 
-          {/* Responsive Table */}
+          {error && (
+            <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
+              {error}
+            </div>
+          )}
+
           <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-slate-700">
             <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-slate-600 scrollbar-track-transparent">
               <table className="min-w-full">
@@ -456,60 +463,55 @@ const PublisherPlayLogs: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white dark:bg-slate-900 divide-y divide-gray-200 dark:divide-slate-700">
-                  {paginatedData.map((log) => (
+                  {displayedLogs.map(log => (
                     <tr key={log.id} className="hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors duration-200">
                       {activeTab === 'playlogs' ? (
                         <>
                           <td className="px-3 sm:px-6 py-2 sm:py-4">
                             <div className="flex flex-col">
                               <span className="text-gray-900 dark:text-white font-medium text-xs sm:text-sm truncate max-w-[120px] sm:max-w-none">
-                                {(log as PublisherPlayLogData).track_title}
+                                {(log as PublisherPlayLogRecord).track_title}
                               </span>
-                              <span className="text-gray-500 dark:text-gray-400 text-xs truncate">by {(log as PublisherPlayLogData).artist}</span>
+                              <span className="text-gray-500 dark:text-gray-400 text-xs truncate">by {(log as PublisherPlayLogRecord).artist ?? '—'}</span>
                               <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">
-                                {(log as PublisherPlayLogData).publisher_catalog_id}
+                                {(log as PublisherPlayLogRecord).publisher_catalog_id ?? '—'}
                               </span>
                             </div>
                           </td>
                           <td className="px-3 sm:px-6 py-2 sm:py-4">
                             <div className="flex flex-col">
                               <span className="text-gray-900 dark:text-white text-xs sm:text-sm font-medium">
-                                {(log as PublisherPlayLogData).station_name}
+                                {(log as PublisherPlayLogRecord).station_name ?? '—'}
                               </span>
                               <span className="text-gray-500 dark:text-gray-400 text-xs">
-                                {(log as PublisherPlayLogData).station_region}
+                                {(log as PublisherPlayLogRecord).station_region ?? '—'}
                               </span>
                             </div>
                           </td>
                           <td className="px-3 sm:px-6 py-2 sm:py-4 text-gray-600 dark:text-gray-300 text-xs sm:text-sm hidden md:table-cell">
-                            <div className="flex flex-col">
-                              <span className="sm:hidden">{new Date((log as PublisherPlayLogData).matched_at).toLocaleDateString()}</span>
-                              <span className="hidden sm:inline">{new Date((log as PublisherPlayLogData).matched_at).toLocaleString()}</span>
-                            </div>
+                            {formatDateTime((log as PublisherPlayLogRecord).matched_at)}
                           </td>
                           <td className="px-3 sm:px-6 py-2 sm:py-4 text-gray-600 dark:text-gray-300 text-xs sm:text-sm hidden sm:table-cell">
-                            <span className={`inline-flex px-2 py-0.5 text-xs font-semibold rounded-full ${
-                              (log as PublisherPlayLogData).license_type === 'Performance'
-                                ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
-                                : (log as PublisherPlayLogData).license_type === 'Mechanical'
-                                ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400'
-                                : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
-                            }`}>
-                              {(log as PublisherPlayLogData).license_type}
+                            <span
+                              className={`inline-flex px-2 py-0.5 text-xs font-semibold rounded-full ${
+                                (log as PublisherPlayLogRecord).license_type === 'Performance'
+                                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
+                                  : (log as PublisherPlayLogRecord).license_type === 'Mechanical'
+                                  ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400'
+                                  : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                              }`}
+                            >
+                              {(log as PublisherPlayLogRecord).license_type ?? 'Performance'}
                             </span>
                           </td>
                           <td className="px-3 sm:px-6 py-2 sm:py-4">
                             <span className="text-emerald-600 dark:text-emerald-400 font-semibold text-xs sm:text-sm">
-                              ₵{(log as PublisherPlayLogData).royalty_amount.toFixed(2)}
+                              {formatCurrency((log as PublisherPlayLogRecord).royalty_amount ?? 0)}
                             </span>
                           </td>
                           <td className="px-3 sm:px-6 py-2 sm:py-4">
-                            <span className={`inline-flex px-3 py-1.5 text-xs font-semibold rounded-full ${
-                              (log as PublisherPlayLogData).status === 'Confirmed'
-                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
-                                : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400'
-                            }`}>
-                              {(log as PublisherPlayLogData).status}
+                            <span className={`inline-flex px-3 py-1.5 text-xs font-semibold rounded-full ${getPlayStatusClasses((log as PublisherPlayLogRecord).status)}`}>
+                              {(log as PublisherPlayLogRecord).status ?? 'Pending'}
                             </span>
                           </td>
                         </>
@@ -517,69 +519,57 @@ const PublisherPlayLogs: React.FC = () => {
                         <>
                           <td className="px-3 sm:px-6 py-2 sm:py-4">
                             <div className="flex flex-col">
-                              <span className="text-gray-900 dark:text-white font-medium text-xs sm:text-sm truncate max-w-[120px]">
-                                {(log as PublisherMatchLogData).song}
+                              <span className="text-gray-900 dark:text-white font-medium text-xs sm:text-sm truncate max-w-[120px] sm:max-w-none">
+                                {(log as PublisherMatchLogRecord).song}
                               </span>
-                              <span className="text-gray-500 dark:text-gray-400 text-xs truncate">by {(log as PublisherMatchLogData).artist}</span>
+                              <span className="text-gray-500 dark:text-gray-400 text-xs truncate">by {(log as PublisherMatchLogRecord).artist ?? '—'}</span>
                               <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">
-                                {(log as PublisherMatchLogData).publisher_catalog_id}
+                                {(log as PublisherMatchLogRecord).publisher_catalog_id ?? '—'}
                               </span>
                             </div>
                           </td>
-                          <td className="px-3 sm:px-6 py-2 sm:py-4 text-gray-600 dark:text-gray-300 text-xs sm:text-sm hidden sm:table-cell truncate max-w-[100px]">
+                          <td className="px-3 sm:px-6 py-2 sm:py-4 hidden sm:table-cell">
                             <div className="flex flex-col">
-                              <span className="font-medium">{(log as PublisherMatchLogData).station}</span>
-                              <span className="text-xs text-gray-500 dark:text-gray-400">
-                                {(log as PublisherMatchLogData).station_region}
+                              <span className="text-gray-900 dark:text-white text-xs sm:text-sm font-medium">
+                                {(log as PublisherMatchLogRecord).station ?? '—'}
+                              </span>
+                              <span className="text-gray-500 dark:text-gray-400 text-xs">
+                                {(log as PublisherMatchLogRecord).station_region ?? '—'}
                               </span>
                             </div>
                           </td>
                           <td className="px-3 sm:px-6 py-2 sm:py-4 text-gray-600 dark:text-gray-300 text-xs sm:text-sm hidden md:table-cell">
-                            <span className={`inline-flex px-2 py-0.5 text-xs font-semibold rounded-full ${
-                              (log as PublisherMatchLogData).license_status === 'Active'
-                                ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
-                                : (log as PublisherMatchLogData).license_status === 'Pending'
-                                ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
-                                : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
-                            }`}>
-                              {(log as PublisherMatchLogData).license_status}
-                            </span>
+                            {(log as PublisherMatchLogRecord).license_status ?? 'Pending'}
                           </td>
                           <td className="px-3 sm:px-6 py-2 sm:py-4">
                             <div className="flex items-center space-x-1 sm:space-x-2">
                               <div className="w-8 sm:w-12 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 sm:h-2">
                                 <div
                                   className="bg-gradient-to-r from-blue-500 to-indigo-500 h-1.5 sm:h-2 rounded-full transition-all duration-300"
-                                  style={{ width: `${(log as PublisherMatchLogData).confidence}%` }}
-                                ></div>
+                                  style={{ width: `${Math.max(0, Math.min(100, (log as PublisherMatchLogRecord).confidence ?? 0))}%` }}
+                                />
                               </div>
-                              <span className="text-gray-900 dark:text-white font-medium text-xs sm:text-sm">{(log as PublisherMatchLogData).confidence}%</span>
+                              <span className="text-gray-900 dark:text-white font-medium text-xs sm:text-sm">
+                                {Math.round((log as PublisherMatchLogRecord).confidence ?? 0)}%
+                              </span>
                             </div>
                           </td>
                           <td className="px-3 sm:px-6 py-2 sm:py-4">
-                            <span className={`inline-flex px-3 py-1.5 text-xs font-semibold rounded-full ${
-                              (log as PublisherMatchLogData).status === 'Verified'
-                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
-                                : (log as PublisherMatchLogData).status === 'Pending'
-                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400'
-                                : (log as PublisherMatchLogData).status === 'Disputed'
-                                ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
-                                : 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400'
-                            }`}>
-                              {(log as PublisherMatchLogData).status}
+                            <span className={`inline-flex px-3 py-1.5 text-xs font-semibold rounded-full ${getMatchStatusClasses((log as PublisherMatchLogRecord).status)}`}>
+                              {(log as PublisherMatchLogRecord).status ?? 'Pending'}
                             </span>
                           </td>
                         </>
                       )}
                     </tr>
                   ))}
-                  {paginatedData.length === 0 && (
+                  {displayedLogs.length === 0 && !isLoading && (
                     <tr>
                       <td
                         colSpan={activeTab === 'playlogs' ? 6 : 5}
                         className="px-3 sm:px-6 py-8 sm:py-16 text-center text-gray-500 dark:text-gray-400"
                       >
-                        No logs found matching your search criteria.
+                        No logs found matching your criteria.
                       </td>
                     </tr>
                   )}
@@ -588,17 +578,19 @@ const PublisherPlayLogs: React.FC = () => {
             </div>
           </div>
 
-          {/* Enhanced Pagination */}
           {totalPages > 1 && (
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-8 pt-6 border-t border-gray-200 dark:border-slate-700 bg-gray-50/30 dark:bg-slate-800/30 -mx-8 px-8 py-4 rounded-b-2xl">
               <div className="text-sm text-gray-600 dark:text-gray-400 font-medium">
-                Showing <span className="text-green-600 dark:text-green-400 font-semibold">{startIndex + 1}</span> to{' '}
-                <span className="text-green-600 dark:text-green-400 font-semibold">{Math.min(startIndex + itemsPerPage, filteredAndSortedData.length)}</span> of{' '}
-                <span className="text-green-600 dark:text-green-400 font-semibold">{filteredAndSortedData.length}</span> entries
+                Showing{' '}
+                <span className="text-green-600 dark:text-green-400 font-semibold">{startIndex}</span>
+                {' '}to{' '}
+                <span className="text-green-600 dark:text-green-400 font-semibold">{endIndex}</span>
+                {' '}of{' '}
+                <span className="text-green-600 dark:text-green-400 font-semibold">{totalEntries}</span> entries
               </div>
               <div className="flex items-center space-x-2">
                 <button
-                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                  onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
                   disabled={currentPage === 1}
                   className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
                 >
@@ -609,28 +601,23 @@ const PublisherPlayLogs: React.FC = () => {
                 </button>
 
                 <div className="flex items-center space-x-1">
-                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                    const pageNum = Math.max(1, Math.min(totalPages - 4, currentPage - 2)) + i;
-                    if (pageNum > totalPages) return null;
-
-                    return (
-                      <button
-                        key={pageNum}
-                        onClick={() => setCurrentPage(pageNum)}
-                        className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm ${
-                          currentPage === pageNum
-                            ? 'bg-gradient-to-r from-green-600 to-emerald-600 text-white shadow-md transform scale-105'
-                            : 'text-gray-600 dark:text-gray-400 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 border border-gray-200 dark:border-slate-600 hover:border-green-300 dark:hover:border-green-600 hover:shadow-md'
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    );
-                  })}
+                  {pageButtons.map(pageNum => (
+                    <button
+                      key={pageNum}
+                      onClick={() => handlePageChange(pageNum)}
+                      className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm ${
+                        currentPage === pageNum
+                          ? 'bg-gradient-to-r from-green-600 to-emerald-600 text-white shadow-md transform scale-105'
+                          : 'text-gray-600 dark:text-gray-400 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 border border-gray-200 dark:border-slate-600 hover:shadow-md'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  ))}
                 </div>
 
                 <button
-                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                  onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
                   disabled={currentPage === totalPages}
                   className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
                 >
@@ -643,11 +630,10 @@ const PublisherPlayLogs: React.FC = () => {
             </div>
           )}
 
-          {/* Show pagination info even when only one page */}
-          {totalPages === 1 && filteredAndSortedData.length > 0 && (
+          {totalPages <= 1 && totalEntries > 0 && (
             <div className="flex justify-center mt-6 pt-6 border-t border-gray-200 dark:border-slate-700">
               <div className="text-sm text-gray-500 dark:text-gray-400">
-                Showing all {filteredAndSortedData.length} entries
+                Showing all {totalEntries} entries
               </div>
             </div>
           )}

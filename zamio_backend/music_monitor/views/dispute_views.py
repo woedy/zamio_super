@@ -1,34 +1,35 @@
-from rest_framework import status
-from rest_framework.response import Response
-from rest_framework.decorators import api_view, permission_classes, authentication_classes
-from rest_framework.permissions import IsAuthenticated
 from django.core.paginator import Paginator, PageNotAnInteger, EmptyPage
 from django.db.models import Q
+from django.utils import timezone
+from rest_framework import status
+from rest_framework.authentication import TokenAuthentication
+from rest_framework.decorators import api_view, permission_classes, authentication_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
+from accounts.api.custom_jwt import CustomJWTAuthentication
 from artists.models import Track
 from core.utils import get_duration
 from music_monitor.models import Dispute, MatchCache, PlayLog
 from music_monitor.serializers import DisputeSerializer, MatchCacheSerializer, PlayLogSerializer
 from stations.models import Station, StationProgram
-from rest_framework.authentication import TokenAuthentication
- 
-
 
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def flag_match_for_dispute(request):
     payload = {}
     errors = {}
 
     log_id = request.data.get('playlog_id')
     comment = request.data.get('comment')
+    normalized_comment = comment.strip() if isinstance(comment, str) else ''
 
     if not log_id:
         errors['playlog_id'] = ['Play log ID is required.']
 
-    if not comment:
+    if not normalized_comment:
         errors['comment'] = ['Comment is required.']
 
     if errors:
@@ -40,17 +41,49 @@ def flag_match_for_dispute(request):
         playlog = PlayLog.objects.get(id=log_id)
     except PlayLog.DoesNotExist:
         errors['playlog_id'] = ['Playlog does not exist.']
-        return Response(errors, status=status.HTTP_400_BAD_REQUEST)
+        payload['message'] = 'Errors'
+        payload['errors'] = errors
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
+    station = Station.objects.filter(user=request.user).first()
+    if not station and not getattr(request.user, 'is_staff', False):
+        payload['message'] = 'Errors'
+        payload['errors'] = {
+            'station': ['Authenticated user is not linked to a station.'],
+        }
+        return Response(payload, status=status.HTTP_403_FORBIDDEN)
 
-    dispute = Dispute.objects.create(
+    if station and playlog.station_id != station.id and not getattr(request.user, 'is_staff', False):
+        payload['message'] = 'Errors'
+        payload['errors'] = {
+            'playlog_id': ['You do not have permission to flag this play log.'],
+        }
+        return Response(payload, status=status.HTTP_403_FORBIDDEN)
+
+    dispute_defaults = {
+        'dispute_status': 'Flagged',
+        'dispute_comments': normalized_comment,
+        'pending_at': timezone.now(),
+        'active': True,
+    }
+
+    dispute, created = Dispute.objects.get_or_create(
         playlog=playlog,
-        dispute_status="Flagged",
-        dispute_comments=comment
+        is_archived=False,
+        defaults=dispute_defaults,
     )
 
+    if not created:
+        dispute.dispute_status = 'Flagged'
+        dispute.active = True
+        if normalized_comment:
+            dispute.dispute_comments = normalized_comment
+        if not dispute.pending_at:
+            dispute.pending_at = timezone.now()
+        dispute.save(update_fields=['dispute_status', 'active', 'dispute_comments', 'pending_at', 'updated_at'])
+
     playlog.flagged = True
-    playlog.save()
+    playlog.save(update_fields=['flagged', 'updated_at'])
 
     serializer = DisputeSerializer(dispute)
     payload['message'] = 'Successful'

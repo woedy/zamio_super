@@ -1,7 +1,7 @@
 """
 URL patterns for publishers app
 """
-from django.urls import path, include
+from django.urls import path
 from publishers.api.contract_views import (
     ContractUploadView,
     ContractDownloadView,
@@ -15,8 +15,10 @@ from publishers.api.contract_views import (
 from publishers.views.publisher_dashboard_views import (
     get_publisher_metrics_view,
     get_publisher_analytics_view,
-    get_publisher_detail_view
+    get_publisher_detail_view,
+    get_publisher_dashboard_view,
 )
+from publishers.views.publisher_playlog_views import get_publisher_playlogs_view
 
 app_name = 'publishers'
 
@@ -38,8 +40,8 @@ api_urlpatterns = [
     path('metrics/', get_publisher_metrics_view, name='publisher-metrics'),
     path('analytics/', get_publisher_analytics_view, name='publisher-analytics'),
     path('detail/', get_publisher_detail_view, name='publisher-detail'),
+    path('dashboard/', get_publisher_dashboard_view, name='publisher-dashboard'),
+    path('playlogs/', get_publisher_playlogs_view, name='publisher-playlogs'),
 ]
 
-urlpatterns = [
-    path('api/publishers/', include(api_urlpatterns)),
-]
+urlpatterns = api_urlpatterns
