@@ -1,6 +1,5 @@
 import uuid
 import os
-import hashlib
 import mimetypes
 from django.db import models
 from django.contrib.auth import get_user_model
@@ -17,6 +16,32 @@ User = get_user_model()
 
 def get_default_station_image():
     return "defaults/default_profile_image.png"
+
+
+def secure_station_cover_image_path(instance, filename):
+    """Generate secure file upload path for station cover images."""
+    name, ext = os.path.splitext(filename)
+    safe_name = "".join(c for c in name if c.isalnum() or c in (' ', '-', '_')).rstrip()
+
+    timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+    unique_id = uuid.uuid4().hex[:8]
+    final_filename = f"{safe_name}_{timestamp}_{unique_id}{ext}"
+
+    station_id = getattr(instance, 'station_id', None) or 'temp'
+    return f"stations/covers/{station_id}/{final_filename}"
+
+
+def station_document_upload_path(instance, filename):
+    """Upload path for station compliance documents."""
+    name, ext = os.path.splitext(filename)
+    safe_name = "".join(c for c in name if c.isalnum() or c in (' ', '-', '_')).rstrip()
+
+    timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+    unique_id = uuid.uuid4().hex[:8]
+    final_filename = f"{safe_name}_{timestamp}_{unique_id}{ext}"
+
+    station_id = getattr(instance.station, 'station_id', None) or 'temp'
+    return f"stations/documents/{station_id}/{final_filename}"
 
 
 def validate_station_image_size(file):
@@ -175,14 +200,26 @@ class Station(models.Model):
 
     name = models.CharField(max_length=100)
     photo = models.ImageField(
-        upload_to=secure_station_image_path, 
-        null=True, 
-        blank=True, 
+        upload_to=secure_station_image_path,
+        null=True,
+        blank=True,
         default=get_default_station_image,
         validators=[validate_station_image_size, validate_station_image_type]
     )
+    cover_image = models.ImageField(
+        upload_to=secure_station_cover_image_path,
+        null=True,
+        blank=True,
+        validators=[validate_station_image_size, validate_station_image_type]
+    )
+    tagline = models.CharField(max_length=255, blank=True, null=True)
+    founded_year = models.PositiveIntegerField(blank=True, null=True)
+    primary_contact_name = models.CharField(max_length=100, blank=True, null=True)
+    primary_contact_title = models.CharField(max_length=100, blank=True, null=True)
+    primary_contact_email = models.EmailField(blank=True, null=True)
+    primary_contact_phone = models.CharField(max_length=20, blank=True, null=True)
     phone = models.CharField(max_length=255, null=True, blank=True)
-    
+
     city = models.CharField(max_length=255, null=True, blank=True)
     region = models.CharField(max_length=255, null=True, blank=True)
     country = models.CharField(max_length=255, null=True, blank=True)
@@ -477,6 +514,41 @@ class StationStaff(models.Model):
 
     def __str__(self):
         return f"{self.name} - {self.role}"
+
+
+class StationComplianceDocument(models.Model):
+    DOCUMENT_TYPE_CHOICES = [
+        ('license', 'License'),
+        ('certificate', 'Certificate'),
+        ('report', 'Report'),
+        ('other', 'Other'),
+    ]
+
+    STATUS_CHOICES = [
+        ('approved', 'Approved'),
+        ('pending', 'Pending Review'),
+        ('expired', 'Expired'),
+        ('rejected', 'Rejected'),
+    ]
+
+    station = models.ForeignKey(Station, on_delete=models.CASCADE, related_name='compliance_documents')
+    name = models.CharField(max_length=255)
+    document_type = models.CharField(max_length=32, choices=DOCUMENT_TYPE_CHOICES, default='other')
+    file = models.FileField(upload_to=station_document_upload_path, null=True, blank=True)
+    file_size = models.BigIntegerField(blank=True, null=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    expiry_date = models.DateField(blank=True, null=True)
+    notes = models.TextField(blank=True, null=True)
+    is_archived = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-uploaded_at']
+
+    def __str__(self):
+        return f"{self.name} ({self.get_status_display()})"
 
 
 class Complaint(models.Model):
