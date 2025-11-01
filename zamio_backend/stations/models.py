@@ -654,41 +654,6 @@ class StationComplianceDocument(models.Model):
         return f"{self.name} ({self.get_status_display()})"
 
 
-class StationComplianceDocument(models.Model):
-    DOCUMENT_TYPE_CHOICES = [
-        ('license', 'License'),
-        ('certificate', 'Certificate'),
-        ('report', 'Report'),
-        ('other', 'Other'),
-    ]
-
-    STATUS_CHOICES = [
-        ('approved', 'Approved'),
-        ('pending', 'Pending Review'),
-        ('expired', 'Expired'),
-        ('rejected', 'Rejected'),
-    ]
-
-    station = models.ForeignKey(Station, on_delete=models.CASCADE, related_name='compliance_documents')
-    name = models.CharField(max_length=255)
-    document_type = models.CharField(max_length=32, choices=DOCUMENT_TYPE_CHOICES, default='other')
-    file = models.FileField(upload_to=station_document_upload_path, null=True, blank=True)
-    file_size = models.BigIntegerField(blank=True, null=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
-    uploaded_at = models.DateTimeField(auto_now_add=True)
-    expiry_date = models.DateField(blank=True, null=True)
-    notes = models.TextField(blank=True, null=True)
-    is_archived = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ['-uploaded_at']
-
-    def __str__(self):
-        return f"{self.name} ({self.get_status_display()})"
-
-
 class Complaint(models.Model):
     COMPLAINT_STATUS_CHOICES = [
         ('open', 'Open'),

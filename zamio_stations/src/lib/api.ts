@@ -351,6 +351,90 @@ export interface FlagStationPlayLogPayload {
   comment: string;
 }
 
+export interface StationNotificationRecord {
+  id: number;
+  type: string;
+  priority: string;
+  title: string;
+  message: string;
+  read: boolean;
+  timestamp: string | null;
+  time_ago: string;
+  station_name?: string | null;
+  station_id?: string | null;
+  alert_level?: string | null;
+  actionable: boolean;
+  action_label?: string | null;
+  action_type?: string | null;
+  listeners?: number | null;
+  milestone?: boolean;
+  tracks_detected?: number | null;
+  days_until_expiry?: number | null;
+  license_type?: string | null;
+  amount?: number | null;
+  growth?: number | null;
+  platform?: string | null;
+  username?: string | null;
+  playlist?: string | null;
+}
+
+export interface StationNotificationsStats {
+  total_count: number;
+  unread_count: number;
+  read_count: number;
+  high_priority_count: number;
+  system_count: number;
+  performance_count: number;
+}
+
+export interface StationNotificationsFilters {
+  available_types: string[];
+  available_priorities: string[];
+}
+
+export interface StationNotificationsPagination {
+  page_number: number;
+  page_size: number;
+  total_pages: number;
+  count: number;
+  next: number | null;
+  previous: number | null;
+  has_next: boolean;
+  has_previous: boolean;
+}
+
+export interface StationNotificationsPayload {
+  notifications: StationNotificationRecord[];
+  stats: StationNotificationsStats;
+  filters: StationNotificationsFilters;
+  pagination: StationNotificationsPagination;
+}
+
+export interface StationNotificationsParams {
+  stationId: string;
+  search?: string;
+  filterType?: string;
+  filterPriority?: string;
+  filterRead?: 'read' | 'unread';
+  orderBy?: 'newest' | 'oldest' | 'title' | 'priority';
+  page?: number;
+  pageSize?: number;
+}
+
+export interface MarkStationNotificationReadPayload {
+  stationId: string;
+  notificationId: number | string;
+}
+
+export interface MarkAllStationNotificationsPayload {
+  stationId: string;
+}
+
+export interface DeleteStationNotificationPayload {
+  stationId: string;
+  notificationId: number | string;
+}
+
 export interface StationDisputePlayLog {
   time: string | null;
   station: string | null;
@@ -760,6 +844,95 @@ export const flagStationPlayLog = async ({ playlogId, comment }: FlagStationPlay
     {
       playlog_id: playlogId,
       comment,
+    },
+  );
+
+  return data;
+};
+
+export const fetchStationNotifications = async ({
+  stationId,
+  search,
+  filterType,
+  filterPriority,
+  filterRead,
+  orderBy,
+  page,
+  pageSize,
+}: StationNotificationsParams) => {
+  const query: Record<string, string | number> = {
+    station_id: stationId,
+  };
+
+  if (search) {
+    query.search = search;
+  }
+  if (filterType && filterType !== 'all') {
+    query.filter_type = filterType;
+  }
+  if (filterPriority && filterPriority !== 'all') {
+    query.filter_priority = filterPriority;
+  }
+  if (filterRead) {
+    query.filter_read = filterRead;
+  }
+  if (orderBy) {
+    query.order_by = orderBy;
+  }
+  if (typeof page === 'number') {
+    query.page = page;
+  }
+  if (typeof pageSize === 'number') {
+    query.page_size = pageSize;
+  }
+
+  const { data } = await authApi.get<ApiEnvelope<StationNotificationsPayload>>(
+    '/api/stations/notifications/',
+    { params: query },
+  );
+
+  return data;
+};
+
+export const markStationNotificationRead = async ({
+  stationId,
+  notificationId,
+}: MarkStationNotificationReadPayload) => {
+  const { data } = await authApi.post<ApiEnvelope>(
+    '/api/stations/notifications/mark-read/',
+    {
+      station_id: stationId,
+      notification_id: notificationId,
+    },
+  );
+
+  return data;
+};
+
+export const markAllStationNotificationsRead = async ({
+  stationId,
+}: MarkAllStationNotificationsPayload) => {
+  const { data } = await authApi.post<ApiEnvelope<{ updated_count: number }>>(
+    '/api/stations/notifications/mark-all-read/',
+    {
+      station_id: stationId,
+    },
+  );
+
+  return data;
+};
+
+export const deleteStationNotification = async ({
+  stationId,
+  notificationId,
+}: DeleteStationNotificationPayload) => {
+  const { data } = await authApi.delete<ApiEnvelope>(
+    '/api/stations/notifications/delete/',
+    {
+      data: {
+        station_id: stationId,
+        notification_id: notificationId,
+      },
     },
   );
 
