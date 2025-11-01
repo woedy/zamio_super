@@ -15,7 +15,8 @@ from publishers.api.contract_views import (
 from publishers.views.publisher_dashboard_views import (
     get_publisher_metrics_view,
     get_publisher_analytics_view,
-    get_publisher_detail_view
+    get_publisher_detail_view,
+    get_publisher_dashboard_view,
 )
 
 app_name = 'publishers'
@@ -38,6 +39,7 @@ api_urlpatterns = [
     path('metrics/', get_publisher_metrics_view, name='publisher-metrics'),
     path('analytics/', get_publisher_analytics_view, name='publisher-analytics'),
     path('detail/', get_publisher_detail_view, name='publisher-detail'),
+    path('dashboard/', get_publisher_dashboard_view, name='publisher-dashboard'),
 ]
 
 urlpatterns = [
