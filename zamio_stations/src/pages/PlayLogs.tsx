@@ -244,7 +244,6 @@ const PlayLogs: React.FC = () => {
       if (!log || log.id === null || log.id === undefined) {
         return;
       }
-    }
 
       if (typeof window === 'undefined') {
         return;
