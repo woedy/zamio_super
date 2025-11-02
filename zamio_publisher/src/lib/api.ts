@@ -572,6 +572,114 @@ export interface PublisherCatalogParams {
   pageSize?: number;
 }
 
+export interface PublisherRoyaltiesSummary {
+  totalEarnings?: number;
+  paidEarnings?: number;
+  pendingEarnings?: number;
+  processingEarnings?: number;
+  scheduledEarnings?: number;
+  disputedEarnings?: number;
+  currency?: string;
+  latestPaymentDate?: string | null;
+  trendPercentage?: number | null;
+  periodStart?: string | null;
+  periodEnd?: string | null;
+  totalDurationHours?: number;
+}
+
+export interface PublisherMonthlyEarning {
+  period: string;
+  startDate?: string | null;
+  endDate?: string | null;
+  totalEarnings: number;
+  status?: string;
+  paidDate?: string | null;
+  tracks?: number;
+  artists?: number;
+  broadcastHours?: number;
+  platformBreakdown: Record<string, number>;
+}
+
+export interface PublisherStationBreakdown {
+  station: string;
+  region?: string | null;
+  plays: number;
+  royalties: number;
+  percentage: number;
+}
+
+export type PublisherTrackTrend = 'up' | 'down' | 'flat';
+
+export interface PublisherTopTrack {
+  trackId: string;
+  title: string;
+  artist?: string | null;
+  airplay: number;
+  earnings: number;
+  station?: string | null;
+  region?: string | null;
+  trend?: PublisherTrackTrend;
+  lastActivity?: string | null;
+}
+
+export interface PublisherPaymentScheduleItem {
+  paymentId: string;
+  artist: string;
+  amount: number;
+  status: string;
+  dueDate?: string | null;
+  processedAt?: string | null;
+  tracks: string[];
+  station?: string | null;
+  region?: string | null;
+}
+
+export interface PublisherPaymentStats {
+  totalScheduled?: number;
+  totalProcessing?: number;
+  totalPaid?: number;
+  currency?: string;
+}
+
+export interface PublisherRoyaltiesPayments {
+  items: PublisherPaymentScheduleItem[];
+  stats: PublisherPaymentStats;
+}
+
+export interface PublisherDistributionSplit {
+  label: string;
+  amount: number;
+  percentage: number;
+  description?: string | null;
+}
+
+export interface PublisherDistributionSettings {
+  autoPayoutThreshold?: number;
+  paymentFrequency?: string;
+  defaultSplitLabel?: string;
+}
+
+export interface PublisherRoyaltiesDistribution {
+  splits: PublisherDistributionSplit[];
+  settings: PublisherDistributionSettings;
+}
+
+export interface PublisherRoyaltiesPayload {
+  summary?: PublisherRoyaltiesSummary;
+  earnings?: PublisherMonthlyEarning[];
+  stationBreakdown?: PublisherStationBreakdown[];
+  topTracks?: PublisherTopTrack[];
+  payments?: PublisherRoyaltiesPayments;
+  distribution?: PublisherRoyaltiesDistribution;
+}
+
+export interface PublisherRoyaltiesParams {
+  publisherId: string;
+  period?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
 export interface PublisherLogsParams {
   publisherId: string;
   search?: string;
@@ -732,6 +840,34 @@ export const fetchPublisherCatalog = async ({
   const { data } = await authApi.get<ApiEnvelope<PublisherCatalogPayload>>(
     '/api/publishers/catalog/',
     { params: query },
+  );
+
+  return data;
+};
+
+export const fetchPublisherRoyalties = async ({
+  publisherId,
+  period,
+  startDate,
+  endDate,
+}: PublisherRoyaltiesParams) => {
+  const params: Record<string, string> = {
+    publisher_id: publisherId,
+  };
+
+  if (period) {
+    params.period = period;
+  }
+  if (startDate) {
+    params.start_date = startDate;
+  }
+  if (endDate) {
+    params.end_date = endDate;
+  }
+
+  const { data } = await authApi.get<ApiEnvelope<PublisherRoyaltiesPayload>>(
+    '/api/publishers/royalties/',
+    { params },
   );
 
   return data;
