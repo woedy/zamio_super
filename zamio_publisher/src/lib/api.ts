@@ -473,6 +473,105 @@ export interface PublisherLogsPayload {
   matchLogs?: PublisherLogsCollection<PublisherMatchLogRecord>;
 }
 
+export interface PublisherCatalogTrackPerformance {
+  dailyStreams: number[];
+  topCountries: string[];
+  peakPosition: number | null;
+  chartPerformance: string | null;
+}
+
+export interface PublisherCatalogTrack {
+  id: number | string;
+  title: string;
+  artist: string | null;
+  artistId?: string | null;
+  album: string | null;
+  duration: string | null;
+  releaseDate: string | null;
+  status: string | null;
+  genre: string | null;
+  streams: number;
+  downloads: number;
+  revenue: number;
+  platforms: string[];
+  composer?: string | null;
+  producer?: string | null;
+  label?: string | null;
+  coverArt?: string | null;
+  audioUrl?: string | null;
+  bpm?: number | null;
+  key?: string | null;
+  mood?: string | null;
+  language?: string | null;
+  explicit?: boolean;
+  featured?: boolean;
+  tags?: string[];
+  collaborators?: string[];
+  lastUpdated?: string | null;
+  performance?: PublisherCatalogTrackPerformance;
+  publisherCatalogId?: string | null;
+  isrc_code?: string | null;
+  [key: string]: unknown;
+}
+
+export interface PublisherCatalogPagination {
+  count: number;
+  page_number: number;
+  page_size: number;
+  total_pages: number;
+  next: number | null;
+  previous: number | null;
+  has_next: boolean;
+  has_previous: boolean;
+}
+
+export interface PublisherCatalogSummary {
+  totalTracks: number;
+  publishedTracks: number;
+  draftTracks: number;
+  scheduledTracks: number;
+  totalStreams: number;
+  totalDownloads: number;
+  totalRevenue: number;
+  [key: string]: number;
+}
+
+export interface PublisherCatalogArtistFilter {
+  id: string;
+  name: string;
+  trackCount?: number;
+  [key: string]: unknown;
+}
+
+export interface PublisherCatalogFilters {
+  statuses?: string[];
+  genres?: string[];
+  artists?: PublisherCatalogArtistFilter[];
+  [key: string]: unknown;
+}
+
+export interface PublisherCatalogPayload {
+  summary?: PublisherCatalogSummary;
+  filters?: PublisherCatalogFilters;
+  tracks: {
+    results: PublisherCatalogTrack[];
+    pagination: PublisherCatalogPagination;
+  };
+  [key: string]: unknown;
+}
+
+export interface PublisherCatalogParams {
+  publisherId: string;
+  search?: string;
+  status?: string;
+  genre?: string;
+  artistId?: string;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+  page?: number;
+  pageSize?: number;
+}
+
 export interface PublisherLogsParams {
   publisherId: string;
   search?: string;
@@ -584,6 +683,54 @@ export const fetchPublisherLogs = async ({
 
   const { data } = await authApi.get<ApiEnvelope<PublisherLogsPayload>>(
     '/api/publishers/playlogs/',
+    { params: query },
+  );
+
+  return data;
+};
+
+export const fetchPublisherCatalog = async ({
+  publisherId,
+  search,
+  status,
+  genre,
+  artistId,
+  sortBy,
+  sortOrder,
+  page,
+  pageSize,
+}: PublisherCatalogParams) => {
+  const query: Record<string, string | number> = {
+    publisher_id: publisherId,
+  };
+
+  if (search) {
+    query.search = search;
+  }
+  if (status) {
+    query.status = status;
+  }
+  if (genre) {
+    query.genre = genre;
+  }
+  if (artistId) {
+    query.artist_id = artistId;
+  }
+  if (sortBy) {
+    query.sort_by = sortBy;
+  }
+  if (sortOrder) {
+    query.sort_order = sortOrder;
+  }
+  if (typeof page === 'number') {
+    query.page = page;
+  }
+  if (typeof pageSize === 'number') {
+    query.page_size = pageSize;
+  }
+
+  const { data } = await authApi.get<ApiEnvelope<PublisherCatalogPayload>>(
+    '/api/publishers/catalog/',
     { params: query },
   );
 

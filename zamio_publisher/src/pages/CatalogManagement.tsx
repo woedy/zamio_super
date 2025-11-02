@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Search,
   Filter,
@@ -60,166 +60,92 @@ import {
   Key,
   FileAudio,
   XCircle,
+  Loader2,
 } from 'lucide-react';
 
-// Mock catalog data for demonstration
-const mockTracks = [
-  {
-    id: 1,
-    title: 'Midnight Dreams',
-    artist: 'Sarah Johnson',
-    artistId: 1,
-    album: 'Night Visions',
-    duration: '3:45',
-    releaseDate: '2024-01-10',
-    status: 'published',
-    genre: 'R&B',
-    streams: 125000,
-    downloads: 8500,
-    revenue: 2500,
-    platforms: ['Spotify', 'Apple Music', 'YouTube', 'Deezer'],
-    isrc: 'QZ1234567890',
-    composer: 'Sarah Johnson',
-    producer: 'MK Beats',
-    label: 'Zamio Publishing',
-    coverArt: '/api/placeholder/150/150',
-    audioUrl: '/api/placeholder/audio.mp3',
-    bpm: 85,
-    key: 'A minor',
-    mood: 'Melancholic',
-    language: 'English',
-    explicit: false,
-    featured: false,
-    collaborators: [],
-    tags: ['soulful', 'emotional', 'nighttime'],
-    lastUpdated: '2024-01-10T10:30:00Z',
-    performance: {
-      dailyStreams: [1200, 1350, 1180, 1420, 1580, 1650, 1800],
-      topCountries: ['Ghana', 'Nigeria', 'USA', 'UK'],
-      peakPosition: 12,
-      chartPerformance: 'Rising'
+import { useAuth } from '../lib/auth';
+import {
+  fetchPublisherCatalog,
+  type PublisherCatalogTrack,
+  type PublisherCatalogFilters,
+  type PublisherCatalogSummary,
+  type PublisherCatalogPagination,
+  type PublisherCatalogPayload,
+  type PublisherCatalogArtistFilter,
+} from '../lib/api';
+
+const resolveCatalogError = (maybeError: unknown) => {
+  if (!maybeError) {
+    return 'Unable to load catalog data. Please try again later.';
+  }
+
+  if (typeof maybeError === 'object' && maybeError !== null) {
+    const response = (maybeError as { response?: unknown }).response;
+    if (response && typeof response === 'object') {
+      const data = (response as { data?: unknown }).data;
+      if (data && typeof data === 'object') {
+        const message = (data as { message?: unknown }).message;
+        if (typeof message === 'string' && message.trim().length > 0) {
+          return message;
+        }
+
+        const errors = (data as { errors?: unknown }).errors;
+        if (errors && typeof errors === 'object') {
+          const [firstKey, firstValue] = Object.entries(errors as Record<string, unknown>)[0] || [];
+          if (typeof firstValue === 'string' && firstValue.length > 0) {
+            return firstValue;
+          }
+          if (Array.isArray(firstValue) && firstValue.length > 0) {
+            const candidate = firstValue[0];
+            if (typeof candidate === 'string' && candidate.length > 0) {
+              return candidate;
+            }
+          }
+          if (typeof firstKey === 'string' && firstKey.length > 0) {
+            return `${firstKey} is invalid.`;
+          }
+        }
+      }
     }
-  },
-  {
-    id: 2,
-    title: 'Afro Vibes Vol. 2',
-    artist: 'Michael Kwame',
-    artistId: 2,
-    album: 'Beat Collection',
-    duration: '4:12',
-    releaseDate: '2024-01-09',
-    status: 'published',
-    genre: 'Hip-Hop',
-    streams: 89000,
-    downloads: 6200,
-    revenue: 1800,
-    platforms: ['Spotify', 'SoundCloud', 'Bandcamp'],
-    isrc: 'QZ0987654321',
-    composer: 'Michael Kwame',
-    producer: 'Michael Kwame',
-    label: 'Zamio Publishing',
-    coverArt: '/api/placeholder/150/150',
-    audioUrl: '/api/placeholder/audio.mp3',
-    bpm: 92,
-    key: 'F# minor',
-    mood: 'Energetic',
-    language: 'Instrumental',
-    explicit: false,
-    featured: false,
-    collaborators: [],
-    tags: ['afrobeat', 'instrumental', 'beats'],
-    lastUpdated: '2024-01-09T15:20:00Z',
-    performance: {
-      dailyStreams: [890, 920, 850, 980, 1050, 1120, 1250],
-      topCountries: ['Ghana', 'Nigeria', 'South Africa'],
-      peakPosition: 8,
-      chartPerformance: 'Stable'
-    }
-  },
-  {
-    id: 3,
-    title: 'Soul Connection',
-    artist: 'Amara Okafor',
-    artistId: 3,
-    album: 'Soul Journey',
-    duration: '5:23',
-    releaseDate: '2023-12-15',
-    status: 'draft',
-    genre: 'Soul',
-    streams: 67000,
-    downloads: 4300,
-    revenue: 1350,
-    platforms: ['Spotify', 'Apple Music'],
-    isrc: 'QZ1122334455',
-    composer: 'Amara Okafor',
-    producer: 'Soul Studio',
-    label: 'Zamio Publishing',
-    coverArt: '/api/placeholder/150/150',
-    audioUrl: '/api/placeholder/audio.mp3',
-    bpm: 78,
-    key: 'G major',
-    mood: 'Spiritual',
-    language: 'English',
-    explicit: false,
-    featured: true,
-    collaborators: ['Gospel Choir'],
-    tags: ['gospel', 'spiritual', 'uplifting'],
-    lastUpdated: '2024-01-07T09:15:00Z',
-    performance: {
-      dailyStreams: [450, 520, 480, 590, 650, 720, 800],
-      topCountries: ['Nigeria', 'Ghana', 'Kenya'],
-      peakPosition: 15,
-      chartPerformance: 'Declining'
-    }
-  },
-  {
-    id: 4,
-    title: 'City Lights',
-    artist: 'Sarah Johnson',
-    artistId: 1,
-    album: 'Night Visions',
-    duration: '3:28',
-    releaseDate: '2023-11-20',
-    status: 'published',
-    genre: 'R&B',
-    streams: 234000,
-    downloads: 15600,
-    revenue: 4680,
-    platforms: ['Spotify', 'Apple Music', 'YouTube', 'Amazon Music', 'Tidal'],
-    isrc: 'QZ5566778899',
-    composer: 'Sarah Johnson',
-    producer: 'MK Beats',
-    label: 'Zamio Publishing',
-    coverArt: '/api/placeholder/150/150',
-    audioUrl: '/api/placeholder/audio.mp3',
-    bpm: 88,
-    key: 'C# minor',
-    mood: 'Nostalgic',
-    language: 'English',
-    explicit: false,
-    featured: false,
-    collaborators: [],
-    tags: ['city', 'nostalgic', 'smooth'],
-    lastUpdated: '2023-11-20T14:45:00Z',
-    performance: {
-      dailyStreams: [2100, 2350, 2200, 2680, 2890, 3100, 3400],
-      topCountries: ['Ghana', 'Nigeria', 'USA', 'Canada', 'UK'],
-      peakPosition: 3,
-      chartPerformance: 'Rising'
+
+    const message = (maybeError as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim().length > 0) {
+      return message;
     }
   }
-];
+
+  return 'Unable to load catalog data. Please try again later.';
+};
 
 const CatalogManagement: React.FC = () => {
+  const { user } = useAuth();
+
+  const publisherId = useMemo(() => {
+    if (user && typeof user === 'object' && user !== null) {
+      const candidate = (user as Record<string, unknown>)['publisher_id'];
+      if (typeof candidate === 'string' && candidate.length > 0) {
+        return candidate;
+      }
+    }
+    return null;
+  }, [user]);
+
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [genreFilter, setGenreFilter] = useState('all');
   const [artistFilter, setArtistFilter] = useState('all');
-  const [selectedTrack, setSelectedTrack] = useState<any>(null);
+  const [tracks, setTracks] = useState<PublisherCatalogTrack[]>([]);
+  const [summary, setSummary] = useState<PublisherCatalogSummary | null>(null);
+  const [catalogFilters, setCatalogFilters] = useState<PublisherCatalogFilters>({});
+  const [pagination, setPagination] = useState<PublisherCatalogPagination | null>(null);
+  const [selectedTrack, setSelectedTrack] = useState<PublisherCatalogTrack | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [showTrackDetails, setShowTrackDetails] = useState(false);
   const [showAddTrackModal, setShowAddTrackModal] = useState(false);
   const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Add Track Form State
   const [newTrack, setNewTrack] = useState({
@@ -270,6 +196,125 @@ const CatalogManagement: React.FC = () => {
   const [uploadProgress, setUploadProgress] = useState<{[key: string]: number}>({});
   const [uploadStatus, setUploadStatus] = useState<{[key: string]: 'uploading' | 'processing' | 'completed' | 'failed' | 'cancelled'}>({});
   const [isBulkUploading, setIsBulkUploading] = useState(false);
+
+  const selectedTrackDisplay = useMemo(() => {
+    if (!selectedTrack) {
+      return null;
+    }
+
+    const releaseDateLabel = selectedTrack.releaseDate
+      ? new Date(selectedTrack.releaseDate).toLocaleDateString()
+      : '—';
+
+    return {
+      artist: selectedTrack.artist || 'Unknown Artist',
+      album: selectedTrack.album || 'Single',
+      duration: selectedTrack.duration || '—',
+      releaseDate: releaseDateLabel,
+      genre: selectedTrack.genre || 'Uncategorized',
+      bpm: typeof selectedTrack.bpm === 'number' ? selectedTrack.bpm : null,
+      key: selectedTrack.key || null,
+      mood: selectedTrack.mood || null,
+      language: selectedTrack.language || null,
+      composer: selectedTrack.composer || '—',
+      producer: selectedTrack.producer || '—',
+      label: selectedTrack.label || 'Independent',
+      isrc: selectedTrack.isrc_code || selectedTrack.publisherCatalogId || '—',
+      coverArt: selectedTrack.coverArt || '/api/placeholder/640/360',
+      platforms: Array.isArray(selectedTrack.platforms) ? selectedTrack.platforms : [],
+      tags: Array.isArray(selectedTrack.tags) ? selectedTrack.tags : [],
+      collaborators: Array.isArray(selectedTrack.collaborators)
+        ? selectedTrack.collaborators
+        : [],
+      performance: selectedTrack.performance ?? null,
+      streams: selectedTrack.streams,
+      downloads: selectedTrack.downloads,
+      revenue: selectedTrack.revenue,
+      explicit: Boolean(selectedTrack.explicit),
+      featured: Boolean(selectedTrack.featured),
+    };
+  }, [selectedTrack]);
+
+  const selectedPerformance = selectedTrackDisplay?.performance;
+  const selectedTopCountries = Array.isArray(selectedPerformance?.topCountries)
+    ? selectedPerformance?.topCountries ?? []
+    : [];
+  const selectedPlatforms = selectedTrackDisplay?.platforms ?? [];
+  const selectedTags = selectedTrackDisplay?.tags ?? [];
+  const selectedCollaborators = selectedTrackDisplay?.collaborators ?? [];
+  const selectedPeakPosition = selectedPerformance?.peakPosition ?? '—';
+  const selectedChartPerformance = selectedPerformance?.chartPerformance ?? 'Stable';
+
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 300);
+    return () => clearTimeout(handle);
+  }, [searchTerm]);
+
+  const loadCatalog = useCallback(async () => {
+    if (!publisherId) {
+      setError('Your publisher ID is missing. Please sign out and sign in again.');
+      setTracks([]);
+      setSummary(null);
+      setCatalogFilters({});
+      setPagination(null);
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const envelope = await fetchPublisherCatalog({
+        publisherId,
+        search: debouncedSearch || undefined,
+        status: statusFilter !== 'all' ? statusFilter : undefined,
+        genre: genreFilter !== 'all' ? genreFilter : undefined,
+        artistId: artistFilter !== 'all' ? artistFilter : undefined,
+        page: 1,
+        pageSize: 40,
+      });
+
+      const payload = (envelope?.data ?? null) as PublisherCatalogPayload | null;
+      const trackResults = payload?.tracks?.results ?? [];
+      const paginationInfo = payload?.tracks?.pagination ?? null;
+
+      setTracks(trackResults);
+      setSummary(payload?.summary ?? null);
+      setCatalogFilters(payload?.filters ?? {});
+      setPagination(paginationInfo);
+    } catch (catalogError) {
+      setError(resolveCatalogError(catalogError));
+      setTracks([]);
+      setSummary(null);
+      setCatalogFilters({});
+      setPagination(null);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [
+    publisherId,
+    debouncedSearch,
+    statusFilter,
+    genreFilter,
+    artistFilter,
+  ]);
+
+  useEffect(() => {
+    loadCatalog();
+  }, [loadCatalog]);
+
+  useEffect(() => {
+    if (!selectedTrack) {
+      return;
+    }
+    const nextTrack = tracks.find((track) => track.id === selectedTrack.id);
+    if (!nextTrack) {
+      setShowTrackDetails(false);
+      setSelectedTrack(null);
+    } else if (nextTrack !== selectedTrack) {
+      setSelectedTrack(nextTrack);
+    }
+  }, [tracks, selectedTrack]);
 
   const resetBulkUpload = () => {
     setBulkUploadStep(1);
@@ -361,20 +406,95 @@ const CatalogManagement: React.FC = () => {
     setIsBulkUploading(false);
   };
 
-  const filteredTracks = mockTracks.filter(track => {
-    const matchesSearch = track.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         track.artist.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         track.album.toLowerCase().includes(searchTerm.toLowerCase());
+  const filteredTracks = useMemo(() => {
+    const normalizedSearch = debouncedSearch.toLowerCase();
+    const normalizedStatus = statusFilter.toLowerCase();
+    const normalizedGenre = genreFilter.toLowerCase();
 
-    const matchesStatus = statusFilter === 'all' || track.status === statusFilter;
-    const matchesGenre = genreFilter === 'all' || track.genre === genreFilter;
-    const matchesArtist = artistFilter === 'all' || track.artistId.toString() === artistFilter;
+    return tracks.filter((track) => {
+      const title = (track.title || '').toLowerCase();
+      const artistName = (track.artist || '').toLowerCase();
+      const albumName = (track.album || '').toLowerCase();
+      const trackStatus = (track.status || '').toLowerCase();
+      const trackGenre = (track.genre || '').toLowerCase();
+      const trackArtistId = (track.artistId ?? '').toString();
 
-    return matchesSearch && matchesStatus && matchesGenre && matchesArtist;
-  });
+      const matchesSearch =
+        !normalizedSearch ||
+        title.includes(normalizedSearch) ||
+        artistName.includes(normalizedSearch) ||
+        albumName.includes(normalizedSearch);
 
-  const allGenres = Array.from(new Set(mockTracks.map(track => track.genre)));
-  const allArtists = Array.from(new Set(mockTracks.map(track => ({ id: track.artistId, name: track.artist }))));
+      const matchesStatus =
+        normalizedStatus === 'all' || trackStatus === normalizedStatus;
+
+      const matchesGenre =
+        normalizedGenre === 'all' || trackGenre === normalizedGenre;
+
+      const matchesArtist =
+        artistFilter === 'all' || trackArtistId === artistFilter;
+
+      return matchesSearch && matchesStatus && matchesGenre && matchesArtist;
+    });
+  }, [tracks, debouncedSearch, statusFilter, genreFilter, artistFilter]);
+
+  const allGenres = useMemo(
+    () =>
+      (catalogFilters.genres ?? []).filter(
+        (genre): genre is string => typeof genre === 'string' && genre.trim().length > 0,
+      ),
+    [catalogFilters],
+  );
+  const artistOptions = useMemo(() => {
+    const options = catalogFilters.artists ?? [];
+    return options.filter(
+      (artist): artist is PublisherCatalogArtistFilter =>
+        Boolean(
+          artist &&
+            typeof artist.id === 'string' &&
+            artist.id.length > 0 &&
+            typeof artist.name === 'string',
+        ),
+    );
+  }, [catalogFilters]);
+  useEffect(() => {
+    if (genreFilter === 'all') {
+      return;
+    }
+    if (!allGenres.includes(genreFilter)) {
+      setGenreFilter('all');
+    }
+  }, [allGenres, genreFilter]);
+
+  useEffect(() => {
+    if (artistFilter === 'all') {
+      return;
+    }
+    const hasArtist = artistOptions.some((artist) => String(artist.id) === artistFilter);
+    if (!hasArtist) {
+      setArtistFilter('all');
+    }
+  }, [artistOptions, artistFilter]);
+
+  const totalTracks = useMemo(() => summary?.totalTracks ?? tracks.length, [summary, tracks]);
+  const publishedTracksCount = useMemo(() => {
+    if (typeof summary?.publishedTracks === 'number') {
+      return summary.publishedTracks;
+    }
+    return tracks.filter((track) => (track.status || '').toLowerCase() === 'published').length;
+  }, [summary, tracks]);
+  const totalStreams = useMemo(() => {
+    if (typeof summary?.totalStreams === 'number') {
+      return summary.totalStreams;
+    }
+    return tracks.reduce((acc, track) => acc + (Number(track.streams) || 0), 0);
+  }, [summary, tracks]);
+  const totalRevenue = useMemo(() => {
+    if (typeof summary?.totalRevenue === 'number') {
+      return summary.totalRevenue;
+    }
+    return tracks.reduce((acc, track) => acc + (Number(track.revenue) || 0), 0);
+  }, [summary, tracks]);
 
   // Form handling functions
   const handleTrackInputChange = (field: string, value: string | number | boolean) => {
@@ -419,25 +539,7 @@ const CatalogManagement: React.FC = () => {
       // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 2000));
 
-      // Create new track object
-      const track = {
-        id: mockTracks.length + 1,
-        ...newTrack,
-        status: 'draft' as const,
-        streams: 0,
-        downloads: 0,
-        revenue: 0,
-        platforms: ['Spotify', 'Apple Music'],
-        coverArt: newTrack.coverArt || '/api/placeholder/150/150',
-        audioUrl: '/api/placeholder/audio.mp3',
-        lastUpdated: new Date().toISOString(),
-        performance: {
-          dailyStreams: [],
-          topCountries: ['Ghana'],
-          peakPosition: 0,
-          chartPerformance: 'New'
-        }
-      };
+      await loadCatalog();
 
       // Reset form
       setNewTrack({
@@ -501,35 +603,53 @@ const CatalogManagement: React.FC = () => {
     setShowAddTrackModal(false);
   };
 
-  const handleViewTrack = (track: any) => {
+  const handleViewTrack = (track: PublisherCatalogTrack) => {
     setSelectedTrack(track);
     setShowTrackDetails(true);
   };
 
-  const formatNumber = (num: number) => {
-    if (num >= 1000000) {
-      return (num / 1000000).toFixed(1) + 'M';
+  const formatNumber = (value: number | string | null | undefined) => {
+    const numericValue = Number(value ?? 0);
+    if (!Number.isFinite(numericValue)) {
+      return '0';
     }
-    if (num >= 1000) {
-      return (num / 1000).toFixed(1) + 'K';
+    if (numericValue >= 1_000_000) {
+      return (numericValue / 1_000_000).toFixed(1) + 'M';
     }
-    return num.toString();
+    if (numericValue >= 1_000) {
+      return (numericValue / 1_000).toFixed(1) + 'K';
+    }
+    return numericValue.toString();
   };
 
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amount: number | string | null | undefined) => {
+    const numericValue = Number(amount ?? 0);
+    const safeAmount = Number.isFinite(numericValue) ? numericValue : 0;
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD'
-    }).format(amount);
+    }).format(safeAmount);
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'published': return 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400';
-      case 'draft': return 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400';
-      case 'scheduled': return 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400';
-      default: return 'bg-gray-100 dark:bg-gray-900/30 text-gray-700 dark:text-gray-400';
+  const getStatusColor = (status?: string | null) => {
+    const normalized = (status || 'draft').toLowerCase();
+    switch (normalized) {
+      case 'published':
+        return 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400';
+      case 'draft':
+        return 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400';
+      case 'scheduled':
+        return 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400';
+      case 'archived':
+        return 'bg-gray-200 dark:bg-slate-800 text-gray-700 dark:text-gray-300';
+      default:
+        return 'bg-gray-100 dark:bg-gray-900/30 text-gray-700 dark:text-gray-400';
     }
+  };
+
+  const resolveStatusLabel = (status?: string | null) => {
+    const normalized = (status || 'draft').toLowerCase();
+    return normalized.charAt(0).toUpperCase() + normalized.slice(1);
   };
 
   return (
@@ -555,25 +675,25 @@ const CatalogManagement: React.FC = () => {
               <div className="flex items-center space-x-6 pt-2">
                 <div className="text-center">
                   <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
-                    {mockTracks.length}
+                    {totalTracks}
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">Total Tracks</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                    {mockTracks.filter(t => t.status === 'published').length}
+                    {publishedTracksCount}
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">Published</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                    {formatNumber(mockTracks.reduce((acc, track) => acc + track.streams, 0))}
+                    {formatNumber(totalStreams)}
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">Total Streams</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-                    {formatCurrency(mockTracks.reduce((acc, track) => acc + track.revenue, 0))}
+                    {formatCurrency(totalRevenue)}
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">Total Revenue</div>
                 </div>
@@ -600,9 +720,15 @@ const CatalogManagement: React.FC = () => {
                 <span>Export</span>
               </button>
             </div>
-          </div>
-        </div>
       </div>
+    </div>
+  </div>
+
+      {error && (
+        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+          {error}
+        </div>
+      )}
 
       {/* Filters and Search */}
       <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-2xl p-6 border border-white/20 dark:border-slate-700/30 shadow-2xl mb-8">
@@ -655,9 +781,17 @@ const CatalogManagement: React.FC = () => {
                 className="px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="all">All Artists</option>
-                {allArtists.map(artist => (
-                  <option key={artist.id} value={artist.id.toString()}>{artist.name}</option>
-                ))}
+                {artistOptions.map((artist) => {
+                  const value = String(artist.id);
+                  const label = artist.name || 'Unknown Artist';
+                  const countSuffix =
+                    typeof artist.trackCount === 'number' ? ` (${artist.trackCount})` : '';
+                  return (
+                    <option key={value} value={value}>
+                      {`${label}${countSuffix}`}
+                    </option>
+                  );
+                })}
               </select>
             </div>
           </div>
@@ -697,88 +831,120 @@ const CatalogManagement: React.FC = () => {
       </div>
 
       {/* Tracks Grid/List */}
-      {viewMode === 'grid' ? (
+      {isLoading ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-10 w-10 animate-spin text-indigo-600" />
+        </div>
+      ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filteredTracks.map((track) => (
-            <div key={track.id} className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-2xl border border-white/20 dark:border-slate-700/30 shadow-2xl hover:shadow-3xl transition-all duration-200 hover:scale-105 overflow-hidden">
-              <div className="relative">
-                <img
-                  src={track.coverArt}
-                  alt={track.title}
-                  className="w-full h-40 object-cover"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
-                <div className="absolute bottom-3 left-3 right-3">
-                  <h3 className="text-white font-semibold text-sm truncate">{track.title}</h3>
-                  <p className="text-white/80 text-xs truncate">{track.artist}</p>
-                </div>
-                <div className="absolute top-3 right-3">
-                  <div className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(track.status)}`}>
-                    {track.status}
-                  </div>
-                </div>
-                <button className="absolute top-3 left-3 p-2 bg-black/20 hover:bg-black/40 text-white rounded-full transition-colors duration-200">
-                  <Play className="w-4 h-4" />
-                </button>
-              </div>
+          {filteredTracks.map((track) => {
+            const displayArtist = track.artist || 'Unknown Artist';
+            const displayAlbum = track.album || 'Single';
+            const coverArtSrc = track.coverArt || '/api/placeholder/300/200';
+            const statusLabel = resolveStatusLabel(track.status);
+            const releaseDateLabel = track.releaseDate
+              ? new Date(track.releaseDate).toLocaleDateString()
+              : '—';
+            const durationLabel = track.duration || '—';
+            const peakPosition = track.performance?.peakPosition ?? '—';
+            const chartPerformance = track.performance?.chartPerformance ?? 'Stable';
+            const genreLabel = track.genre || 'Uncategorized';
 
-              <div className="p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center space-x-2">
-                    <img
-                      src={`/api/placeholder/32/32`}
-                      alt={track.artist}
-                      className="w-8 h-8 rounded-full object-cover"
-                    />
-                    <div>
-                      <p className="font-medium text-gray-900 dark:text-white text-sm">{track.artist}</p>
-                      <p className="text-xs text-gray-600 dark:text-gray-400">{track.album}</p>
+            return (
+              <div
+                key={track.id}
+                className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-2xl border border-white/20 dark:border-slate-700/30 shadow-2xl hover:shadow-3xl transition-all duration-200 hover:scale-105 overflow-hidden"
+              >
+                <div className="relative">
+                  <img src={coverArtSrc} alt={track.title} className="w-full h-40 object-cover" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+                  <div className="absolute bottom-3 left-3 right-3">
+                    <h3 className="text-white font-semibold text-sm truncate">{track.title}</h3>
+                    <p className="text-white/80 text-xs truncate">{displayArtist}</p>
+                  </div>
+                  <div className="absolute top-3 right-3">
+                    <div className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(track.status)}`}>
+                      {statusLabel}
                     </div>
-                  </div>
-                  <button className="p-1 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300">
-                    <MoreHorizontal className="w-4 h-4" />
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 mb-3">
-                  <div className="text-center">
-                    <div className="text-sm font-bold text-indigo-600 dark:text-indigo-400">
-                      {formatNumber(track.streams)}
-                    </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400">Streams</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-sm font-bold text-green-600 dark:text-green-400">
-                      {formatCurrency(track.revenue)}
-                    </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400">Revenue</div>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between mb-3">
-                  <span className="px-2 py-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 rounded-full text-xs">
-                    {track.genre}
-                  </span>
-                  <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center">
-                    <Clock className="w-3 h-3 mr-1" />
-                    {track.duration}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div className="text-xs text-gray-600 dark:text-gray-400">
-                    {new Date(track.releaseDate).toLocaleDateString()}
                   </div>
                   <button
-                    onClick={() => handleViewTrack(track)}
-                    className="px-3 py-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl text-xs"
+                    className="absolute top-3 left-3 p-2 bg-black/20 hover:bg-black/40 text-white rounded-full transition-colors duration-200"
+                    aria-label="Preview track"
                   >
-                    View Details
+                    <Play className="w-4 h-4" />
                   </button>
                 </div>
+
+                <div className="p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center space-x-2">
+                      <img
+                        src="/api/placeholder/32/32"
+                        alt={displayArtist}
+                        className="w-8 h-8 rounded-full object-cover"
+                      />
+                      <div>
+                        <p className="font-medium text-gray-900 dark:text-white text-sm">{displayArtist}</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">{displayAlbum}</p>
+                      </div>
+                    </div>
+                    <button
+                      className="p-1 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+                      aria-label="Track options"
+                    >
+                      <MoreHorizontal className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div className="text-center">
+                      <div className="text-sm font-bold text-indigo-600 dark:text-indigo-400">
+                        {formatNumber(track.streams)}
+                      </div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">Streams</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-sm font-bold text-green-600 dark:text-green-400">
+                        {formatCurrency(track.revenue)}
+                      </div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">Revenue</div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="px-2 py-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 rounded-full text-xs">
+                      {genreLabel}
+                    </span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center">
+                      <Clock className="w-3 h-3 mr-1" />
+                      {durationLabel}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center space-x-2">
+                      <BarChart3 className="w-4 h-4 text-indigo-500" />
+                      <span className="text-xs text-gray-500 dark:text-gray-400">Peak #{peakPosition}</span>
+                    </div>
+                    <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center">
+                      <TrendingUp className="w-3 h-3 mr-1" />
+                      {chartPerformance}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs text-gray-600 dark:text-gray-400">{releaseDateLabel}</div>
+                    <button
+                      onClick={() => handleViewTrack(track)}
+                      className="px-3 py-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl text-xs"
+                    >
+                      View Details
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-2xl border border-white/20 dark:border-slate-700/30 shadow-2xl overflow-hidden">
@@ -796,35 +962,53 @@ const CatalogManagement: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
-                {filteredTracks.map((track) => (
-                  <tr key={track.id} className="hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors duration-200">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <img src={track.coverArt} alt={track.title} className="w-10 h-10 rounded-lg object-cover mr-3" />
-                        <div>
-                          <div className="text-sm font-medium text-gray-900 dark:text-white">{track.title}</div>
-                          <div className="text-sm text-gray-500 dark:text-gray-400">{track.album}</div>
+                {filteredTracks.map((track) => {
+                  const displayArtist = track.artist || 'Unknown Artist';
+                  const displayAlbum = track.album || 'Single';
+                  const coverArtSrc = track.coverArt || '/api/placeholder/80/80';
+                  const statusLabel = resolveStatusLabel(track.status);
+                  const releaseDateLabel = track.releaseDate
+                    ? new Date(track.releaseDate).toLocaleDateString()
+                    : '—';
+
+                  return (
+                    <tr
+                      key={track.id}
+                      className="hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors duration-200"
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <img
+                            src={coverArtSrc}
+                            alt={track.title}
+                            className="w-10 h-10 rounded-lg object-cover mr-3"
+                          />
+                          <div>
+                            <div className="text-sm font-medium text-gray-900 dark:text-white">{track.title}</div>
+                            <div className="text-sm text-gray-500 dark:text-gray-400">{displayAlbum}</div>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                      {track.artist}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(track.status)}`}>
-                        {track.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                      {formatNumber(track.streams)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                      {formatCurrency(track.revenue)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                      {new Date(track.releaseDate).toLocaleDateString()}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                        {displayArtist}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span
+                          className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(track.status)}`}
+                        >
+                          {statusLabel}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                        {formatNumber(track.streams)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                        {formatCurrency(track.revenue)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                        {releaseDateLabel}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex items-center space-x-2">
                         <button
                           onClick={() => handleViewTrack(track)}
@@ -841,7 +1025,8 @@ const CatalogManagement: React.FC = () => {
                       </div>
                     </td>
                   </tr>
-                ))}
+                );
+                })}
               </tbody>
             </table>
           </div>
@@ -854,7 +1039,7 @@ const CatalogManagement: React.FC = () => {
           <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-5xl w-full max-h-[90vh] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] shadow-2xl">
             <div className="relative">
               <img
-                src={selectedTrack.coverArt}
+                src={selectedTrackDisplay?.coverArt}
                 alt={selectedTrack.title}
                 className="w-full h-64 object-cover rounded-t-2xl"
               />
@@ -866,7 +1051,7 @@ const CatalogManagement: React.FC = () => {
                   </button>
                   <div>
                     <h2 className="text-2xl font-bold text-white mb-1">{selectedTrack.title}</h2>
-                    <p className="text-white/80">by {selectedTrack.artist}</p>
+                    <p className="text-white/80">by {selectedTrackDisplay?.artist}</p>
                   </div>
                 </div>
               </div>
@@ -889,28 +1074,28 @@ const CatalogManagement: React.FC = () => {
                         <Disc className="w-5 h-5 text-gray-400" />
                         <div>
                           <p className="font-medium text-gray-900 dark:text-white">Album</p>
-                          <p className="text-sm text-gray-600 dark:text-gray-400">{selectedTrack.album}</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">{selectedTrackDisplay?.album}</p>
                         </div>
                       </div>
                       <div className="flex items-center space-x-3">
                         <Clock className="w-5 h-5 text-gray-400" />
                         <div>
                           <p className="font-medium text-gray-900 dark:text-white">Duration</p>
-                          <p className="text-sm text-gray-600 dark:text-gray-400">{selectedTrack.duration}</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">{selectedTrackDisplay?.duration}</p>
                         </div>
                       </div>
                       <div className="flex items-center space-x-3">
                         <Calendar className="w-5 h-5 text-gray-400" />
                         <div>
                           <p className="font-medium text-gray-900 dark:text-white">Release Date</p>
-                          <p className="text-sm text-gray-600 dark:text-gray-400">{new Date(selectedTrack.releaseDate).toLocaleDateString()}</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">{selectedTrackDisplay?.releaseDate}</p>
                         </div>
                       </div>
                       <div className="flex items-center space-x-3">
                         <Music className="w-5 h-5 text-gray-400" />
                         <div>
                           <p className="font-medium text-gray-900 dark:text-white">Genre</p>
-                          <p className="text-sm text-gray-600 dark:text-gray-400">{selectedTrack.genre}</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">{selectedTrackDisplay?.genre}</p>
                         </div>
                       </div>
                     </div>
@@ -923,28 +1108,28 @@ const CatalogManagement: React.FC = () => {
                         <Zap className="w-5 h-5 text-gray-400" />
                         <div>
                           <p className="font-medium text-gray-900 dark:text-white">BPM</p>
-                          <p className="text-sm text-gray-600 dark:text-gray-400">{selectedTrack.bpm}</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">{selectedTrackDisplay?.bpm ?? '—'}</p>
                         </div>
                       </div>
                       <div className="flex items-center space-x-3">
                         <Key className="w-5 h-5 text-gray-400" />
                         <div>
                           <p className="font-medium text-gray-900 dark:text-white">Key</p>
-                          <p className="text-sm text-gray-600 dark:text-gray-400">{selectedTrack.key}</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">{selectedTrackDisplay?.key ?? '—'}</p>
                         </div>
                       </div>
                       <div className="flex items-center space-x-3">
                         <Heart className="w-5 h-5 text-gray-400" />
                         <div>
                           <p className="font-medium text-gray-900 dark:text-white">Mood</p>
-                          <p className="text-sm text-gray-600 dark:text-gray-400">{selectedTrack.mood}</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">{selectedTrackDisplay?.mood ?? '—'}</p>
                         </div>
                       </div>
                       <div className="flex items-center space-x-3">
                         <Globe className="w-5 h-5 text-gray-400" />
                         <div>
                           <p className="font-medium text-gray-900 dark:text-white">Language</p>
-                          <p className="text-sm text-gray-600 dark:text-gray-400">{selectedTrack.language}</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">{selectedTrackDisplay?.language ?? '—'}</p>
                         </div>
                       </div>
                     </div>
@@ -955,19 +1140,19 @@ const CatalogManagement: React.FC = () => {
                     <div className="space-y-2">
                       <div className="flex justify-between">
                         <span className="text-gray-600 dark:text-gray-400">Composer:</span>
-                        <span className="font-medium text-gray-900 dark:text-white">{selectedTrack.composer}</span>
+                        <span className="font-medium text-gray-900 dark:text-white">{selectedTrackDisplay?.composer}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600 dark:text-gray-400">Producer:</span>
-                        <span className="font-medium text-gray-900 dark:text-white">{selectedTrack.producer}</span>
+                        <span className="font-medium text-gray-900 dark:text-white">{selectedTrackDisplay?.producer}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600 dark:text-gray-400">Label:</span>
-                        <span className="font-medium text-gray-900 dark:text-white">{selectedTrack.label}</span>
+                        <span className="font-medium text-gray-900 dark:text-white">{selectedTrackDisplay?.label}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600 dark:text-gray-400">ISRC:</span>
-                        <span className="font-medium text-gray-900 dark:text-white">{selectedTrack.isrc}</span>
+                        <span className="font-medium text-gray-900 dark:text-white">{selectedTrackDisplay?.isrc}</span>
                       </div>
                     </div>
                   </div>
@@ -975,7 +1160,7 @@ const CatalogManagement: React.FC = () => {
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Tags</h3>
                     <div className="flex flex-wrap gap-2">
-                      {selectedTrack.tags.map((tag: string, index: number) => (
+                      {selectedTags.map((tag: string, index: number) => (
                         <span key={index} className="px-2 py-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 rounded-full text-sm">
                           {tag}
                         </span>
@@ -991,19 +1176,23 @@ const CatalogManagement: React.FC = () => {
                     <div className="space-y-3">
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-gray-600 dark:text-gray-400">Total Streams</span>
-                        <span className="font-semibold text-gray-900 dark:text-white">{formatNumber(selectedTrack.streams)}</span>
+                        <span className="font-semibold text-gray-900 dark:text-white">{formatNumber(selectedTrackDisplay?.streams)}</span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-gray-600 dark:text-gray-400">Downloads</span>
-                        <span className="font-semibold text-gray-900 dark:text-white">{formatNumber(selectedTrack.downloads)}</span>
+                        <span className="font-semibold text-gray-900 dark:text-white">{formatNumber(selectedTrackDisplay?.downloads)}</span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-gray-600 dark:text-gray-400">Revenue</span>
-                        <span className="font-semibold text-green-600 dark:text-green-400">{formatCurrency(selectedTrack.revenue)}</span>
+                        <span className="font-semibold text-green-600 dark:text-green-400">{formatCurrency(selectedTrackDisplay?.revenue)}</span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-gray-600 dark:text-gray-400">Peak Position</span>
-                        <span className="font-semibold text-gray-900 dark:text-white">#{selectedTrack.performance.peakPosition}</span>
+                        <span className="font-semibold text-gray-900 dark:text-white">#{selectedPeakPosition}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-600 dark:text-gray-400">Chart Trend</span>
+                        <span className="font-semibold text-gray-900 dark:text-white">{selectedChartPerformance}</span>
                       </div>
                     </div>
                   </div>
@@ -1011,7 +1200,7 @@ const CatalogManagement: React.FC = () => {
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Platforms</h3>
                     <div className="flex flex-wrap gap-2">
-                      {selectedTrack.platforms.map((platform: string, index: number) => (
+                      {selectedPlatforms.map((platform: string, index: number) => (
                         <span key={index} className="px-2 py-1 bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 rounded-full text-xs">
                           {platform}
                         </span>
@@ -1022,22 +1211,25 @@ const CatalogManagement: React.FC = () => {
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Top Countries</h3>
                     <div className="space-y-2">
-                      {selectedTrack.performance.topCountries.slice(0, 4).map((country: string, index: number) => (
+                      {selectedTopCountries.slice(0, 4).map((country: string, index: number) => {
+                        const widthPercent = Math.max(10, 100 - index * 20);
+                        return (
                         <div key={index} className="flex items-center justify-between">
                           <span className="text-sm text-gray-600 dark:text-gray-400">{country}</span>
                           <div className="flex items-center space-x-2">
                             <div className="w-16 bg-gray-200 dark:bg-slate-700 rounded-full h-2">
                               <div
                                 className="bg-indigo-600 h-2 rounded-full"
-                                style={{ width: `${Math.random() * 100}%` }}
+                                style={{ width: `${widthPercent}%` }}
                               ></div>
                             </div>
-                            <span className="text-xs text-gray-500 dark:text-gray-400 w-8">
-                              {Math.floor(Math.random() * 30) + 10}%
+                            <span className="text-xs text-gray-500 dark:text-gray-400 w-8 text-right">
+                              #{index + 1}
                             </span>
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
 
@@ -1059,7 +1251,7 @@ const CatalogManagement: React.FC = () => {
       )}
 
       {/* Empty State */}
-      {filteredTracks.length === 0 && (
+      {!isLoading && filteredTracks.length === 0 && (
         <div className="text-center py-12">
           <Music className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No tracks found</h3>

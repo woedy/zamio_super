@@ -470,6 +470,16 @@ class Track(models.Model):
     lyrics = models.TextField(blank=True, null=True)
     explicit = models.BooleanField(default=False)
 
+    bpm = models.PositiveIntegerField(null=True, blank=True)
+    musical_key = models.CharField(max_length=50, null=True, blank=True)
+    mood = models.CharField(max_length=100, null=True, blank=True)
+    language = models.CharField(max_length=50, null=True, blank=True)
+    is_featured = models.BooleanField(default=False)
+    distribution_platforms = models.JSONField(default=list, blank=True)
+    tags = models.JSONField(default=list, blank=True)
+    collaborators = models.JSONField(default=list, blank=True)
+    catalog_notes = models.TextField(null=True, blank=True)
+
     publisher = models.ForeignKey('publishers.PublisherProfile', on_delete=models.SET_NULL, null=True, related_name='track_publishers')
 
     # Enhanced security and processing fields
