@@ -8,6 +8,15 @@ from music_monitor.models import PlayLog, AudioDetection, RoyaltyDistribution
 from .services import analytics_aggregator
 
 
+def _safe_group_send(channel_layer, group_name, payload):
+    if not channel_layer:
+        return
+    try:
+        async_to_sync(channel_layer.group_send)(group_name, payload)
+    except Exception:
+        pass
+
+
 @receiver(post_save, sender=PlayLog)
 def handle_playlog_created(sender, instance, created, **kwargs):
     """Handle new play log creation for real-time updates"""
@@ -31,7 +40,8 @@ def handle_playlog_created(sender, instance, created, **kwargs):
         
         # Update artist analytics
         if instance.track and instance.track.artist:
-            async_to_sync(channel_layer.group_send)(
+            _safe_group_send(
+                channel_layer,
                 f"analytics_artist_{instance.track.artist.artist_id}",
                 {
                     'type': 'analytics_update',
@@ -46,7 +56,8 @@ def handle_playlog_created(sender, instance, created, **kwargs):
         
         # Update station analytics
         if instance.station:
-            async_to_sync(channel_layer.group_send)(
+            _safe_group_send(
+                channel_layer,
                 f"analytics_station_{instance.station.station_id}",
                 {
                     'type': 'analytics_update',
@@ -74,7 +85,8 @@ def handle_detection_created(sender, instance, created, **kwargs):
         channel_layer = get_channel_layer()
         
         if instance.station:
-            async_to_sync(channel_layer.group_send)(
+            _safe_group_send(
+                channel_layer,
                 f"analytics_station_{instance.station.station_id}",
                 {
                     'type': 'analytics_update',
@@ -110,8 +122,9 @@ def handle_royalty_distribution_created(sender, instance, created, **kwargs):
         
         # Send WebSocket update
         channel_layer = get_channel_layer()
-        
-        async_to_sync(channel_layer.group_send)(
+
+        _safe_group_send(
+            channel_layer,
             f"analytics_user_{instance.recipient.id}",
             {
                 'type': 'analytics_update',
@@ -133,7 +146,8 @@ def handle_detection_status_update(sender, instance, created, **kwargs):
         channel_layer = get_channel_layer()
         
         if instance.station:
-            async_to_sync(channel_layer.group_send)(
+            _safe_group_send(
+                channel_layer,
                 f"analytics_station_{instance.station.station_id}",
                 {
                     'type': 'analytics_update',

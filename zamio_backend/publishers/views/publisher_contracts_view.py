@@ -12,12 +12,13 @@ from core.utils import get_duration
 from music_monitor.models import PlayLog, StreamLog
 from publishers.models import PublisherProfile
 from artists.models import Artist, Track
+from accounts.api.custom_jwt import CustomJWTAuthentication
 
 User = get_user_model()
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def get_all_artist_contracts_view(request):
     payload = {}
     data = {}
@@ -77,7 +78,7 @@ def get_all_artist_contracts_view(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def get_contract_detail_view(request):
     payload = {}
     data = {}
@@ -108,7 +109,7 @@ def get_contract_detail_view(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def list_tracks_for_artist_view(request):
     payload, data, errors = {}, {}, {}
 
@@ -137,7 +138,7 @@ def list_tracks_for_artist_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def create_publishing_agreement_view(request):
     payload, data, errors = {}, {}, {}
 

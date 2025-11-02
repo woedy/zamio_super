@@ -133,6 +133,94 @@ export interface LinkedArtistSummary {
   [key: string]: unknown;
 }
 
+export interface PublisherProfileSummary {
+  publisherId?: string;
+  companyName?: string;
+  companyType?: string;
+  industry?: string;
+  foundedYear?: number | string | null;
+  employeeCount?: number | string | null;
+  country?: string;
+  region?: string;
+  city?: string;
+  address?: string;
+  postalCode?: string;
+  businessRegistration?: string;
+  taxId?: string;
+  licenseNumber?: string;
+  primaryContact?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  website?: string;
+  complianceOfficer?: string;
+  officerEmail?: string;
+  officerPhone?: string;
+  officerTitle?: string;
+  description?: string;
+  logoUrl?: string | null;
+  [key: string]: unknown;
+}
+
+export interface PublisherProfileRevenueSplit {
+  id: string;
+  name: string;
+  writerPercentage: number;
+  publisherPercentage: number;
+  territory: string;
+  type: string;
+  isActive: boolean;
+}
+
+export interface PublisherProfilePaymentMethod {
+  id: string;
+  type: 'bank' | 'mobile_money' | 'paypal' | 'stripe';
+  accountName: string;
+  accountNumber: string | null;
+  bankName?: string;
+  routingNumber?: string;
+  mobileProvider?: string;
+  isDefault: boolean;
+  isVerified: boolean;
+}
+
+export interface PublisherProfileLinkedArtist {
+  id: string;
+  name: string;
+  status: string;
+  contractType: string;
+  linkedDate: string | null;
+  catalogSize: number;
+  lastRoyalty: number;
+}
+
+export interface PublisherProfileAccountSettings {
+  emailNotifications: boolean;
+  royaltyAlerts: boolean;
+  weeklyReports: boolean;
+  twoFactorAuth: boolean;
+  language: string;
+  timezone: string;
+  currency: string;
+}
+
+export interface PublisherProfilePayload {
+  publisher?: PublisherProfileSummary;
+  revenueSplits?: PublisherProfileRevenueSplit[];
+  paymentMethods?: PublisherProfilePaymentMethod[];
+  linkedArtists?: PublisherProfileLinkedArtist[];
+  accountSettings?: PublisherProfileAccountSettings;
+}
+
+export interface PublisherAccountSettingsPayload {
+  email_notifications?: boolean;
+  royalty_alerts?: boolean;
+  weekly_reports?: boolean;
+  two_factor_auth?: boolean;
+  language?: string;
+  timezone?: string;
+  currency?: string;
+}
+
 export interface PublisherOnboardingStatus {
   publisher_id?: string;
   onboarding_step?: string;
@@ -812,6 +900,32 @@ export const verifyPublisherEmailCode = async <T = Record<string, unknown>>(
   payload: VerifyPublisherEmailCodePayload,
 ) => {
   const { data } = await authApi.post<ApiEnvelope<T>>('/api/accounts/verify-publisher-email-code/', payload);
+  return data;
+};
+
+export const fetchPublisherProfile = async (publisherId: string) => {
+  const { data } = await authApi.get<ApiEnvelope<PublisherProfilePayload>>(
+    '/api/publishers/profile/',
+    {
+      params: {
+        publisher_id: publisherId,
+      },
+    },
+  );
+  return data;
+};
+
+export const updatePublisherAccountSettings = async (
+  publisherId: string,
+  payload: PublisherAccountSettingsPayload,
+) => {
+  const { data } = await authApi.post<ApiEnvelope<{ accountSettings?: PublisherProfileAccountSettings }>>(
+    '/api/publishers/account-settings/',
+    {
+      publisher_id: publisherId,
+      ...payload,
+    },
+  );
   return data;
 };
 

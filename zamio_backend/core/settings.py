@@ -96,6 +96,7 @@ INSTALLED_APPS = [
     "streamer",
     "fan",
     #"storages",
+    "analytics",
     "notifications",
     "publishers",
     "royalties",

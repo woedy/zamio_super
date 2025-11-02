@@ -33,6 +33,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.response import Response
 from rest_framework import status
+from accounts.api.custom_jwt import CustomJWTAuthentication
 
 
 
@@ -42,7 +43,7 @@ User = get_user_model()
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def get_publisher_homedata(request):
     payload, data, errors = {}, {}, {}
     publisher_id = request.query_params.get('publisher_id')
