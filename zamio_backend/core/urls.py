@@ -49,6 +49,7 @@ urlpatterns = [
     path("api/stations/", include("stations.urls")),
     path("api/royalties/", include("royalties.urls")),
     path("api/disputes/", include("disputes.urls")),
+    path("api/analytics/", include("analytics.urls")),
     #path("api/streamer/", include("streamer.urls")),
 
 

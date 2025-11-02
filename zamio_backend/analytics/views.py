@@ -152,9 +152,11 @@ def admin_analytics(request):
     """Get platform-wide analytics for administrators"""
     try:
         # Check if user is admin
-        if not (request.user.is_staff or request.user.is_superuser):
+        user_is_staff = getattr(request.user, 'is_staff', False)
+        user_is_admin = getattr(request.user, 'is_admin', False)
+        if not (user_is_staff or user_is_admin):
             return Response(
-                {'error': 'Admin access required'}, 
+                {'error': 'Admin access required'},
                 status=status.HTTP_403_FORBIDDEN
             )
         

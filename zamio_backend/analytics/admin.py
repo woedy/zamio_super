@@ -267,5 +267,10 @@ class AnalyticsOverviewAdmin(admin.ModelAdmin):
         return super().changelist_view(request, extra_context)
 
 
-# Register the overview admin
-admin.site.register_view('analytics/overview/', view=AnalyticsOverviewAdmin.changelist_view, name='Analytics Overview')
+# Register the overview admin if supported by current Django version
+if hasattr(admin.site, 'register_view'):
+    admin.site.register_view(
+        'analytics/overview/',
+        view=AnalyticsOverviewAdmin.changelist_view,
+        name='Analytics Overview',
+    )

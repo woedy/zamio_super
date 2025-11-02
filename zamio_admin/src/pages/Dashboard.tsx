@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Users,
   Radio,
@@ -50,135 +50,38 @@ import {
   Analytics,
   System
 } from '../components/dashboard';
-
-// Recharts imports for interactive charts
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
+import { fetchAdminDashboard, type AdminDashboardResponse } from '../lib/api';
 
 // Import the UI components
 import { Card } from '@zamio/ui';
 
 const ZamioAdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('overview');
+  const [dashboardData, setDashboardData] = useState<AdminDashboardResponse | null>(null);
+  const [loadingDashboard, setLoadingDashboard] = useState(true);
+  const [dashboardError, setDashboardError] = useState<string | null>(null);
 
-  // Admin-specific data structure
-  const [platformStats, setPlatformStats] = useState({
-    totalStations: 127,
-    totalArtists: 8943,
-    totalSongs: 45234,
-    totalPlays: 2847293,
-    totalRoyalties: 1247893.45,
-    pendingPayments: 89234.12,
-    activeDistributors: 34,
-    monthlyGrowth: 18.5,
-    systemHealth: 98.7,
-    pendingDisputes: 12,
-  });
+  const loadDashboard = useCallback(async () => {
+    setLoadingDashboard(true);
+    setDashboardError(null);
 
-  const [recentActivity, setRecentActivity] = useState([
-    {
-      id: 1,
-      type: 'payment',
-      description: 'Royalty payment processed for Sarkodie',
-      amount: 2847.5,
-      time: '2 mins ago',
-      status: 'completed',
-    },
-    {
-      id: 2,
-      type: 'registration',
-      description: 'New artist registered: Amaarae',
-      time: '15 mins ago',
-      status: 'pending',
-    },
-    {
-      id: 3,
-      type: 'dispute',
-      description: 'Copyright dispute filed for "Kpoo Keke"',
-      time: '1 hour ago',
-      status: 'urgent',
-    },
-    {
-      id: 4,
-      type: 'station',
-      description: 'Peace FM updated playlist',
-      time: '2 hours ago',
-      status: 'completed',
-    },
-    {
-      id: 5,
-      type: 'distribution',
-      description: 'New release distributed: "Enjoyment"',
-      time: '3 hours ago',
-      status: 'completed',
-    },
-  ]);
+    try {
+      const data = await fetchAdminDashboard();
+      setDashboardData(data);
+    } catch (err: unknown) {
+      const apiMessage =
+        (typeof err === 'object' && err !== null && 'response' in err &&
+          (err as { response?: { data?: { error?: string; detail?: string } } }).response?.data?.error) ||
+        (err instanceof Error ? err.message : null);
+      setDashboardError(apiMessage || 'Unable to load admin analytics. Please try again.');
+    } finally {
+      setLoadingDashboard(false);
+    }
+  }, []);
 
-  const [topEarners, setTopEarners] = useState([
-    { name: 'Sarkodie', totalEarnings: 45234.8, plays: 234567, growth: 12.5 },
-    { name: 'Shatta Wale', totalEarnings: 38945.2, plays: 198432, growth: 8.3 },
-    { name: 'Kuami Eugene', totalEarnings: 29876.4, plays: 167890, growth: 15.2 },
-    { name: 'Stonebwoy', totalEarnings: 27543.1, plays: 156234, growth: 6.7 },
-    { name: 'King Promise', totalEarnings: 23456.9, plays: 143567, growth: 9.8 },
-  ]);
-
-  const [revenueData, setRevenueData] = useState([
-    { month: 'Jan', revenue: 45000, artists: 320, stations: 15 },
-    { month: 'Feb', revenue: 52000, artists: 380, stations: 18 },
-    { month: 'Mar', revenue: 61000, artists: 445, stations: 22 },
-    { month: 'Apr', revenue: 58000, artists: 510, stations: 25 },
-    { month: 'May', revenue: 72000, artists: 580, stations: 28 },
-    { month: 'Jun', revenue: 85000, artists: 650, stations: 32 },
-    { month: 'Jul', revenue: 95000, artists: 720, stations: 35 },
-  ]);
-
-  const [genreData, setGenreData] = useState([
-    { name: 'Afrobeats', value: 35, color: '#8B5CF6' },
-    { name: 'Hiplife', value: 28, color: '#EC4899' },
-    { name: 'Gospel', value: 18, color: '#10B981' },
-    { name: 'Highlife', value: 12, color: '#F59E0B' },
-    { name: 'Drill', value: 7, color: '#EF4444' },
-  ]);
-
-  const [publisherStats] = useState({
-    totalPublishers: 245,
-    activeAgreements: 132,
-    pendingPublisherPayments: 23045.5,
-    internationalPartners: 18,
-    catalogsUnderReview: 27,
-    agreementsExpiring: 9,
-    payoutVelocity: 4.3,
-  });
-
-  const [publisherPerformance] = useState([
-    {
-      name: 'Universal Music Publishing Ghana',
-      territory: 'West Africa',
-      totalRoyalties: 183204.54,
-      activeAgreements: 12,
-      status: 'Active',
-    },
-    {
-      name: 'Eazymusic Collective',
-      territory: 'Accra & Kumasi',
-      totalRoyalties: 98234.21,
-      activeAgreements: 8,
-      status: 'Renewing',
-    },
-    {
-      name: 'Pan-African Rights Guild',
-      territory: 'Pan-Africa',
-      totalRoyalties: 124578.93,
-      activeAgreements: 10,
-      status: 'Active',
-    },
-    {
-      name: 'Atlantic PRO Exchange',
-      territory: 'US & EU',
-      totalRoyalties: 75683.44,
-      activeAgreements: 6,
-      status: 'Watchlist',
-    },
-  ]);
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -312,7 +215,15 @@ const ZamioAdminDashboard = () => {
         </div>
 
         {/* Tab Content */}
-        {activeTab === 'overview' && <Overview />}
+        {activeTab === 'overview' && (
+          <Overview
+            platformStats={dashboardData?.platformStats}
+            publisherStats={dashboardData?.publisherStats}
+            recentActivity={dashboardData?.recentActivity}
+            loading={loadingDashboard}
+            error={dashboardError}
+          />
+        )}
         {activeTab === 'stations' && <Stations />}
         {activeTab === 'qa' && <AttributionQA />}
         {activeTab === 'repertoire' && <Repertoire />}

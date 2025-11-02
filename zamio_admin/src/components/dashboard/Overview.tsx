@@ -15,34 +15,53 @@ import {
   Shield
 } from 'lucide-react';
 
-export const Overview = () => {
-  // Mock data for demonstration
-  const platformStats = {
-    totalStations: 127,
-    totalArtists: 85420,
-    totalRoyalties: 2847500,
-    pendingPayments: 145200,
-    monthlyGrowth: 12,
-    pendingDisputes: 8,
-    systemHealth: 98
-  };
+import type {
+  AdminPlatformStats,
+  AdminPublisherStats,
+  AdminRecentActivity
+} from '../../lib/api';
 
-  const publisherStats = {
-    totalPublishers: 23,
-    activeAgreements: 18,
-    internationalPartners: 5,
-    agreementsExpiring: 2,
-    catalogsUnderReview: 3,
-    pendingPublisherPayments: 87500,
-    payoutVelocity: 7
-  };
+interface OverviewProps {
+  platformStats?: AdminPlatformStats;
+  publisherStats?: AdminPublisherStats;
+  recentActivity?: AdminRecentActivity[];
+  loading?: boolean;
+  error?: string | null;
+}
 
-  const recentActivity = [
-    { id: 1, description: 'New station registered', time: '2 minutes ago', status: 'success', type: 'station' },
-    { id: 2, description: 'Payment processed', time: '15 minutes ago', amount: 12500, status: 'completed', type: 'payment' },
-    { id: 3, description: 'Dispute resolved', time: '1 hour ago', status: 'resolved', type: 'dispute' },
-    { id: 4, description: 'New artist onboarded', time: '2 hours ago', status: 'success', type: 'artist' }
-  ];
+const fallbackPlatformStats: AdminPlatformStats = {
+  totalStations: 0,
+  totalArtists: 0,
+  totalSongs: 0,
+  totalPlays: 0,
+  totalRoyalties: 0,
+  pendingPayments: 0,
+  activeDistributors: 0,
+  monthlyGrowth: 0,
+  systemHealth: 0,
+  pendingDisputes: 0,
+};
+
+const fallbackPublisherStats: AdminPublisherStats = {
+  totalPublishers: 0,
+  activeAgreements: 0,
+  pendingPublisherPayments: 0,
+  internationalPartners: 0,
+  catalogsUnderReview: 0,
+  agreementsExpiring: 0,
+  payoutVelocity: 0,
+};
+
+export const Overview = ({
+  platformStats,
+  publisherStats,
+  recentActivity,
+  loading = false,
+  error,
+}: OverviewProps) => {
+  const resolvedPlatformStats = platformStats ?? fallbackPlatformStats;
+  const resolvedPublisherStats = publisherStats ?? fallbackPublisherStats;
+  const activityItems = recentActivity?.length ? recentActivity.slice(0, 5) : [];
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -111,7 +130,7 @@ export const Overview = () => {
               <div>
                 <p className="text-sm font-normal text-gray-700 dark:text-slate-300 leading-relaxed">Active Stations</p>
                 <p className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-slate-100 leading-tight group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors duration-300">
-                  {platformStats.totalStations}
+                  {resolvedPlatformStats.totalStations}
                 </p>
               </div>
               <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-cyan-100 dark:from-blue-900/60 dark:to-cyan-900/60 rounded-lg flex items-center justify-center backdrop-blur-sm group-hover:scale-110 transition-transform duration-300">
@@ -133,7 +152,7 @@ export const Overview = () => {
               <div>
                 <p className="text-sm font-normal text-gray-700 dark:text-slate-300 leading-relaxed">Registered Artists</p>
                 <p className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-slate-100 leading-tight group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors duration-300">
-                  {platformStats.totalArtists.toLocaleString()}
+                  {resolvedPlatformStats.totalArtists.toLocaleString()}
                 </p>
               </div>
               <div className="w-12 h-12 bg-gradient-to-br from-emerald-100 to-green-100 dark:from-emerald-900/60 dark:to-green-900/60 rounded-lg flex items-center justify-center backdrop-blur-sm group-hover:scale-110 transition-transform duration-300">
@@ -144,7 +163,7 @@ export const Overview = () => {
               <div className="flex items-center mr-2">
                 <TrendingUp className="w-4 h-4 text-green-500" />
               </div>
-              <span className="text-green-600 dark:text-green-400">+{platformStats.monthlyGrowth}%</span>
+              <span className="text-green-600 dark:text-green-400">+{resolvedPlatformStats.monthlyGrowth}%</span>
               <span className="text-gray-500 dark:text-gray-400 ml-2">growth</span>
             </div>
           </Card>
@@ -155,7 +174,7 @@ export const Overview = () => {
               <div>
                 <p className="text-sm font-normal text-gray-700 dark:text-slate-300 leading-relaxed">Total Royalties</p>
                 <p className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-slate-100 leading-tight group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors duration-300">
-                  ₵{platformStats.totalRoyalties.toLocaleString()}
+                  ₵{resolvedPlatformStats.totalRoyalties.toLocaleString()}
                 </p>
               </div>
               <div className="w-12 h-12 bg-gradient-to-br from-purple-100 to-indigo-100 dark:from-purple-900/60 dark:to-indigo-900/60 rounded-lg flex items-center justify-center backdrop-blur-sm group-hover:scale-110 transition-transform duration-300">
@@ -177,7 +196,7 @@ export const Overview = () => {
               <div>
                 <p className="text-sm font-normal text-gray-700 dark:text-slate-300 leading-relaxed">Pending Payments</p>
                 <p className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-slate-100 leading-tight group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors duration-300">
-                  ₵{platformStats.pendingPayments.toLocaleString()}
+                  ₵{resolvedPlatformStats.pendingPayments.toLocaleString()}
                 </p>
               </div>
               <div className="w-12 h-12 bg-gradient-to-br from-amber-100 to-orange-100 dark:from-amber-900/60 dark:to-orange-900/60 rounded-lg flex items-center justify-center backdrop-blur-sm group-hover:scale-110 transition-transform duration-300">
@@ -186,8 +205,8 @@ export const Overview = () => {
             </div>
             <div className="mt-4 flex items-center justify-between text-sm">
               <span className="text-gray-500 dark:text-gray-400">Requires attention</span>
-              <div className={`px-2 py-1 rounded-full text-xs font-medium ${platformStats.pendingDisputes > 10 ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800' : 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-800'}`}>
-                {platformStats.pendingDisputes > 10 ? 'Urgent' : 'Normal'}
+              <div className={`px-2 py-1 rounded-full text-xs font-medium ${resolvedPlatformStats.pendingDisputes > 10 ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800' : 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-800'}`}>
+                {resolvedPlatformStats.pendingDisputes > 10 ? 'Urgent' : 'Normal'}
               </div>
             </div>
           </Card>
@@ -221,28 +240,28 @@ export const Overview = () => {
           <div className="grid grid-cols-2 gap-6">
             <div className="text-center p-6 bg-gradient-to-br from-indigo-50/60 to-purple-50/40 dark:from-slate-800/40 dark:to-slate-700/30 rounded-xl border border-indigo-200/40 dark:border-slate-600/30">
               <div className="text-3xl font-bold text-indigo-600 dark:text-indigo-400 mb-2">
-                {publisherStats.totalPublishers}
+                {resolvedPublisherStats.totalPublishers}
               </div>
               <div className="text-sm text-gray-600 dark:text-gray-300 font-medium">Total Publishers</div>
             </div>
 
             <div className="text-center p-6 bg-gradient-to-br from-blue-50/60 to-sky-50/40 dark:from-slate-800/40 dark:to-slate-700/30 rounded-xl border border-blue-200/40 dark:border-slate-600/30">
               <div className="text-3xl font-bold text-blue-600 dark:text-blue-400 mb-2">
-                {publisherStats.activeAgreements}
+                {resolvedPublisherStats.activeAgreements}
               </div>
               <div className="text-sm text-gray-600 dark:text-gray-300 font-medium">Active Agreements</div>
             </div>
 
             <div className="text-center p-6 bg-gradient-to-br from-emerald-50/60 to-teal-50/40 dark:from-slate-800/40 dark:to-slate-700/30 rounded-xl border border-emerald-200/40 dark:border-slate-600/30">
               <div className="text-3xl font-bold text-emerald-600 dark:text-emerald-400 mb-2">
-                {publisherStats.internationalPartners}
+                {resolvedPublisherStats.internationalPartners}
               </div>
               <div className="text-sm text-gray-600 dark:text-gray-300 font-medium">International PROs</div>
             </div>
 
             <div className="text-center p-6 bg-gradient-to-br from-amber-50/60 to-orange-50/40 dark:from-slate-800/40 dark:to-slate-700/30 rounded-xl border border-amber-200/40 dark:border-slate-600/30">
               <div className="text-3xl font-bold text-amber-600 dark:text-amber-400 mb-2">
-                {publisherStats.agreementsExpiring}
+                {resolvedPublisherStats.agreementsExpiring}
               </div>
               <div className="text-sm text-gray-600 dark:text-gray-300 font-medium">Agreements Expiring</div>
             </div>
@@ -273,7 +292,7 @@ export const Overview = () => {
                 <span className="text-gray-700 dark:text-gray-300 font-semibold">API Performance</span>
               </div>
               <div className="flex items-center space-x-3">
-                <span className="text-emerald-600 dark:text-emerald-400 font-bold text-lg">{platformStats.systemHealth}%</span>
+                <span className="text-emerald-600 dark:text-emerald-400 font-bold text-lg">{resolvedPlatformStats.systemHealth}%</span>
                 <div className="w-20 h-3 bg-gray-200 dark:bg-slate-600 rounded-full overflow-hidden">
                   <div className="w-full h-full bg-gradient-to-r from-emerald-500 to-green-500 rounded-full transition-all duration-500"></div>
                 </div>
@@ -337,7 +356,22 @@ export const Overview = () => {
             </div>
           </div>
           <div className="space-y-4">
-            {recentActivity.slice(0, 5).map((activity) => {
+            {loading && (
+              <div className="text-sm text-gray-500 dark:text-gray-400 font-medium">
+                Loading dashboard activity...
+              </div>
+            )}
+            {!loading && error && (
+              <div className="text-sm text-red-500 dark:text-red-400 font-medium">
+                {error}
+              </div>
+            )}
+            {!loading && !error && activityItems.length === 0 && (
+              <div className="text-sm text-gray-500 dark:text-gray-400 font-medium">
+                No recent activity yet.
+              </div>
+            )}
+            {activityItems.map((activity) => {
               const statusColors = getStatusColor(activity.status);
               return (
                 <div
@@ -356,7 +390,7 @@ export const Overview = () => {
                     </div>
                   </div>
                   <div className="text-right">
-                    {activity.amount && (
+                    {typeof activity.amount === 'number' && !Number.isNaN(activity.amount) && (
                       <div className="text-green-600 dark:text-green-400 font-bold text-lg mb-1">
                         ₵{activity.amount.toLocaleString()}
                       </div>

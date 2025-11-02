@@ -116,3 +116,83 @@ export const completeAdminProfile = async (payload: CompleteAdminProfilePayload)
   );
   return data;
 };
+
+export interface AdminPlatformStats {
+  totalStations: number;
+  totalArtists: number;
+  totalSongs: number;
+  totalPlays: number;
+  totalRoyalties: number;
+  pendingPayments: number;
+  activeDistributors: number;
+  monthlyGrowth: number;
+  systemHealth: number;
+  pendingDisputes: number;
+  [key: string]: number;
+}
+
+export interface AdminPublisherStats {
+  totalPublishers: number;
+  activeAgreements: number;
+  pendingPublisherPayments: number;
+  internationalPartners: number;
+  catalogsUnderReview: number;
+  agreementsExpiring: number;
+  payoutVelocity: number;
+  [key: string]: number;
+}
+
+export interface AdminRecentActivity {
+  id: string;
+  type: string;
+  description: string;
+  status: string;
+  time: string;
+  amount?: number;
+  timestamp?: string;
+  [key: string]: unknown;
+}
+
+export interface AdminTopEarner {
+  name: string;
+  totalEarnings: number;
+  plays: number;
+  growth: number;
+}
+
+export interface AdminRevenueTrendPoint {
+  month: string;
+  revenue: number;
+  artists: number;
+  stations: number;
+}
+
+export interface AdminGenreDistributionPoint {
+  name: string;
+  value: number;
+  color: string;
+}
+
+export interface AdminPublisherPerformanceRow {
+  name: string;
+  territory: string;
+  totalRoyalties: number;
+  activeAgreements: number;
+  status: string;
+}
+
+export interface AdminDashboardResponse {
+  platformStats: AdminPlatformStats;
+  publisherStats: AdminPublisherStats;
+  recentActivity: AdminRecentActivity[];
+  topEarners: AdminTopEarner[];
+  revenueTrends: AdminRevenueTrendPoint[];
+  genreDistribution: AdminGenreDistributionPoint[];
+  publisherPerformance: AdminPublisherPerformanceRow[];
+  [key: string]: unknown;
+}
+
+export const fetchAdminDashboard = async () => {
+  const { data } = await authApi.get<AdminDashboardResponse>('/api/analytics/admin/');
+  return data;
+};
