@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import axios from 'axios';
 import {
   User,
   Building2,
@@ -26,6 +27,17 @@ import {
   Download,
   RefreshCw
 } from 'lucide-react';
+import { useAuth } from '../lib/auth';
+import {
+  completePublisherProfile,
+  fetchPublisherProfile,
+  updatePublisherAccountSettings,
+  type PublisherProfilePayload,
+  type PublisherProfileRevenueSplit,
+  type PublisherProfilePaymentMethod,
+  type PublisherProfileLinkedArtist,
+  type PublisherProfileAccountSettings,
+} from '../lib/api';
 
 interface PublisherProfile {
   // Company Information
@@ -66,167 +78,235 @@ interface PublisherProfile {
   logoUrl: string;
 }
 
-interface RevenueSplit {
-  id: string;
-  name: string;
-  writerPercentage: number;
-  publisherPercentage: number;
-  territory: string;
-  type: 'performance' | 'mechanical' | 'sync';
-  isActive: boolean;
+interface AccountSettingsState {
+  emailNotifications: boolean;
+  royaltyAlerts: boolean;
+  weeklyReports: boolean;
+  twoFactorAuth: boolean;
+  language: string;
+  timezone: string;
+  currency: string;
 }
 
-interface PaymentMethod {
-  id: string;
-  type: 'bank' | 'mobile_money' | 'paypal' | 'stripe';
-  accountName: string;
-  accountNumber: string;
-  bankName?: string;
-  routingNumber?: string;
-  mobileProvider?: string;
-  isDefault: boolean;
-  isVerified: boolean;
-}
-
-interface Artist {
-  id: string;
-  name: string;
-  status: 'active' | 'inactive' | 'pending';
-  contractType: string;
-  linkedDate: string;
-  catalogSize: number;
-  lastRoyalty: number;
-}
+type RevenueSplit = PublisherProfileRevenueSplit;
+type PaymentMethod = PublisherProfilePaymentMethod;
+type Artist = PublisherProfileLinkedArtist;
 
 const ProfileSettings: React.FC = () => {
+  const { user, isInitialized } = useAuth();
+  const publisherId = useMemo(() => {
+    if (!user || typeof user !== 'object') {
+      return '';
+    }
+    const record = user as Record<string, unknown>;
+    const value = record['publisher_id'] ?? record['publisherId'];
+    return typeof value === 'string' ? value : '';
+  }, [user]);
+
   const [activeTab, setActiveTab] = useState('overview');
   const [isEditing, setIsEditing] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
 
-  // Mock data - in real app, this would come from API
-  const [profile, setProfile] = useState<PublisherProfile>({
-    companyName: 'Harmony Music Publishing Ltd.',
-    companyType: 'Music Publishing Company',
-    industry: 'Music Publishing',
-    foundedYear: '2018',
-    employeeCount: '15-25',
-
-    country: 'Ghana',
-    region: 'Greater Accra',
-    city: 'Accra',
-    address: '123 Oxford Street, Osu',
-    postalCode: 'GA-123-4567',
-
-    businessRegistration: 'BN123456789',
-    taxId: 'TIN987654321',
-    licenseNumber: 'GHAMRO-2023-001',
-
-    primaryContact: 'Kwame Asante',
-    contactEmail: 'kwame@harmonymusic.com',
-    contactPhone: '+233 24 123 4567',
-    website: 'www.harmonymusic.com',
-
-    complianceOfficer: 'Ama Serwaa',
-    officerEmail: 'ama.serwaa@harmonymusic.com',
-    officerPhone: '+233 24 987 6543',
-    officerTitle: 'Head of Compliance',
-
-    description: 'Leading music publishing company in Ghana specializing in African music rights management and international licensing.',
-
-    logoUrl: ''
-  });
-
-  const [revenueSplits] = useState<RevenueSplit[]>([
-    {
-      id: '1',
-      name: 'Ghana Performance Rights',
-      writerPercentage: 60,
-      publisherPercentage: 40,
-      territory: 'Ghana',
-      type: 'performance',
-      isActive: true
-    },
-    {
-      id: '2',
-      name: 'International Mechanical',
-      writerPercentage: 75,
-      publisherPercentage: 25,
-      territory: 'International',
-      type: 'mechanical',
-      isActive: true
-    },
-    {
-      id: '3',
-      name: 'West Africa Sync',
-      writerPercentage: 70,
-      publisherPercentage: 30,
-      territory: 'West Africa',
-      type: 'sync',
-      isActive: false
-    }
-  ]);
-
-  const [paymentMethods] = useState<PaymentMethod[]>([
-    {
-      id: '1',
-      type: 'bank',
-      accountName: 'Harmony Music Publishing Ltd.',
-      accountNumber: '****4567',
-      bankName: 'Ghana Commercial Bank',
-      routingNumber: 'GCB001',
-      isDefault: true,
-      isVerified: true
-    },
-    {
-      id: '2',
-      type: 'mobile_money',
-      accountName: 'Kwame Asante',
-      accountNumber: '****8901',
-      mobileProvider: 'MTN Mobile Money',
-      isDefault: false,
-      isVerified: true
-    }
-  ]);
-
-  const [linkedArtists] = useState<Artist[]>([
-    {
-      id: '1',
-      name: 'Sarah Johnson',
-      status: 'active',
-      contractType: 'Full Publishing',
-      linkedDate: '2023-03-15',
-      catalogSize: 45,
-      lastRoyalty: 12500
-    },
-    {
-      id: '2',
-      name: 'Michael Ofori',
-      status: 'active',
-      contractType: 'Co-Publishing',
-      linkedDate: '2023-01-20',
-      catalogSize: 32,
-      lastRoyalty: 8750
-    },
-    {
-      id: '3',
-      name: 'Amara Kone',
-      status: 'pending',
-      contractType: 'Administration',
-      linkedDate: '2023-12-01',
-      catalogSize: 18,
-      lastRoyalty: 0
-    }
-  ]);
-
-  const [accountSettings, setAccountSettings] = useState({
+  const defaultAccountSettings = useMemo<AccountSettingsState>(() => ({
     emailNotifications: true,
     royaltyAlerts: true,
     weeklyReports: false,
     twoFactorAuth: false,
     language: 'en',
     timezone: 'Africa/Accra',
-    currency: 'GHS'
+    currency: 'GHS',
+  }), []);
+
+  const [profile, setProfile] = useState<PublisherProfile>({
+    companyName: '',
+    companyType: '',
+    industry: '',
+    foundedYear: '',
+    employeeCount: '',
+
+    country: '',
+    region: '',
+    city: '',
+    address: '',
+    postalCode: '',
+
+    businessRegistration: '',
+    taxId: '',
+    licenseNumber: '',
+
+    primaryContact: '',
+    contactEmail: '',
+    contactPhone: '',
+    website: '',
+
+    complianceOfficer: '',
+    officerEmail: '',
+    officerPhone: '',
+    officerTitle: '',
+
+    description: '',
+
+    logoUrl: ''
   });
+
+  const [revenueSplits, setRevenueSplits] = useState<RevenueSplit[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [linkedArtists, setLinkedArtists] = useState<Artist[]>([]);
+
+  const [accountSettings, setAccountSettings] = useState<AccountSettingsState>(defaultAccountSettings);
+
+  const resolveErrorMessage = useCallback((error: unknown): string => {
+    if (axios.isAxiosError(error)) {
+      const response = error.response?.data as {
+        message?: string;
+        detail?: string;
+        errors?: Record<string, unknown>;
+      } | undefined;
+
+      if (response?.message && typeof response.message === 'string') {
+        return response.message;
+      }
+
+      if (response?.detail && typeof response.detail === 'string') {
+        return response.detail;
+      }
+
+      if (response?.errors && typeof response.errors === 'object') {
+        const firstError = Object.values(response.errors)[0];
+        if (Array.isArray(firstError) && typeof firstError[0] === 'string') {
+          return firstError[0];
+        }
+      }
+
+      if (error.message) {
+        return error.message;
+      }
+    }
+
+    if (error instanceof Error && error.message) {
+      return error.message;
+    }
+
+    return 'Something went wrong. Please try again.';
+  }, []);
+
+  const applyProfilePayload = useCallback((payload: PublisherProfilePayload) => {
+    const summary = payload.publisher ?? {};
+    setProfile({
+      companyName: summary.companyName ?? '',
+      companyType: summary.companyType ?? '',
+      industry: summary.industry ?? '',
+      foundedYear: summary.foundedYear !== undefined && summary.foundedYear !== null
+        ? String(summary.foundedYear)
+        : '',
+      employeeCount: summary.employeeCount !== undefined && summary.employeeCount !== null
+        ? String(summary.employeeCount)
+        : '',
+      country: summary.country ?? '',
+      region: summary.region ?? '',
+      city: summary.city ?? '',
+      address: summary.address ?? '',
+      postalCode: summary.postalCode ?? '',
+      businessRegistration: summary.businessRegistration ?? '',
+      taxId: summary.taxId ?? '',
+      licenseNumber: summary.licenseNumber ?? '',
+      primaryContact: summary.primaryContact ?? '',
+      contactEmail: summary.contactEmail ?? '',
+      contactPhone: summary.contactPhone ?? '',
+      website: summary.website ?? '',
+      complianceOfficer: summary.complianceOfficer ?? '',
+      officerEmail: summary.officerEmail ?? '',
+      officerPhone: summary.officerPhone ?? '',
+      officerTitle: summary.officerTitle ?? '',
+      description: summary.description ?? '',
+      logoUrl: summary.logoUrl ?? '',
+    });
+
+    const normalizedSplits = (payload.revenueSplits ?? []).map((split) => {
+      const type = ['performance', 'mechanical', 'sync'].includes(split.type)
+        ? (split.type as RevenueSplit['type'])
+        : 'performance';
+      return {
+        ...split,
+        type,
+      };
+    });
+
+    setRevenueSplits(normalizedSplits);
+
+    const normalizedPayments = (payload.paymentMethods ?? []).map((method) => ({
+      ...method,
+      accountNumber: method.accountNumber ?? '',
+    }));
+    setPaymentMethods(normalizedPayments);
+
+    const normalizedArtists = (payload.linkedArtists ?? []).map((artist) => {
+      const parsedDate = artist.linkedDate ? new Date(artist.linkedDate) : null;
+      const formattedDate = parsedDate && !Number.isNaN(parsedDate.getTime())
+        ? parsedDate.toLocaleDateString()
+        : artist.linkedDate ?? 'N/A';
+      return {
+        ...artist,
+        linkedDate: formattedDate,
+      };
+    });
+    setLinkedArtists(normalizedArtists);
+
+    const settings = payload.accountSettings;
+    setAccountSettings({
+      emailNotifications: settings?.emailNotifications ?? defaultAccountSettings.emailNotifications,
+      royaltyAlerts: settings?.royaltyAlerts ?? defaultAccountSettings.royaltyAlerts,
+      weeklyReports: settings?.weeklyReports ?? defaultAccountSettings.weeklyReports,
+      twoFactorAuth: settings?.twoFactorAuth ?? defaultAccountSettings.twoFactorAuth,
+      language: settings?.language ?? defaultAccountSettings.language,
+      timezone: settings?.timezone ?? defaultAccountSettings.timezone,
+      currency: settings?.currency ?? defaultAccountSettings.currency,
+    });
+  }, [defaultAccountSettings]);
+
+  const loadProfile = useCallback(async () => {
+    if (!publisherId) {
+      setIsLoading(false);
+      setLoadError('Unable to determine your publisher profile.');
+      return;
+    }
+
+    setIsLoading(true);
+    setLoadError(null);
+    setSaveError(null);
+    setSaveSuccess(null);
+
+    try {
+      const envelope = await fetchPublisherProfile(publisherId);
+      const payload = envelope?.data as PublisherProfilePayload | undefined;
+      if (!payload) {
+        throw new Error('Publisher profile is unavailable.');
+      }
+      applyProfilePayload(payload);
+    } catch (error) {
+      setLoadError(resolveErrorMessage(error));
+    } finally {
+      setIsLoading(false);
+    }
+  }, [publisherId, resolveErrorMessage, applyProfilePayload]);
+
+  useEffect(() => {
+    if (!isInitialized) {
+      return;
+    }
+
+    if (!publisherId) {
+      setIsLoading(false);
+      setLoadError('Unable to determine your publisher profile.');
+      return;
+    }
+
+    loadProfile();
+  }, [isInitialized, publisherId, loadProfile]);
 
   const handleProfileUpdate = (field: keyof PublisherProfile, value: string) => {
     setProfile(prev => ({
@@ -235,16 +315,83 @@ const ProfileSettings: React.FC = () => {
     }));
   };
 
-  const handleSaveProfile = () => {
-    // In real app, this would be an API call
-    setIsEditing(false);
-    // Show success message
+  const handleSaveProfile = async () => {
+    if (!publisherId) {
+      setSaveError('Unable to determine your publisher profile.');
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveError(null);
+    setSaveSuccess(null);
+
+    const formData = new FormData();
+    formData.append('publisher_id', publisherId);
+
+    const appendIfDefined = (key: string, value: string) => {
+      if (value === undefined || value === null) {
+        return;
+      }
+      const trimmed = value.toString().trim();
+      if (trimmed.length === 0) {
+        return;
+      }
+      formData.append(key, trimmed);
+    };
+
+    appendIfDefined('company_name', profile.companyName);
+    appendIfDefined('company_type', profile.companyType);
+    appendIfDefined('industry', profile.industry);
+    appendIfDefined('founded_year', profile.foundedYear);
+    appendIfDefined('employee_count', profile.employeeCount);
+    appendIfDefined('country', profile.country);
+    appendIfDefined('region', profile.region);
+    appendIfDefined('city', profile.city);
+    appendIfDefined('address', profile.address);
+    appendIfDefined('postal_code', profile.postalCode);
+    appendIfDefined('business_registration_number', profile.businessRegistration);
+    appendIfDefined('tax_id', profile.taxId);
+    appendIfDefined('license_number', profile.licenseNumber);
+    appendIfDefined('primary_contact_name', profile.primaryContact);
+    appendIfDefined('primary_contact_email', profile.contactEmail);
+    appendIfDefined('primary_contact_phone', profile.contactPhone);
+    appendIfDefined('website', profile.website);
+    appendIfDefined('compliance_officer_name', profile.complianceOfficer);
+    appendIfDefined('compliance_officer_email', profile.officerEmail);
+    appendIfDefined('compliance_officer_phone', profile.officerPhone);
+    appendIfDefined('compliance_officer_title', profile.officerTitle);
+    appendIfDefined('description', profile.description);
+
+    try {
+      await completePublisherProfile(formData);
+      await updatePublisherAccountSettings(publisherId, {
+        email_notifications: accountSettings.emailNotifications,
+        royalty_alerts: accountSettings.royaltyAlerts,
+        weekly_reports: accountSettings.weeklyReports,
+        two_factor_auth: accountSettings.twoFactorAuth,
+        language: accountSettings.language,
+        timezone: accountSettings.timezone,
+        currency: accountSettings.currency,
+      });
+
+      await loadProfile();
+      setIsEditing(false);
+      setSaveSuccess('Profile updated successfully.');
+    } catch (error) {
+      setSaveError(resolveErrorMessage(error));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleAccountSettingChange = (setting: string, value: boolean | string) => {
+  const handleAccountSettingChange = (setting: keyof AccountSettingsState, value: boolean | string) => {
     setAccountSettings(prev => ({
       ...prev,
-      [setting]: value
+      [setting]: typeof prev[setting] === 'boolean'
+        ? Boolean(value)
+        : typeof value === 'string'
+          ? value
+          : (prev[setting] as string),
     }));
   };
 
@@ -263,7 +410,7 @@ const ProfileSettings: React.FC = () => {
       <div className="bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-900/20 dark:to-orange-900/20 rounded-xl p-6">
         <div className="flex items-center space-x-4">
           <div className="w-16 h-16 bg-gradient-to-br from-red-600 to-orange-600 rounded-xl flex items-center justify-center text-white font-bold text-xl">
-            {profile.companyName.charAt(0)}
+            {(profile.companyName || 'P').charAt(0)}
           </div>
           <div className="flex-1">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{profile.companyName}</h2>
@@ -394,10 +541,13 @@ const ProfileSettings: React.FC = () => {
           <div className="flex items-center space-x-2">
             <button
               onClick={handleSaveProfile}
-              className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors duration-200"
+              disabled={isSaving}
+              className={`flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg transition-colors duration-200 ${
+                isSaving ? 'opacity-70 cursor-not-allowed' : 'hover:bg-green-700'
+              }`}
             >
               <Save className="w-4 h-4" />
-              <span>Save Changes</span>
+              <span>{isSaving ? 'Saving…' : 'Save Changes'}</span>
             </button>
             <button
               onClick={() => setIsEditing(false)}
@@ -1149,9 +1299,57 @@ const ProfileSettings: React.FC = () => {
     </div>
   );
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-slate-900 p-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-6">
+            <p className="text-gray-600 dark:text-gray-300">Loading publisher profile...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-slate-900 p-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="bg-white dark:bg-slate-800 rounded-xl border border-red-200 dark:border-red-900/50 p-6 text-red-600 dark:text-red-300 space-y-4">
+            <div className="flex items-center space-x-3">
+              <AlertCircle className="w-5 h-5" />
+              <span>{loadError}</span>
+            </div>
+            {publisherId ? (
+              <button
+                onClick={loadProfile}
+                className="inline-flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors duration-200"
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span>Try Again</span>
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-900 p-6">
       <div className="max-w-7xl mx-auto">
+        {saveError && (
+          <div className="mb-6 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-900/60 rounded-xl p-4 text-red-700 dark:text-red-300 flex items-center space-x-3">
+            <AlertCircle className="w-5 h-5" />
+            <span>{saveError}</span>
+          </div>
+        )}
+        {saveSuccess && (
+          <div className="mb-6 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-900/60 rounded-xl p-4 text-green-700 dark:text-green-300 flex items-center space-x-3">
+            <CheckCircle className="w-5 h-5" />
+            <span>{saveSuccess}</span>
+          </div>
+        )}
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Publisher Profile & Settings</h1>

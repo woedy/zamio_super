@@ -7,7 +7,164 @@ from rest_framework import serializers
 
 from artists.models import Track
 from music_monitor.models import Dispute, MatchCache, PlayLog, StreamLog
-from .models import PublisherProfile, PublishingAgreement
+from .models import (
+    PublisherProfile,
+    PublishingAgreement,
+    PublisherAccountSettings,
+    PublisherArtistRelationship,
+)
+
+
+def _mask_account_identifier(value: str | None) -> str | None:
+    if not value:
+        return None
+    value_str = str(value)
+    if len(value_str) <= 4:
+        return value_str
+    return f"{'*' * (len(value_str) - 4)}{value_str[-4:]}"
+
+
+class PublisherAccountSettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PublisherAccountSettings
+        fields = [
+            'email_notifications',
+            'royalty_alerts',
+            'weekly_reports',
+            'two_factor_auth',
+            'preferred_language',
+            'timezone',
+            'currency',
+        ]
+
+    def to_representation(self, instance):
+        base = super().to_representation(instance)
+        return {
+            'emailNotifications': base['email_notifications'],
+            'royaltyAlerts': base['royalty_alerts'],
+            'weeklyReports': base['weekly_reports'],
+            'twoFactorAuth': base['two_factor_auth'],
+            'language': base['preferred_language'],
+            'timezone': base['timezone'],
+            'currency': base['currency'],
+        }
+
+
+class PublisherProfileDetailSerializer(serializers.Serializer):
+    def to_representation(self, publisher: PublisherProfile):
+        user = publisher.user
+        settings, _ = PublisherAccountSettings.objects.get_or_create(publisher=publisher)
+
+        publisher_payload = {
+            'publisherId': str(publisher.publisher_id),
+            'companyName': publisher.company_name or '',
+            'companyType': publisher.company_type or '',
+            'industry': publisher.industry or '',
+            'foundedYear': publisher.founded_year,
+            'employeeCount': publisher.employee_count,
+            'country': publisher.country or '',
+            'region': publisher.region or '',
+            'city': publisher.city or '',
+            'address': publisher.address or '',
+            'postalCode': publisher.postal_code or '',
+            'businessRegistration': publisher.business_registration_number or '',
+            'taxId': publisher.tax_id or '',
+            'licenseNumber': publisher.license_number or '',
+            'primaryContact': publisher.primary_contact_name or '',
+            'contactEmail': publisher.primary_contact_email or '',
+            'contactPhone': publisher.primary_contact_phone or '',
+            'website': publisher.website_url or '',
+            'complianceOfficer': publisher.compliance_officer_name or '',
+            'officerEmail': publisher.compliance_officer_email or '',
+            'officerPhone': publisher.compliance_officer_phone or '',
+            'officerTitle': publisher.compliance_officer_title or '',
+            'description': publisher.description or '',
+            'logoUrl': user.photo.url if getattr(user, 'photo', None) else None,
+        }
+
+        revenue_splits = []
+        country = publisher.country or 'Ghana'
+        if publisher.writer_split is not None or publisher.publisher_split is not None:
+            revenue_splits.append({
+                'id': 'default',
+                'name': 'Default Publishing Split',
+                'writerPercentage': float(publisher.writer_split or 0),
+                'publisherPercentage': float(publisher.publisher_split or 0),
+                'territory': country,
+                'type': 'performance',
+                'isActive': True,
+            })
+        for key, label in [
+            ('performance_share', 'Performance Rights'),
+            ('mechanical_share', 'Mechanical Rights'),
+            ('sync_share', 'Sync Licensing'),
+        ]:
+            share_value = getattr(publisher, key, None)
+            if share_value is None:
+                continue
+            revenue_splits.append({
+                'id': key,
+                'name': label,
+                'writerPercentage': max(0.0, 100.0 - float(share_value)),
+                'publisherPercentage': float(share_value),
+                'territory': country,
+                'type': key.split('_')[0],
+                'isActive': True,
+            })
+
+        payment_methods = []
+        if publisher.bank_account:
+            payment_methods.append({
+                'id': f'bank-{publisher.id}',
+                'type': 'bank',
+                'accountName': publisher.bank_account_name or publisher.company_name or '',
+                'accountNumber': _mask_account_identifier(publisher.bank_account),
+                'bankName': publisher.bank_name or '',
+                'routingNumber': publisher.bank_branch_code or '',
+                'isDefault': publisher.preferred_payment_method == 'bank',
+                'isVerified': bool(publisher.bank_account),
+            })
+        if publisher.momo_account:
+            payment_methods.append({
+                'id': f'momo-{publisher.id}',
+                'type': 'mobile_money',
+                'accountName': publisher.momo_account_name or publisher.company_name or '',
+                'accountNumber': _mask_account_identifier(publisher.momo_account),
+                'mobileProvider': publisher.momo_provider or '',
+                'isDefault': publisher.preferred_payment_method == 'momo',
+                'isVerified': bool(publisher.momo_account),
+            })
+
+        linked_artists = []
+        relationships = publisher.artist_relationships.select_related('artist__user')
+        relationship_label_map = dict(PublisherArtistRelationship.RELATIONSHIP_TYPES)
+        for relationship in relationships:
+            artist = relationship.artist
+            artist_user = getattr(artist, 'user', None)
+            legal_name = None
+            if artist_user:
+                names = [artist_user.first_name or '', artist_user.last_name or '']
+                legal_name = ' '.join(part for part in names if part).strip() or None
+            linked_artists.append({
+                'id': str(relationship.id),
+                'name': artist.stage_name or legal_name or 'Unknown Artist',
+                'status': relationship.status,
+                'contractType': relationship_label_map.get(relationship.relationship_type, relationship.relationship_type),
+                'linkedDate': (relationship.start_date.isoformat()
+                               if relationship.start_date
+                               else relationship.created_at.isoformat()),
+                'catalogSize': artist.track_set.count() if hasattr(artist, 'track_set') else 0,
+                'lastRoyalty': 0,
+            })
+
+        return {
+            'publisher': publisher_payload,
+            'revenueSplits': revenue_splits,
+            'paymentMethods': payment_methods,
+            'linkedArtists': linked_artists,
+            'accountSettings': PublisherAccountSettingsSerializer(settings).data,
+        }
+
  
 User = get_user_model()
 

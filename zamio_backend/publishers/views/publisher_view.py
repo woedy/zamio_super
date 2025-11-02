@@ -12,6 +12,7 @@ from bank_account.models import BankAccount
 from core.utils import get_duration
 from music_monitor.models import PlayLog, StreamLog
 from publishers.models import PublisherProfile
+from accounts.api.custom_jwt import CustomJWTAuthentication
 
 User = get_user_model()
 
@@ -19,7 +20,7 @@ User = get_user_model()
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def add_publisher(request):
     payload = {}
     data = {}
@@ -80,7 +81,7 @@ def add_publisher(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def get_all_publishers_view(request):
     payload = {}
     data = {}
@@ -129,7 +130,7 @@ def get_all_publishers_view(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def get_publisher_details_view(request):
     payload = {}
     data = {}
@@ -162,7 +163,7 @@ def get_publisher_details_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def edit_publisher(request):
     payload = {}
     data = {}
@@ -207,7 +208,7 @@ def edit_publisher(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def archive_publisher(request):
     payload = {}
     errors = {}
@@ -236,7 +237,7 @@ def archive_publisher(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def unarchive_publisher(request):
     payload = {}
     errors = {}
@@ -265,7 +266,7 @@ def unarchive_publisher(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def delete_publisher(request):
     payload = {}
     errors = {}
@@ -291,7 +292,7 @@ def delete_publisher(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def get_all_archived_publishers_view(request):
     payload = {}
     data = {}
@@ -348,7 +349,7 @@ from django.db.models import Sum, Count, Q, F
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def get_publisher_profile_view(request):
     payload, data, errors = {}, {}, {}
 
