@@ -345,9 +345,32 @@ class PublishingAgreement(models.Model):
         versions.extend(newer_versions)
         
         return versions
-    
+
     def __str__(self):
         return f"Agreement {self.publisher.company_name} - {self.songwriter.stage_name} (v{self.version})"
+
+
+class PublisherAccountSettings(models.Model):
+    """Notification and preference settings for publisher accounts."""
+
+    publisher = models.OneToOneField(
+        PublisherProfile,
+        on_delete=models.CASCADE,
+        related_name='account_settings'
+    )
+    email_notifications = models.BooleanField(default=True)
+    royalty_alerts = models.BooleanField(default=True)
+    weekly_reports = models.BooleanField(default=False)
+    two_factor_auth = models.BooleanField(default=False)
+    preferred_language = models.CharField(max_length=16, default='en')
+    timezone = models.CharField(max_length=128, default='UTC')
+    currency = models.CharField(max_length=16, default='GHS')
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Account settings for {self.publisher.company_name or self.publisher.publisher_id}"
 
 
 class PublisherArtistRelationship(models.Model):

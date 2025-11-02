@@ -12,6 +12,7 @@ from rest_framework.response import Response
 
 from artists.models import Artist, ArtistInvitation
 from publishers.models import PublisherProfile
+from accounts.api.custom_jwt import CustomJWTAuthentication
 
 User = get_user_model()
 
@@ -25,7 +26,7 @@ def _get_publisher_for_user(user: User) -> PublisherProfile:
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def search_artists_to_link_view(request):
     payload, data, errors = {}, {}, {}
 
@@ -69,7 +70,7 @@ def search_artists_to_link_view(request):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def link_artist_to_publisher_view(request):
     payload, data, errors = {}, {}, {}
 
@@ -110,7 +111,7 @@ def link_artist_to_publisher_view(request):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def link_multiple_artists_view(request):
     payload, data, errors = {}, {}, {}
 
@@ -152,7 +153,7 @@ def link_multiple_artists_view(request):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def invite_artist_view(request):
     payload, data, errors = {}, {}, {}
 
