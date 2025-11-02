@@ -166,6 +166,641 @@ export interface PublisherArtistSearchResult {
   [key: string]: unknown;
 }
 
+export interface PublisherArtistStatsSummary {
+  totalArtists?: number;
+  activeArtists?: number;
+  pendingArtists?: number;
+  totalStreams?: number;
+  monthlyStreams?: number;
+  totalEarnings?: number;
+  [key: string]: number | undefined;
+}
+
+export interface PublisherArtistFilters {
+  statuses?: string[];
+  genres?: string[];
+  sortOptions?: string[];
+  [key: string]: unknown;
+}
+
+export interface PublisherArtistContract {
+  type?: string | null;
+  status?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  royaltyRate?: number | null;
+  advance?: number | null;
+  territory?: string | null;
+  worldwide?: boolean | null;
+  [key: string]: unknown;
+}
+
+export interface PublisherArtistActivity {
+  type?: string | null;
+  title?: string | null;
+  details?: string | null;
+  date?: string | null;
+  [key: string]: unknown;
+}
+
+export interface PublisherArtistStatsBlock {
+  totalStreams?: number;
+  monthlyStreams?: number;
+  totalTracks?: number;
+  totalAlbums?: number;
+  followers?: number;
+  earnings?: number;
+  lastActivity?: string | null;
+  [key: string]: number | string | null | undefined;
+}
+
+export interface PublisherArtistSongRecord {
+  id?: number | string | null;
+  trackId?: string | null;
+  title?: string | null;
+  duration?: number | string | null;
+  releaseDate?: string | null;
+  totalPlays?: number;
+  totalEarnings?: number;
+  status?: string | null;
+  album?: string | null;
+  genre?: string | null;
+  recentPlays?: PublisherArtistActivity[];
+  [key: string]: unknown;
+}
+
+export interface PublisherArtistRoyaltyEntry {
+  date?: string | null;
+  amount?: number;
+  source?: string | null;
+  status?: string | null;
+  [key: string]: unknown;
+}
+
+export interface PublisherArtistRecord {
+  artistId?: string | null;
+  stageName?: string | null;
+  name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  status?: string | null;
+  joinDate?: string | null;
+  location?: string | null;
+  bio?: string | null;
+  profileImage?: string | null;
+  coverImage?: string | null;
+  genres?: string[];
+  socialMedia?: Record<string, string | null | undefined>;
+  stats?: PublisherArtistStatsBlock;
+  contract?: PublisherArtistContract;
+  recentActivity?: PublisherArtistActivity[];
+  songs?: PublisherArtistSongRecord[];
+  royaltyHistory?: PublisherArtistRoyaltyEntry[];
+  playLogs?: PublisherArtistRoyaltyEntry[];
+  [key: string]: unknown;
+}
+
+export interface PublisherArtistPagination {
+  page_number?: number;
+  total_pages?: number;
+  count?: number;
+  next?: number | null;
+  previous?: number | null;
+  [key: string]: number | null | undefined;
+}
+
+export interface PublisherArtistListPayload {
+  summary?: PublisherArtistStatsSummary;
+  filters?: PublisherArtistFilters;
+  artists?: {
+    results?: PublisherArtistRecord[];
+    pagination?: PublisherArtistPagination;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
+export interface PublisherArtistDetailPayload extends PublisherArtistRecord {}
+
+export interface FetchPublisherArtistsParams {
+  publisherId: string;
+  search?: string;
+  status?: string;
+  genre?: string;
+  page?: number;
+  pageSize?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+}
+
+export interface FetchPublisherArtistDetailParams {
+  publisherId: string;
+  artistId: string;
+}
+
+export interface PublisherDashboardStat {
+  value?: number;
+  change?: number;
+  target?: number;
+  targetLabel?: string | null;
+}
+
+export interface PublisherDashboardStatsBlock {
+  totalPerformances?: PublisherDashboardStat;
+  totalEarnings?: PublisherDashboardStat;
+  worksInCatalog?: PublisherDashboardStat;
+  activeStations?: PublisherDashboardStat;
+  [key: string]: PublisherDashboardStat | undefined;
+}
+
+export interface PublisherDashboardTrendPoint {
+  period?: string | null;
+  label?: string | null;
+  airplay?: number;
+  streaming?: number;
+  total?: number;
+}
+
+export interface PublisherDashboardTopSong {
+  trackId?: number | string | null;
+  title?: string | null;
+  artist?: string | null;
+  plays?: number;
+  earnings?: number;
+  stations?: number;
+  [key: string]: unknown;
+}
+
+export interface PublisherDashboardRegionPerformance {
+  region?: string | null;
+  plays?: number;
+  earnings?: number;
+  stations?: number;
+  growth?: number;
+  [key: string]: unknown;
+}
+
+export interface PublisherDashboardStationBreakdown {
+  stationId?: number | string | null;
+  name?: string | null;
+  region?: string | null;
+  plays?: number;
+  percentage?: number;
+  [key: string]: unknown;
+}
+
+export interface PublisherDashboardActivityItem {
+  id?: string | number;
+  type?: string | null;
+  title?: string | null;
+  description?: string | null;
+  timestamp?: string | null;
+  time?: string | null;
+  [key: string]: unknown;
+}
+
+export interface PublisherDashboardRosterSummary {
+  writerCount?: number;
+  agreementCount?: number;
+  publisherSplit?: number;
+  writerSplit?: number;
+  unclaimedLogs?: number;
+  disputes?: number;
+  [key: string]: unknown;
+}
+
+export interface PublisherDashboardTopArtist {
+  artistId?: number | string | null;
+  name?: string | null;
+  plays?: number;
+  revenue?: number;
+  trend?: number;
+  [key: string]: unknown;
+}
+
+export interface PublisherDashboardPerformanceScore {
+  overall?: number;
+  publishingGrowth?: number;
+  revenueGrowth?: number;
+  catalogQuality?: number;
+  [key: string]: unknown;
+}
+
+export interface PublisherDashboardTargets {
+  performancesTarget?: number;
+  earningsTarget?: number;
+  catalogTarget?: number;
+  stationTarget?: number;
+  [key: string]: unknown;
+}
+
+export interface PublisherDashboardMetadata {
+  period?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  [key: string]: unknown;
+}
+
+export interface PublisherDashboardPayload {
+  stats?: PublisherDashboardStatsBlock;
+  playsOverTime?: PublisherDashboardTrendPoint[];
+  topSongs?: PublisherDashboardTopSong[];
+  regionPerformance?: PublisherDashboardRegionPerformance[];
+  topStations?: PublisherDashboardStationBreakdown[];
+  recentActivity?: PublisherDashboardActivityItem[];
+  roster?: PublisherDashboardRosterSummary;
+  topArtists?: PublisherDashboardTopArtist[];
+  performanceScore?: PublisherDashboardPerformanceScore;
+  targets?: PublisherDashboardTargets;
+  metadata?: PublisherDashboardMetadata;
+  [key: string]: unknown;
+}
+
+export interface PublisherDashboardParams {
+  period?: string;
+  start_date?: string;
+  end_date?: string;
+}
+
+export interface PublisherLogPagination {
+  count: number;
+  page_number: number;
+  page_size: number;
+  total_pages: number;
+  next: number | null;
+  previous: number | null;
+  has_next: boolean;
+  has_previous: boolean;
+}
+
+export interface PublisherPlayLogRecord {
+  id: number | string;
+  track_title: string;
+  artist: string | null;
+  publisher_catalog_id: string | null;
+  station_name: string | null;
+  station_region: string | null;
+  matched_at: string | null;
+  stop_time: string | null;
+  duration: string | null;
+  plays: number;
+  royalty_amount: number;
+  status: string | null;
+  license_type: string | null;
+  territory: string | null;
+}
+
+export interface PublisherMatchLogRecord {
+  id: number | string;
+  song: string;
+  artist: string | null;
+  publisher_catalog_id: string | null;
+  station: string | null;
+  station_region: string | null;
+  matched_at: string | null;
+  confidence: number | null;
+  status: string | null;
+  license_status: string | null;
+}
+
+export interface PublisherLogsCollection<T> {
+  results: T[];
+  pagination: PublisherLogPagination;
+}
+
+export interface PublisherLogsPayload {
+  playLogs?: PublisherLogsCollection<PublisherPlayLogRecord>;
+  matchLogs?: PublisherLogsCollection<PublisherMatchLogRecord>;
+}
+
+export interface PublisherCatalogTrackPerformance {
+  dailyStreams: number[];
+  topCountries: string[];
+  peakPosition: number | null;
+  chartPerformance: string | null;
+}
+
+export interface PublisherCatalogTrack {
+  id: number | string;
+  title: string;
+  artist: string | null;
+  artistId?: string | null;
+  album: string | null;
+  duration: string | null;
+  releaseDate: string | null;
+  status: string | null;
+  genre: string | null;
+  streams: number;
+  downloads: number;
+  revenue: number;
+  platforms: string[];
+  composer?: string | null;
+  producer?: string | null;
+  label?: string | null;
+  coverArt?: string | null;
+  audioUrl?: string | null;
+  bpm?: number | null;
+  key?: string | null;
+  mood?: string | null;
+  language?: string | null;
+  explicit?: boolean;
+  featured?: boolean;
+  tags?: string[];
+  collaborators?: string[];
+  lastUpdated?: string | null;
+  performance?: PublisherCatalogTrackPerformance;
+  publisherCatalogId?: string | null;
+  isrc_code?: string | null;
+  [key: string]: unknown;
+}
+
+export interface PublisherCatalogPagination {
+  count: number;
+  page_number: number;
+  page_size: number;
+  total_pages: number;
+  next: number | null;
+  previous: number | null;
+  has_next: boolean;
+  has_previous: boolean;
+}
+
+export interface PublisherCatalogSummary {
+  totalTracks: number;
+  publishedTracks: number;
+  draftTracks: number;
+  scheduledTracks: number;
+  totalStreams: number;
+  totalDownloads: number;
+  totalRevenue: number;
+  [key: string]: number;
+}
+
+export interface PublisherCatalogArtistFilter {
+  id: string;
+  name: string;
+  trackCount?: number;
+  [key: string]: unknown;
+}
+
+export interface PublisherCatalogFilters {
+  statuses?: string[];
+  genres?: string[];
+  artists?: PublisherCatalogArtistFilter[];
+  [key: string]: unknown;
+}
+
+export interface PublisherCatalogPayload {
+  summary?: PublisherCatalogSummary;
+  filters?: PublisherCatalogFilters;
+  tracks: {
+    results: PublisherCatalogTrack[];
+    pagination: PublisherCatalogPagination;
+  };
+  [key: string]: unknown;
+}
+
+export interface PublisherCatalogParams {
+  publisherId: string;
+  search?: string;
+  status?: string;
+  genre?: string;
+  artistId?: string;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+  page?: number;
+  pageSize?: number;
+}
+
+export interface PublisherRoyaltiesSummary {
+  totalEarnings?: number;
+  paidEarnings?: number;
+  pendingEarnings?: number;
+  processingEarnings?: number;
+  scheduledEarnings?: number;
+  disputedEarnings?: number;
+  currency?: string;
+  latestPaymentDate?: string | null;
+  trendPercentage?: number | null;
+  periodStart?: string | null;
+  periodEnd?: string | null;
+  totalDurationHours?: number;
+}
+
+export interface PublisherMonthlyEarning {
+  period: string;
+  startDate?: string | null;
+  endDate?: string | null;
+  totalEarnings: number;
+  status?: string;
+  paidDate?: string | null;
+  tracks?: number;
+  artists?: number;
+  broadcastHours?: number;
+  platformBreakdown: Record<string, number>;
+}
+
+export interface PublisherStationBreakdown {
+  station: string;
+  region?: string | null;
+  plays: number;
+  royalties: number;
+  percentage: number;
+}
+
+export type PublisherTrackTrend = 'up' | 'down' | 'flat';
+
+export interface PublisherTopTrack {
+  trackId: string;
+  title: string;
+  artist?: string | null;
+  airplay: number;
+  earnings: number;
+  station?: string | null;
+  region?: string | null;
+  trend?: PublisherTrackTrend;
+  lastActivity?: string | null;
+}
+
+export interface PublisherPaymentScheduleItem {
+  paymentId: string;
+  artist: string;
+  amount: number;
+  status: string;
+  dueDate?: string | null;
+  processedAt?: string | null;
+  tracks: string[];
+  station?: string | null;
+  region?: string | null;
+}
+
+export interface PublisherPaymentStats {
+  totalScheduled?: number;
+  totalProcessing?: number;
+  totalPaid?: number;
+  currency?: string;
+}
+
+export interface PublisherRoyaltiesPayments {
+  items: PublisherPaymentScheduleItem[];
+  stats: PublisherPaymentStats;
+}
+
+export interface PublisherDistributionSplit {
+  label: string;
+  amount: number;
+  percentage: number;
+  description?: string | null;
+}
+
+export interface PublisherDistributionSettings {
+  autoPayoutThreshold?: number;
+  paymentFrequency?: string;
+  defaultSplitLabel?: string;
+}
+
+export interface PublisherRoyaltiesDistribution {
+  splits: PublisherDistributionSplit[];
+  settings: PublisherDistributionSettings;
+}
+
+export interface PublisherRoyaltiesPayload {
+  summary?: PublisherRoyaltiesSummary;
+  earnings?: PublisherMonthlyEarning[];
+  stationBreakdown?: PublisherStationBreakdown[];
+  topTracks?: PublisherTopTrack[];
+  payments?: PublisherRoyaltiesPayments;
+  distribution?: PublisherRoyaltiesDistribution;
+}
+
+export interface PublisherRoyaltiesParams {
+  publisherId: string;
+  period?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface PublisherLogsParams {
+  publisherId: string;
+  search?: string;
+  playPage?: number;
+  matchPage?: number;
+  playPageSize?: number;
+  matchPageSize?: number;
+  playSortBy?: string;
+  playSortOrder?: 'asc' | 'desc';
+  matchSortBy?: string;
+  matchSortOrder?: 'asc' | 'desc';
+  logPageState?: 'playlogs' | 'matchlogs' | 'all';
+}
+
+export interface PublisherReportGrowthMetrics {
+  earnings?: number;
+  airplay?: number;
+  stations?: number;
+  artists?: number;
+  [key: string]: number | undefined;
+}
+
+export interface PublisherReportOverview {
+  totalEarnings?: number;
+  totalAirplay?: number;
+  totalStations?: number;
+  totalArtists?: number;
+  growth?: PublisherReportGrowthMetrics;
+  [key: string]: unknown;
+}
+
+export interface PublisherReportStationPerformance {
+  stationId?: string | number | null;
+  station?: string | null;
+  region?: string | null;
+  airplay?: number;
+  earnings?: number;
+  tracks?: number;
+  artists?: number;
+  avgPerPlay?: number;
+  trend?: string | null;
+  earningsTrend?: string | null;
+  [key: string]: unknown;
+}
+
+export interface PublisherReportArtistPerformance {
+  artistId?: string | number | null;
+  artist?: string | null;
+  region?: string | null;
+  totalAirplay?: number;
+  totalEarnings?: number;
+  topStation?: string | null;
+  tracks?: number;
+  avgPerTrack?: number;
+  trend?: string | null;
+  airplayTrend?: string | null;
+  [key: string]: unknown;
+}
+
+export interface PublisherReportMonthlyTrend {
+  month?: string | null;
+  year?: string | null;
+  label?: string | null;
+  earnings?: number;
+  airplay?: number;
+  [key: string]: unknown;
+}
+
+export interface PublisherReportRegionalPerformance {
+  region?: string | null;
+  earnings?: number;
+  airplay?: number;
+  stations?: number;
+  percentage?: number;
+  [key: string]: unknown;
+}
+
+export interface PublisherReportStationOption {
+  stationId?: string | null;
+  name?: string | null;
+  [key: string]: unknown;
+}
+
+export interface PublisherReportAvailablePeriod {
+  value: string;
+  label: string;
+}
+
+export interface PublisherReportFilterSelection {
+  period?: string;
+  stationId?: string | null;
+  region?: string | null;
+  [key: string]: unknown;
+}
+
+export interface PublisherReportFilters {
+  stations?: PublisherReportStationOption[];
+  regions?: string[];
+  availablePeriods?: PublisherReportAvailablePeriod[];
+  selected?: PublisherReportFilterSelection;
+  [key: string]: unknown;
+}
+
+export interface PublisherReportsPayload {
+  overview?: PublisherReportOverview;
+  stationPerformance?: PublisherReportStationPerformance[];
+  artistPerformance?: PublisherReportArtistPerformance[];
+  monthlyTrends?: PublisherReportMonthlyTrend[];
+  regionalPerformance?: PublisherReportRegionalPerformance[];
+  filters?: PublisherReportFilters;
+  metadata?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export interface PublisherReportsParams {
+  publisherId: string;
+  period?: string;
+  stationId?: string;
+  region?: string;
+}
+
 export const registerPublisher = async <T = Record<string, unknown>>(
   payload: RegisterPublisherPayload,
 ) => {
@@ -184,6 +819,255 @@ export const fetchPublisherOnboardingStatus = async (publisherId: string) => {
   const { data } = await authApi.get<ApiEnvelope<PublisherOnboardingStatus>>(
     `/api/accounts/publisher-onboarding-status/${publisherId}/`,
   );
+  return data;
+};
+
+export const fetchPublisherDashboard = async (
+  publisherId: string,
+  params: PublisherDashboardParams = {},
+) => {
+  const query: Record<string, string> = {
+    publisher_id: publisherId,
+  };
+
+  if (params.period) {
+    query.period = params.period;
+  }
+  if (params.start_date) {
+    query.start_date = params.start_date;
+  }
+  if (params.end_date) {
+    query.end_date = params.end_date;
+  }
+
+  const { data } = await authApi.get<ApiEnvelope<PublisherDashboardPayload>>(
+    '/api/publishers/dashboard/',
+    { params: query },
+  );
+
+  return data;
+};
+
+export const fetchPublisherLogs = async ({
+  publisherId,
+  search,
+  playPage,
+  matchPage,
+  playPageSize,
+  matchPageSize,
+  playSortBy,
+  playSortOrder,
+  matchSortBy,
+  matchSortOrder,
+  logPageState,
+}: PublisherLogsParams) => {
+  const query: Record<string, string | number> = {
+    publisher_id: publisherId,
+  };
+
+  if (search) {
+    query.search = search;
+  }
+  if (typeof playPage === 'number') {
+    query.play_page = playPage;
+  }
+  if (typeof matchPage === 'number') {
+    query.match_page = matchPage;
+  }
+  if (typeof playPageSize === 'number') {
+    query.play_page_size = playPageSize;
+  }
+  if (typeof matchPageSize === 'number') {
+    query.match_page_size = matchPageSize;
+  }
+  if (playSortBy) {
+    query.play_sort_by = playSortBy;
+  }
+  if (playSortOrder) {
+    query.play_sort_order = playSortOrder;
+  }
+  if (matchSortBy) {
+    query.match_sort_by = matchSortBy;
+  }
+  if (matchSortOrder) {
+    query.match_sort_order = matchSortOrder;
+  }
+  if (logPageState) {
+    query.log_page_state = logPageState;
+  }
+
+  const { data } = await authApi.get<ApiEnvelope<PublisherLogsPayload>>(
+    '/api/publishers/playlogs/',
+    { params: query },
+  );
+
+  return data;
+};
+
+export const fetchPublisherReports = async ({
+  publisherId,
+  period,
+  stationId,
+  region,
+}: PublisherReportsParams) => {
+  const query: Record<string, string> = {
+    publisher_id: publisherId,
+  };
+
+  if (period) {
+    query.period = period;
+  }
+
+  if (stationId && stationId !== 'all') {
+    query.station_id = stationId;
+  }
+
+  if (region && region !== 'all') {
+    query.region = region;
+  }
+
+  const { data } = await authApi.get<ApiEnvelope<PublisherReportsPayload>>(
+    '/api/publishers/reports/',
+    { params: query },
+  );
+
+  return data;
+};
+
+export const fetchPublisherCatalog = async ({
+  publisherId,
+  search,
+  status,
+  genre,
+  artistId,
+  sortBy,
+  sortOrder,
+  page,
+  pageSize,
+}: PublisherCatalogParams) => {
+  const query: Record<string, string | number> = {
+    publisher_id: publisherId,
+  };
+
+  if (search) {
+    query.search = search;
+  }
+  if (status) {
+    query.status = status;
+  }
+  if (genre) {
+    query.genre = genre;
+  }
+  if (artistId) {
+    query.artist_id = artistId;
+  }
+  if (sortBy) {
+    query.sort_by = sortBy;
+  }
+  if (sortOrder) {
+    query.sort_order = sortOrder;
+  }
+  if (typeof page === 'number') {
+    query.page = page;
+  }
+  if (typeof pageSize === 'number') {
+    query.page_size = pageSize;
+  }
+
+  const { data } = await authApi.get<ApiEnvelope<PublisherCatalogPayload>>(
+    '/api/publishers/catalog/',
+    { params: query },
+  );
+
+  return data;
+};
+
+export const fetchPublisherRoyalties = async ({
+  publisherId,
+  period,
+  startDate,
+  endDate,
+}: PublisherRoyaltiesParams) => {
+  const params: Record<string, string> = {
+    publisher_id: publisherId,
+  };
+
+  if (period) {
+    params.period = period;
+  }
+  if (startDate) {
+    params.start_date = startDate;
+  }
+  if (endDate) {
+    params.end_date = endDate;
+  }
+
+  const { data } = await authApi.get<ApiEnvelope<PublisherRoyaltiesPayload>>(
+    '/api/publishers/royalties/',
+    { params },
+  );
+
+  return data;
+};
+
+export const fetchPublisherArtists = async ({
+  publisherId,
+  search,
+  status,
+  genre,
+  page,
+  pageSize,
+  sortBy,
+  sortOrder,
+}: FetchPublisherArtistsParams) => {
+  const params: Record<string, unknown> = {
+    publisher_id: publisherId,
+  };
+
+  if (search) {
+    params.search = search;
+  }
+  if (status) {
+    params.status = status;
+  }
+  if (genre) {
+    params.genre = genre;
+  }
+  if (page) {
+    params.page = page;
+  }
+  if (pageSize) {
+    params.page_size = pageSize;
+  }
+  if (sortBy) {
+    params.sort_by = sortBy;
+  }
+  if (sortOrder) {
+    params.sort_order = sortOrder;
+  }
+
+  const { data } = await authApi.get<ApiEnvelope<PublisherArtistListPayload>>(
+    '/api/publishers/artists/',
+    { params },
+  );
+
+  return data;
+};
+
+export const fetchPublisherArtistDetail = async ({
+  publisherId,
+  artistId,
+}: FetchPublisherArtistDetailParams) => {
+  const { data } = await authApi.get<ApiEnvelope<PublisherArtistDetailPayload>>(
+    '/api/publishers/artists/detail/',
+    {
+      params: {
+        publisher_id: publisherId,
+        artist_id: artistId,
+      },
+    },
+  );
+
   return data;
 };
 

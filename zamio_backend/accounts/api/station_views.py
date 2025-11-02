@@ -1,3 +1,4 @@
+import json
 import logging
 from decimal import Decimal
 from django.core.mail import send_mail
@@ -58,6 +59,8 @@ def serialize_station_onboarding_state(station):
         "stream_validation_errors": getattr(station, 'stream_validation_errors', None),
         "profile": {
             "name": station.name,
+            "photo": station.photo.url if station.photo else None,
+            "cover_image": station.cover_image.url if station.cover_image else None,
             "phone": station.phone,
             "country": station.country,
             "region": station.region,
@@ -72,6 +75,13 @@ def serialize_station_onboarding_state(station):
             "station_class": station.station_class,
             "station_category": station.station_category,
             "location_name": station.location_name,
+            "tagline": station.tagline,
+            "founded_year": station.founded_year,
+            "primary_contact_name": station.primary_contact_name,
+            "primary_contact_title": station.primary_contact_title,
+            "primary_contact_email": station.primary_contact_email,
+            "primary_contact_phone": station.primary_contact_phone,
+            "social_media_links": station.social_media_links,
         },
         "stream_configuration": {
             "stream_url": station.stream_url,
@@ -649,12 +659,25 @@ def complete_station_profile_view(request):
     contact_name = request.data.get('contact_name', "") or request.data.get('contactName', "")
     contact_email = request.data.get('contact_email', "") or request.data.get('contactEmail', "")
     contact_phone = request.data.get('contact_phone', "") or request.data.get('contactPhone', "")
+    contact_title = request.data.get('contact_title', "") or request.data.get('contactTitle', "")
     phone = request.data.get('phone', "") or request.data.get('station_phone', "")
     website_url = request.data.get('website_url', "") or request.data.get('website', "")
     station_name = request.data.get('station_name', "") or request.data.get('stationName', "")
     lat = request.data.get('lat', None)
     lng = request.data.get('lng', None)
     photo = request.FILES.get('photo') or request.data.get('photo')
+    cover_image = request.FILES.get('cover_image') or request.FILES.get('coverImage')
+    tagline = request.data.get('tagline', "") or request.data.get('stationTagline', "")
+    founded_year_raw = (
+        request.data.get('founded_year')
+        or request.data.get('foundedYear')
+        or request.data.get('established_year')
+        or request.data.get('established')
+        or ""
+    )
+    social_media_links = request.data.get('social_media') or request.data.get('socialMedia') or {}
+    primary_contact_email = request.data.get('primary_contact_email') or request.data.get('primaryContactEmail') or contact_email
+    primary_contact_phone = request.data.get('primary_contact_phone') or request.data.get('primaryContactPhone') or contact_phone
     stream_url = request.data.get('stream_url', "").strip() or request.data.get('primaryStreamUrl', "").strip()
 
     if not station_id:
@@ -715,11 +738,34 @@ def complete_station_profile_view(request):
     if website_url:
         station.website_url = website_url
     if contact_name:
+        station.primary_contact_name = contact_name
         station.compliance_contact_name = contact_name
+    if contact_title:
+        station.primary_contact_title = contact_title
     if contact_email:
         station.compliance_contact_email = contact_email
+    if primary_contact_email:
+        station.primary_contact_email = primary_contact_email
     if contact_phone:
         station.compliance_contact_phone = contact_phone
+    if primary_contact_phone:
+        station.primary_contact_phone = primary_contact_phone
+    if tagline:
+        station.tagline = tagline
+    if founded_year_raw:
+        try:
+            station.founded_year = int(str(founded_year_raw))
+        except (TypeError, ValueError):
+            pass
+    if social_media_links:
+        parsed_links = social_media_links
+        if isinstance(parsed_links, str):
+            try:
+                parsed_links = json.loads(parsed_links)
+            except (ValueError, TypeError):
+                parsed_links = None
+        if isinstance(parsed_links, dict):
+            station.social_media_links = parsed_links
     
     # Handle stream URL with validation
     if stream_url:
@@ -771,7 +817,15 @@ def complete_station_profile_view(request):
         station.photo = photo
         station.save(update_fields=['photo'])
         photo_url = station.photo.url if station.photo else None
-    
+
+    cover_image_url = None
+    if cover_image:
+        if station.cover_image and station.cover_image.name:
+            station.cover_image.delete(save=False)
+        station.cover_image = cover_image
+        station.save(update_fields=['cover_image'])
+        cover_image_url = station.cover_image.url if station.cover_image else None
+
     # Mark this step as complete (profile)
     station.profile_completed = True
     station.onboarding_step = station.get_next_onboarding_step()
@@ -780,6 +834,8 @@ def complete_station_profile_view(request):
     data.update(serialize_station_onboarding_state(station))
     if photo_url:
         data["photo"] = photo_url
+    if cover_image_url:
+        data["cover_image"] = cover_image_url
 
     payload['message'] = "Successful"
     payload['data'] = data
@@ -923,7 +979,8 @@ def complete_add_staff_view(request):
 
     # Validate and collect staff entries
     valid_roles = [c[0] for c in StationStaff.STAFF_ROLES]
-    to_create = []
+    role_defaults = StationStaff.role_defaults()
+    created_staff = []
     for item in staff_payload:
         try:
             name = (item.get('name') or '').strip()
@@ -933,13 +990,32 @@ def complete_add_staff_view(request):
             continue
         if not name or role not in valid_roles:
             continue
-        to_create.append(StationStaff(station=station, name=name, email=email, role=role))
+        first_name, last_name = '', ''
+        parts = name.split(' ', 1)
+        if parts:
+            first_name = parts[0]
+            if len(parts) > 1:
+                last_name = parts[1]
 
-    if to_create:
-        StationStaff.objects.bulk_create(to_create)
+        staff = StationStaff(
+            station=station,
+            first_name=first_name,
+            last_name=last_name,
+            email=email,
+            role=role,
+            permission_level=StationStaff.resolve_permission_level(role),
+            active=True,
+        )
+        default_permissions = role_defaults.get(
+            StationStaff.resolve_role_key(staff.permission_level),
+            role_defaults.get('reporter', []),
+        )
+        staff.apply_permissions(default_permissions)
+        staff.save()
+        created_staff.append(staff)
 
     # Mark this step as complete when at least one entry is present; otherwise keep current state
-    if to_create:
+    if created_staff:
         station.staff_completed = True
 
     # Move to next onboarding step

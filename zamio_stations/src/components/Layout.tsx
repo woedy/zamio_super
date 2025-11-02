@@ -12,7 +12,6 @@ import {
   User,
   Users,
   Shield,
-  FileSearch,
   Bell,
   HelpCircle,
   RadioTower as RadioIcon,
@@ -68,12 +67,6 @@ export default function Layout() {
       href: '/dashboard/compliance',
       icon: Shield,
       description: 'License and regulatory compliance'
-    },
-    {
-      name: 'Playlogs',
-      href: '/dashboard/playlog-management',
-      icon: FileSearch,
-      description: 'Playlog management and reporting'
     },
     {
       name: 'Notifications',

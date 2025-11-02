@@ -1,6 +1,5 @@
 import uuid
 import os
-import hashlib
 import mimetypes
 from django.db import models
 from django.contrib.auth import get_user_model
@@ -17,6 +16,32 @@ User = get_user_model()
 
 def get_default_station_image():
     return "defaults/default_profile_image.png"
+
+
+def secure_station_cover_image_path(instance, filename):
+    """Generate secure file upload path for station cover images."""
+    name, ext = os.path.splitext(filename)
+    safe_name = "".join(c for c in name if c.isalnum() or c in (' ', '-', '_')).rstrip()
+
+    timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+    unique_id = uuid.uuid4().hex[:8]
+    final_filename = f"{safe_name}_{timestamp}_{unique_id}{ext}"
+
+    station_id = getattr(instance, 'station_id', None) or 'temp'
+    return f"stations/covers/{station_id}/{final_filename}"
+
+
+def station_document_upload_path(instance, filename):
+    """Upload path for station compliance documents."""
+    name, ext = os.path.splitext(filename)
+    safe_name = "".join(c for c in name if c.isalnum() or c in (' ', '-', '_')).rstrip()
+
+    timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+    unique_id = uuid.uuid4().hex[:8]
+    final_filename = f"{safe_name}_{timestamp}_{unique_id}{ext}"
+
+    station_id = getattr(instance.station, 'station_id', None) or 'temp'
+    return f"stations/documents/{station_id}/{final_filename}"
 
 
 def validate_station_image_size(file):
@@ -175,14 +200,26 @@ class Station(models.Model):
 
     name = models.CharField(max_length=100)
     photo = models.ImageField(
-        upload_to=secure_station_image_path, 
-        null=True, 
-        blank=True, 
+        upload_to=secure_station_image_path,
+        null=True,
+        blank=True,
         default=get_default_station_image,
         validators=[validate_station_image_size, validate_station_image_type]
     )
+    cover_image = models.ImageField(
+        upload_to=secure_station_cover_image_path,
+        null=True,
+        blank=True,
+        validators=[validate_station_image_size, validate_station_image_type]
+    )
+    tagline = models.CharField(max_length=255, blank=True, null=True)
+    founded_year = models.PositiveIntegerField(blank=True, null=True)
+    primary_contact_name = models.CharField(max_length=100, blank=True, null=True)
+    primary_contact_title = models.CharField(max_length=100, blank=True, null=True)
+    primary_contact_email = models.EmailField(blank=True, null=True)
+    primary_contact_phone = models.CharField(max_length=20, blank=True, null=True)
     phone = models.CharField(max_length=255, null=True, blank=True)
-    
+
     city = models.CharField(max_length=255, null=True, blank=True)
     region = models.CharField(max_length=255, null=True, blank=True)
     country = models.CharField(max_length=255, null=True, blank=True)
@@ -446,6 +483,8 @@ class StationStaff(models.Model):
     ]
 
     station = models.ForeignKey(Station, on_delete=models.CASCADE, related_name='station_staff')
+    first_name = models.CharField(max_length=100, blank=True)
+    last_name = models.CharField(max_length=100, blank=True)
     name = models.CharField(max_length=100)
     email = models.EmailField(null=True, blank=True)
     phone = models.CharField(max_length=20, null=True, blank=True)
@@ -465,6 +504,12 @@ class StationStaff(models.Model):
     can_upload_playlogs = models.BooleanField(default=False)
     can_manage_streams = models.BooleanField(default=False)
     can_view_analytics = models.BooleanField(default=True)
+    can_view_reports = models.BooleanField(default=False)
+    can_monitor_streams = models.BooleanField(default=False)
+    can_manage_staff = models.BooleanField(default=False)
+    can_manage_settings = models.BooleanField(default=False)
+    can_manage_payments = models.BooleanField(default=False)
+    can_manage_compliance = models.BooleanField(default=False)
 
     is_archived = models.BooleanField(default=False)
     active = models.BooleanField(default=True)
@@ -472,11 +517,141 @@ class StationStaff(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    PERMISSION_MAP = {
+        'reports': 'can_view_reports',
+        'monitoring': 'can_monitor_streams',
+        'staff': 'can_manage_staff',
+        'settings': 'can_manage_settings',
+        'payments': 'can_manage_payments',
+        'compliance': 'can_manage_compliance',
+    }
+
+    ROLE_PERMISSION_DEFAULTS = {
+        'admin': ['reports', 'monitoring', 'staff', 'settings', 'payments', 'compliance'],
+        'manager': ['reports', 'monitoring', 'staff'],
+        'reporter': ['reports'],
+    }
+
     class Meta:
         unique_together = ['station', 'email']
 
     def __str__(self):
         return f"{self.name} - {self.role}"
+
+    @classmethod
+    def resolve_permission_level(cls, role_key: str) -> str:
+        role_key = (role_key or '').strip().lower()
+        mapping = {
+            'admin': 'admin',
+            'manager': 'edit',
+            'reporter': 'view',
+        }
+        return mapping.get(role_key, 'view')
+
+    @classmethod
+    def resolve_role_key(cls, permission_level: str) -> str:
+        permission_level = (permission_level or '').strip().lower()
+        reverse_mapping = {
+            'admin': 'admin',
+            'edit': 'manager',
+            'view': 'reporter',
+        }
+        return reverse_mapping.get(permission_level, 'reporter')
+
+    @classmethod
+    def role_defaults(cls) -> dict:
+        return {key: value[:] for key, value in cls.ROLE_PERMISSION_DEFAULTS.items()}
+
+    def get_permission_ids(self) -> list:
+        normalized = []
+        for permission, field_name in self.PERMISSION_MAP.items():
+            if getattr(self, field_name, False):
+                normalized.append(permission)
+
+        if self.permission_level == 'admin':
+            admin_defaults = set(self.ROLE_PERMISSION_DEFAULTS['admin'])
+            normalized = sorted(admin_defaults.union(normalized))
+        else:
+            normalized = sorted(set(normalized))
+
+        return normalized
+
+    def apply_permissions(self, permissions: list[str]) -> None:
+        permissions_set = {
+            (item or '').strip().lower()
+            for item in permissions or []
+            if isinstance(item, str)
+        }
+
+        for permission, field_name in self.PERMISSION_MAP.items():
+            setattr(self, field_name, permission in permissions_set)
+
+        # Maintain legacy compatibility
+        self.can_upload_playlogs = 'reports' in permissions_set or 'monitoring' in permissions_set
+        self.can_manage_streams = 'monitoring' in permissions_set
+        self.can_view_analytics = 'reports' in permissions_set
+
+    def compose_full_name(self) -> str:
+        parts = [
+            (self.first_name or '').strip(),
+            (self.last_name or '').strip(),
+        ]
+        return ' '.join(filter(None, parts)).strip()
+
+    def sync_name_fields(self) -> None:
+        self.first_name = (self.first_name or '').strip()
+        self.last_name = (self.last_name or '').strip()
+        self.name = (self.name or '').strip()
+
+        if not self.first_name and not self.last_name and self.name:
+            tokens = self.name.split(' ', 1)
+            self.first_name = tokens[0]
+            if len(tokens) > 1:
+                self.last_name = tokens[1]
+
+        if not self.name:
+            full_name = self.compose_full_name()
+            if full_name:
+                self.name = full_name
+
+    def save(self, *args, **kwargs):
+        self.sync_name_fields()
+        super().save(*args, **kwargs)
+
+
+class StationComplianceDocument(models.Model):
+    DOCUMENT_TYPE_CHOICES = [
+        ('license', 'License'),
+        ('certificate', 'Certificate'),
+        ('report', 'Report'),
+        ('other', 'Other'),
+    ]
+
+    STATUS_CHOICES = [
+        ('approved', 'Approved'),
+        ('pending', 'Pending Review'),
+        ('expired', 'Expired'),
+        ('rejected', 'Rejected'),
+    ]
+
+    station = models.ForeignKey(Station, on_delete=models.CASCADE, related_name='compliance_documents')
+    name = models.CharField(max_length=255)
+    document_type = models.CharField(max_length=32, choices=DOCUMENT_TYPE_CHOICES, default='other')
+    file = models.FileField(upload_to=station_document_upload_path, null=True, blank=True)
+    file_size = models.BigIntegerField(blank=True, null=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    expiry_date = models.DateField(blank=True, null=True)
+    notes = models.TextField(blank=True, null=True)
+    is_archived = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-uploaded_at']
+
+    def __str__(self):
+        return f"{self.name} ({self.get_status_display()})"
 
 
 class Complaint(models.Model):

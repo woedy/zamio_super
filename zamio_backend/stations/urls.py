@@ -2,6 +2,11 @@ from django.urls import path
 
 from stations.views.station_dashboard_view import get_station_dashboard_data
 from stations.views.station_playlog_views import get_all_station_playlog_view
+from stations.views.station_dispute_views import (
+    get_station_dispute_detail_view,
+    get_station_disputes_view,
+)
+from stations.views.station_profile_views import get_station_profile_view
 from stations.views.station_programs_staff_views import add_program_staff, archive_program_staff, delete_program_staff, edit_program_staff, get_all_archived_program_staff_view, get_all_program_staff_view, get_program_staff_details_view, unarchive_program_staff
 from stations.views.station_programs_views import add_station_program, archive_station_program, delete_station_program, edit_station_program, get_all_archived_station_programs_view, get_all_station_programs_view, get_station_program_details_view, unarchive_station_program
 from stations.views.station_views import (
@@ -22,6 +27,12 @@ from stations.views.station_staff_views import (
     edit_station_staff,
     archive_station_staff,
     activate_station_staff,
+)
+from notifications.api.station_notifications_view import (
+    get_station_notifications_view as station_notifications_list_view,
+    mark_station_notification_read_view as station_notification_mark_read_view,
+    mark_all_station_notifications_read_view as station_notifications_mark_all_view,
+    delete_station_notification_view as station_notification_delete_view,
 )
 from stations.views.station_compliance_views import (
     update_station_compliance,
@@ -81,7 +92,14 @@ urlpatterns = [
     path('get-all-archived-program-staff/', get_all_archived_program_staff_view, name='get_all_archived_program_staff'),
     
     path('dashboard/', get_station_dashboard_data, name='get_station_dashboard_data'),
+    path('profile/', get_station_profile_view, name='get_station_profile_view'),
     path('playlogs/', get_all_station_playlog_view, name='get_all_station_playlog_view'),
+    path('disputes/', get_station_disputes_view, name='get_station_disputes_view'),
+    path('disputes/<int:dispute_id>/', get_station_dispute_detail_view, name='get_station_dispute_detail_view'),
+    path('notifications/', station_notifications_list_view, name='get_station_notifications_view'),
+    path('notifications/mark-read/', station_notification_mark_read_view, name='mark_station_notification_read_view'),
+    path('notifications/mark-all-read/', station_notifications_mark_all_view, name='mark_all_station_notifications_read_view'),
+    path('notifications/delete/', station_notification_delete_view, name='delete_station_notification_view'),
 
     # Station Stream Links
     path('get-station-stream-links/', get_station_stream_links_view, name='get_station_stream_links_view'),

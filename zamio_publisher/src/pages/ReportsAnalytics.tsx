@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   BarChart3,
   TrendingUp,
@@ -8,16 +8,84 @@ import {
   Users,
   Globe,
   Download,
-  Calendar,
-  Filter,
-  Search
+  Loader2,
 } from 'lucide-react';
 
+import { useAuth } from '../lib/auth';
+import {
+  fetchPublisherReports,
+  type PublisherReportStationOption,
+  type PublisherReportsPayload,
+} from '../lib/api';
+
+const DEFAULT_PERIOD_OPTIONS = [
+  { value: 'last7days', label: 'Last 7 Days' },
+  { value: 'last30days', label: 'Last 30 Days' },
+  { value: 'last3months', label: 'Last 3 Months' },
+  { value: 'last6months', label: 'Last 6 Months' },
+  { value: 'lastyear', label: 'Last Year' },
+];
+
+const resolveReportsError = (maybeError: unknown) => {
+  if (!maybeError) {
+    return 'Unable to load analytics. Please try again later.';
+  }
+
+  if (typeof maybeError === 'object' && maybeError !== null) {
+    const response = (maybeError as { response?: unknown }).response;
+    if (response && typeof response === 'object') {
+      const data = (response as { data?: unknown }).data;
+      if (data && typeof data === 'object') {
+        const message = (data as { message?: unknown }).message;
+        if (typeof message === 'string' && message.trim().length > 0) {
+          return message;
+        }
+
+        const errors = (data as { errors?: unknown }).errors;
+        if (errors && typeof errors === 'object') {
+          const firstEntry = Object.values(errors as Record<string, unknown>)[0];
+          if (typeof firstEntry === 'string' && firstEntry.trim().length > 0) {
+            return firstEntry;
+          }
+          if (Array.isArray(firstEntry) && firstEntry.length > 0) {
+            const candidate = firstEntry[0];
+            if (typeof candidate === 'string' && candidate.trim().length > 0) {
+              return candidate;
+            }
+          }
+        }
+      }
+    }
+
+    const message = (maybeError as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim().length > 0) {
+      return message;
+    }
+  }
+
+  return 'Unable to load analytics. Please try again later.';
+};
+
 const ReportsAnalytics: React.FC = () => {
+  const { user } = useAuth();
+
+  const publisherId = useMemo(() => {
+    if (user && typeof user === 'object' && user !== null) {
+      const candidate = (user as Record<string, unknown>)['publisher_id'];
+      if (typeof candidate === 'string' && candidate.length > 0) {
+        return candidate;
+      }
+    }
+    return null;
+  }, [user]);
+
   const [activeTab, setActiveTab] = useState('overview');
   const [dateRange, setDateRange] = useState('last30days');
   const [stationFilter, setStationFilter] = useState('all');
   const [regionFilter, setRegionFilter] = useState('all');
+  const [reportData, setReportData] = useState<PublisherReportsPayload | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -36,117 +104,129 @@ const ReportsAnalytics: React.FC = () => {
     return num.toString();
   };
 
-  // Mock data for reports - Updated for Radio/TV Broadcast
-  const reportData = {
-    overview: {
-      totalEarnings: 48500,
-      totalAirplay: 285000,
-      totalStations: 12,
-      totalArtists: 45,
-      growth: {
-        earnings: 18.5,
-        airplay: 22.3,
-        stations: 8.7,
-        artists: 12.1
-      }
-    },
-    stationPerformance: [
-      {
-        station: 'Joy FM',
-        region: 'Ghana',
-        airplay: 89000,
-        earnings: 15600,
-        tracks: 120,
-        artists: 35,
-        avgPerPlay: 0.175,
-        trend: 'up'
-      },
-      {
-        station: 'Citi FM',
-        region: 'Ghana',
-        airplay: 67000,
-        earnings: 11200,
-        tracks: 95,
-        artists: 28,
-        avgPerPlay: 0.167,
-        trend: 'up'
-      },
-      {
-        station: 'BBC Africa',
-        region: 'International',
-        airplay: 56000,
-        earnings: 12800,
-        tracks: 85,
-        artists: 22,
-        avgPerPlay: 0.229,
-        trend: 'down'
-      },
-      {
-        station: 'VOA Africa',
-        region: 'International',
-        airplay: 43000,
-        earnings: 8900,
-        tracks: 67,
-        artists: 18,
-        avgPerPlay: 0.207,
-        trend: 'up'
-      }
-    ],
-    artistPerformance: [
-      {
-        artist: 'Sarah Johnson',
-        region: 'Ghana',
-        totalAirplay: 83000,
-        totalEarnings: 1498,
-        topStation: 'Joy FM',
-        tracks: 12,
-        avgPerTrack: 124.83,
-        trend: 'up'
-      },
-      {
-        artist: 'Michael Kwame',
-        region: 'International',
-        totalAirplay: 68000,
-        totalEarnings: 1180,
-        topStation: 'BBC Africa',
-        tracks: 8,
-        avgPerTrack: 147.50,
-        trend: 'up'
-      },
-      {
-        artist: 'Amara Okafor',
-        region: 'West Africa',
-        totalAirplay: 45000,
-        totalEarnings: 785,
-        topStation: 'Regional Stations',
-        tracks: 6,
-        avgPerTrack: 130.83,
-        trend: 'down'
-      }
-    ],
-    monthlyTrends: [
-      { month: 'Jul', earnings: 8500, airplay: 45000 },
-      { month: 'Aug', earnings: 9200, airplay: 48000 },
-      { month: 'Sep', earnings: 10500, airplay: 52000 },
-      { month: 'Oct', earnings: 12800, airplay: 67000 },
-      { month: 'Nov', earnings: 11200, airplay: 59000 },
-      { month: 'Dec', earnings: 14800, airplay: 78000 }
-    ],
-    regionalPerformance: [
-      { region: 'Ghana', earnings: 26800, airplay: 156000, stations: 6, percentage: 55 },
-      { region: 'International', earnings: 13900, airplay: 82000, stations: 4, percentage: 29 },
-      { region: 'West Africa', earnings: 7800, airplay: 47000, stations: 2, percentage: 16 }
-    ]
-  };
+  useEffect(() => {
+    if (!publisherId) {
+      return;
+    }
 
-  const filteredStationData = reportData.stationPerformance.filter(station => {
-    if (stationFilter !== 'all' && station.station !== stationFilter) return false;
-    if (regionFilter !== 'all' && station.region !== regionFilter) return false;
+    let isMounted = true;
+    setIsLoading(true);
+    setError(null);
+
+    fetchPublisherReports({
+      publisherId,
+      period: dateRange,
+      stationId: stationFilter !== 'all' ? stationFilter : undefined,
+      region: regionFilter !== 'all' ? regionFilter : undefined,
+    })
+      .then((envelope) => {
+        if (!isMounted) {
+          return;
+        }
+        const payload = (envelope?.data ?? null) as PublisherReportsPayload | null;
+        setReportData(payload);
+      })
+      .catch((fetchError) => {
+        if (!isMounted) {
+          return;
+        }
+        setError(resolveReportsError(fetchError));
+        setReportData(null);
+      })
+      .finally(() => {
+        if (!isMounted) {
+          return;
+        }
+        setIsLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [publisherId, dateRange, stationFilter, regionFilter]);
+
+  useEffect(() => {
+    if (!reportData?.filters?.selected) {
+      return;
+    }
+
+    const { period, stationId, region } = reportData.filters.selected;
+
+    if (period && period !== dateRange) {
+      setDateRange(period);
+    }
+
+    const resolvedStation = stationId ?? 'all';
+    if (resolvedStation !== stationFilter) {
+      setStationFilter(resolvedStation);
+    }
+
+    const resolvedRegion = region ?? 'all';
+    if (resolvedRegion !== regionFilter) {
+      setRegionFilter(resolvedRegion);
+    }
+  }, [reportData?.filters?.selected]);
+
+  const overview = reportData?.overview;
+  const totalEarnings = overview?.totalEarnings ?? 0;
+  const totalAirplay = overview?.totalAirplay ?? 0;
+  const totalStations = overview?.totalStations ?? 0;
+  const totalArtists = overview?.totalArtists ?? 0;
+  const overviewGrowth = overview?.growth ?? {};
+  const earningsGrowth = Number(overviewGrowth?.earnings ?? 0);
+  const airplayGrowth = Number(overviewGrowth?.airplay ?? 0);
+  const stationGrowth = Number(overviewGrowth?.stations ?? 0);
+  const artistGrowth = Number(overviewGrowth?.artists ?? 0);
+
+  const stationPerformance = reportData?.stationPerformance ?? [];
+  const artistPerformance = reportData?.artistPerformance ?? [];
+  const monthlyTrends = reportData?.monthlyTrends ?? [];
+  const regionalPerformance = reportData?.regionalPerformance ?? [];
+  const filters = reportData?.filters;
+
+  const periodOptions = (filters?.availablePeriods && filters.availablePeriods.length > 0
+    ? filters.availablePeriods
+    : DEFAULT_PERIOD_OPTIONS);
+
+  const stationOptions = [
+    { value: 'all', label: 'All Stations' },
+    ...((filters?.stations ?? []) as PublisherReportStationOption[])
+      .filter((station) => typeof station?.stationId === 'string' && station.stationId.length > 0)
+      .map((station) => ({
+        value: station.stationId as string,
+        label: station.name ?? 'Unknown Station',
+      })),
+  ];
+
+  const regionOptions = [
+    { value: 'all', label: 'All Regions' },
+    ...(filters?.regions ?? []).map((region) => ({ value: region, label: region })),
+  ];
+
+  const filteredStationData = stationPerformance.filter((station) => {
+    if (stationFilter !== 'all') {
+      const stationIdentifier =
+        station.stationId != null ? String(station.stationId) : station.station ?? '';
+      if (stationIdentifier !== stationFilter) {
+        return false;
+      }
+    }
+
+    if (regionFilter !== 'all') {
+      const regionValue = station.region ?? 'Unknown';
+      if (regionValue !== regionFilter) {
+        return false;
+      }
+    }
+
     return true;
   });
 
-  const filteredArtistData = reportData.artistPerformance.filter(artist => {
-    if (regionFilter !== 'all' && artist.region !== regionFilter) return false;
+  const filteredArtistData = artistPerformance.filter((artist) => {
+    if (regionFilter !== 'all') {
+      const regionValue = artist.region ?? 'Unknown';
+      return regionValue === regionFilter;
+    }
     return true;
   });
 
@@ -176,11 +256,11 @@ const ReportsAnalytics: React.FC = () => {
                 onChange={(e) => setDateRange(e.target.value)}
                 className="px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
               >
-                <option value="last7days">Last 7 Days</option>
-                <option value="last30days">Last 30 Days</option>
-                <option value="last3months">Last 3 Months</option>
-                <option value="last6months">Last 6 Months</option>
-                <option value="lastyear">Last Year</option>
+                {periodOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
               <button className="flex items-center space-x-2 px-4 py-2 bg-white/60 dark:bg-slate-800/60 text-gray-700 dark:text-gray-300 rounded-lg border border-gray-200/60 dark:border-slate-600/60 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors duration-200">
                 <Download className="w-4 h-4" />
@@ -218,8 +298,20 @@ const ReportsAnalytics: React.FC = () => {
       </div>
 
       {/* Content */}
-      <div className="space-y-8">
-        {activeTab === 'overview' && (
+      {error && (
+        <div className="mx-6 -mt-4 mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-600 dark:border-red-800 dark:bg-red-900/30 dark:text-red-300">
+          {error}
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="flex flex-col items-center justify-center space-y-3 py-16 text-gray-600 dark:text-gray-300">
+          <Loader2 className="h-6 w-6 animate-spin" />
+          <span className="text-sm font-medium">Loading analytics...</span>
+        </div>
+      ) : (
+        <div className="space-y-8">
+          {activeTab === 'overview' && (
           <>
             {/* Overview Metrics */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -228,11 +320,11 @@ const ReportsAnalytics: React.FC = () => {
                   <div>
                     <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Earnings</p>
                     <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                      {formatCurrency(reportData.overview.totalEarnings)}
+                      {formatCurrency(totalEarnings)}
                     </p>
                     <p className="text-sm text-green-600 dark:text-green-400 flex items-center mt-1">
                       <TrendingUp className="w-3 h-3 mr-1" />
-                      +{reportData.overview.growth.earnings}%
+                      +{earningsGrowth}%
                     </p>
                   </div>
                   <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-lg">
@@ -246,11 +338,11 @@ const ReportsAnalytics: React.FC = () => {
                   <div>
                     <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Airplay</p>
                     <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                      {formatNumber(reportData.overview.totalAirplay)}
+                      {formatNumber(totalAirplay)}
                     </p>
                     <p className="text-sm text-blue-600 dark:text-blue-400 flex items-center mt-1">
                       <TrendingUp className="w-3 h-3 mr-1" />
-                      +{reportData.overview.growth.airplay}%
+                      +{airplayGrowth}%
                     </p>
                   </div>
                   <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
@@ -264,11 +356,11 @@ const ReportsAnalytics: React.FC = () => {
                   <div>
                     <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Active Stations</p>
                     <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                      {reportData.overview.totalStations}
+                      {totalStations}
                     </p>
                     <p className="text-sm text-purple-600 dark:text-purple-400 flex items-center mt-1">
                       <TrendingUp className="w-3 h-3 mr-1" />
-                      +{reportData.overview.growth.stations}%
+                      +{stationGrowth}%
                     </p>
                   </div>
                   <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
@@ -282,11 +374,11 @@ const ReportsAnalytics: React.FC = () => {
                   <div>
                     <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Active Artists</p>
                     <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                      {reportData.overview.totalArtists}
+                      {totalArtists}
                     </p>
                     <p className="text-sm text-orange-600 dark:text-orange-400 flex items-center mt-1">
                       <TrendingUp className="w-3 h-3 mr-1" />
-                      +{reportData.overview.growth.artists}%
+                      +{artistGrowth}%
                     </p>
                   </div>
                   <div className="p-3 bg-orange-100 dark:bg-orange-900/30 rounded-lg">
@@ -302,20 +394,23 @@ const ReportsAnalytics: React.FC = () => {
               <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl rounded-2xl p-6 border border-gray-200/50 dark:border-slate-700/30 shadow-2xl">
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Earnings Trend</h3>
                 <div className="space-y-4">
-                  {reportData.monthlyTrends.map((data, index) => (
-                    <div key={data.month} className="flex items-center justify-between">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 bg-gradient-to-br from-green-100 to-emerald-100 dark:from-green-900/30 dark:to-emerald-900/30 rounded-lg flex items-center justify-center">
-                          <span className="text-xs font-semibold text-green-600 dark:text-green-400">{data.month}</span>
+                  {monthlyTrends.map((data) => {
+                    const monthLabel = [data.month, data.year].filter(Boolean).join(' ').trim() || data.label || '—';
+                    return (
+                      <div key={`${data.month}-${data.year}-${monthLabel}`} className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-8 h-8 bg-gradient-to-br from-green-100 to-emerald-100 dark:from-green-900/30 dark:to-emerald-900/30 rounded-lg flex items-center justify-center">
+                            <span className="text-xs font-semibold text-green-600 dark:text-green-400">{data.month}</span>
+                          </div>
+                          <span className="text-sm font-medium text-gray-900 dark:text-white">{monthLabel}</span>
                         </div>
-                        <span className="text-sm font-medium text-gray-900 dark:text-white">{data.month} 2024</span>
+                        <div className="text-right">
+                          <p className="font-semibold text-gray-900 dark:text-white">{formatCurrency(data.earnings ?? 0)}</p>
+                          <p className="text-xs text-gray-600 dark:text-gray-400">{formatNumber(data.airplay ?? 0)} plays</p>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="font-semibold text-gray-900 dark:text-white">{formatCurrency(data.earnings)}</p>
-                        <p className="text-xs text-gray-600 dark:text-gray-400">{formatNumber(data.airplay)} plays</p>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
@@ -323,8 +418,8 @@ const ReportsAnalytics: React.FC = () => {
               <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl rounded-2xl p-6 border border-gray-200/50 dark:border-slate-700/30 shadow-2xl">
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Top Performing Stations</h3>
                 <div className="space-y-4">
-                  {reportData.stationPerformance.slice(0, 4).map((station) => (
-                    <div key={station.station} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-slate-800 rounded-lg">
+                  {stationPerformance.slice(0, 4).map((station, index) => (
+                    <div key={`${station.station}-${station.stationId}-${index}`} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-slate-800 rounded-lg">
                       <div className="flex items-center space-x-3">
                         <div className={`w-3 h-3 rounded-full ${
                           station.station === 'Joy FM' ? 'bg-green-500' :
@@ -333,13 +428,13 @@ const ReportsAnalytics: React.FC = () => {
                           'bg-orange-500'
                         }`}></div>
                         <div>
-                          <p className="font-medium text-gray-900 dark:text-white">{station.station}</p>
-                          <p className="text-xs text-gray-600 dark:text-gray-400">{station.region}</p>
+                          <p className="font-medium text-gray-900 dark:text-white">{station.station ?? 'Unknown Station'}</p>
+                          <p className="text-xs text-gray-600 dark:text-gray-400">{station.region ?? 'Unknown'}</p>
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="font-semibold text-gray-900 dark:text-white">{formatCurrency(station.earnings)}</p>
-                        <p className="text-xs text-gray-600 dark:text-gray-400">{formatNumber(station.airplay)} plays</p>
+                        <p className="font-semibold text-gray-900 dark:text-white">{formatCurrency(station.earnings ?? 0)}</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">{formatNumber(station.airplay ?? 0)} plays</p>
                       </div>
                     </div>
                   ))}
@@ -347,9 +442,9 @@ const ReportsAnalytics: React.FC = () => {
               </div>
             </div>
           </>
-        )}
+          )}
 
-        {activeTab === 'stations' && (
+          {activeTab === 'stations' && (
           <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl rounded-2xl p-6 border border-gray-200/50 dark:border-slate-700/30 shadow-2xl">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Station Performance Analysis</h3>
@@ -359,21 +454,22 @@ const ReportsAnalytics: React.FC = () => {
                   onChange={(e) => setStationFilter(e.target.value)}
                   className="px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                 >
-                  <option value="all">All Stations</option>
-                  <option value="Joy FM">Joy FM</option>
-                  <option value="Citi FM">Citi FM</option>
-                  <option value="BBC Africa">BBC Africa</option>
-                  <option value="VOA Africa">VOA Africa</option>
+                  {stationOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
                 <select
                   value={regionFilter}
                   onChange={(e) => setRegionFilter(e.target.value)}
                   className="px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                 >
-                  <option value="all">All Regions</option>
-                  <option value="Ghana">Ghana</option>
-                  <option value="International">International</option>
-                  <option value="West Africa">West Africa</option>
+                  {regionOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -409,10 +505,13 @@ const ReportsAnalytics: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white dark:bg-slate-900 divide-y divide-gray-200 dark:divide-slate-700">
-                  {filteredStationData.map((station) => (
-                    <tr key={station.station} className="hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors duration-200">
+                  {filteredStationData.map((station, index) => (
+                    <tr
+                      key={`${station.stationId ?? station.station ?? 'station'}-${index}`}
+                      className="hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors duration-200"
+                    >
                       <td className="px-6 py-4">
-                        <div className="font-medium text-gray-900 dark:text-white">{station.station}</div>
+                        <div className="font-medium text-gray-900 dark:text-white">{station.station ?? 'Unknown Station'}</div>
                       </td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
@@ -420,23 +519,23 @@ const ReportsAnalytics: React.FC = () => {
                           station.region === 'International' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400' :
                           'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400'
                         }`}>
-                          {station.region}
+                          {station.region ?? 'Unknown'}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">
-                        {formatNumber(station.airplay)}
+                        {formatNumber(station.airplay ?? 0)}
                       </td>
                       <td className="px-6 py-4 text-sm font-medium text-gray-900 dark:text-white">
-                        {formatCurrency(station.earnings)}
+                        {formatCurrency(station.earnings ?? 0)}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">
-                        {station.tracks}
+                        {station.tracks ?? 0}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">
-                        {station.artists}
+                        {station.artists ?? 0}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">
-                        {formatCurrency(station.avgPerPlay)}
+                        {formatCurrency(station.avgPerPlay ?? 0)}
                       </td>
                       <td className="px-6 py-4">
                         {station.trend === 'up' ? (
@@ -451,9 +550,9 @@ const ReportsAnalytics: React.FC = () => {
               </table>
             </div>
           </div>
-        )}
+          )}
 
-        {activeTab === 'artists' && (
+          {activeTab === 'artists' && (
           <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl rounded-2xl p-6 border border-gray-200/50 dark:border-slate-700/30 shadow-2xl">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Artist Performance Analysis</h3>
@@ -463,25 +562,29 @@ const ReportsAnalytics: React.FC = () => {
                   onChange={(e) => setRegionFilter(e.target.value)}
                   className="px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                 >
-                  <option value="all">All Regions</option>
-                  <option value="Ghana">Ghana</option>
-                  <option value="International">International</option>
-                  <option value="West Africa">West Africa</option>
+                  {regionOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              {filteredArtistData.map((artist) => (
-                <div key={artist.artist} className="border border-gray-200 dark:border-slate-700 rounded-lg p-6">
+              {filteredArtistData.map((artist, index) => (
+                <div
+                  key={`${artist.artistId ?? artist.artist ?? 'artist'}-${index}`}
+                  className="border border-gray-200 dark:border-slate-700 rounded-lg p-6"
+                >
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center space-x-3">
                       <div className="w-12 h-12 bg-gradient-to-br from-purple-100 to-indigo-100 dark:from-purple-900/30 dark:to-indigo-900/30 rounded-lg flex items-center justify-center">
                         <Users className="w-6 h-6 text-purple-600 dark:text-purple-400" />
                       </div>
                       <div>
-                        <h4 className="font-semibold text-gray-900 dark:text-white">{artist.artist}</h4>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">{artist.region}</p>
+                        <h4 className="font-semibold text-gray-900 dark:text-white">{artist.artist ?? 'Unknown Artist'}</h4>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">{artist.region ?? 'Unknown'}</p>
                       </div>
                     </div>
                     <div className={`p-2 rounded-lg ${artist.trend === 'up' ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30'}`}>
@@ -496,34 +599,34 @@ const ReportsAnalytics: React.FC = () => {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="text-center p-3 bg-gray-50 dark:bg-slate-800 rounded-lg">
                       <p className="text-xs text-gray-600 dark:text-gray-400">Total Airplay</p>
-                      <p className="text-lg font-bold text-gray-900 dark:text-white">{formatNumber(artist.totalAirplay)}</p>
+                      <p className="text-lg font-bold text-gray-900 dark:text-white">{formatNumber(artist.totalAirplay ?? 0)}</p>
                     </div>
                     <div className="text-center p-3 bg-gray-50 dark:bg-slate-800 rounded-lg">
                       <p className="text-xs text-gray-600 dark:text-gray-400">Total Earnings</p>
-                      <p className="text-lg font-bold text-green-600 dark:text-green-400">{formatCurrency(artist.totalEarnings)}</p>
+                      <p className="text-lg font-bold text-green-600 dark:text-green-400">{formatCurrency(artist.totalEarnings ?? 0)}</p>
                     </div>
                     <div className="text-center p-3 bg-gray-50 dark:bg-slate-800 rounded-lg">
                       <p className="text-xs text-gray-600 dark:text-gray-400">Tracks</p>
-                      <p className="text-lg font-bold text-gray-900 dark:text-white">{artist.tracks}</p>
+                      <p className="text-lg font-bold text-gray-900 dark:text-white">{artist.tracks ?? 0}</p>
                     </div>
                     <div className="text-center p-3 bg-gray-50 dark:bg-slate-800 rounded-lg">
                       <p className="text-xs text-gray-600 dark:text-gray-400">Avg/Track</p>
-                      <p className="text-lg font-bold text-gray-900 dark:text-white">{formatCurrency(artist.avgPerTrack)}</p>
+                      <p className="text-lg font-bold text-gray-900 dark:text-white">{formatCurrency(artist.avgPerTrack ?? 0)}</p>
                     </div>
                   </div>
 
                   <div className="mt-4 pt-4 border-t border-gray-200 dark:border-slate-700">
                     <p className="text-sm text-gray-600 dark:text-gray-400">
-                      Top Station: <span className="font-medium text-gray-900 dark:text-white">{artist.topStation}</span>
+                      Top Station: <span className="font-medium text-gray-900 dark:text-white">{artist.topStation ?? 'Unknown'}</span>
                     </p>
                   </div>
                 </div>
               ))}
             </div>
           </div>
-        )}
+          )}
 
-        {activeTab === 'trends' && (
+          {activeTab === 'trends' && (
           <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl rounded-2xl p-6 border border-gray-200/50 dark:border-slate-700/30 shadow-2xl">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Performance Trends</h3>
 
@@ -532,20 +635,26 @@ const ReportsAnalytics: React.FC = () => {
               <div>
                 <h4 className="font-medium text-gray-900 dark:text-white mb-4">Monthly Performance</h4>
                 <div className="space-y-3">
-                  {reportData.monthlyTrends.map((data) => (
-                    <div key={data.month} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-800 rounded-lg">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/30 dark:to-indigo-900/30 rounded-lg flex items-center justify-center">
-                          <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">{data.month}</span>
+                  {monthlyTrends.map((data) => {
+                    const monthLabel = [data.month, data.year].filter(Boolean).join(' ').trim() || data.label || '—';
+                    return (
+                      <div
+                        key={`${data.month}-${data.year}-${monthLabel}`}
+                        className="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-800 rounded-lg"
+                      >
+                        <div className="flex items-center space-x-3">
+                          <div className="w-8 h-8 bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/30 dark:to-indigo-900/30 rounded-lg flex items-center justify-center">
+                            <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">{data.month}</span>
+                          </div>
+                          <span className="text-sm font-medium text-gray-900 dark:text-white">{monthLabel}</span>
                         </div>
-                        <span className="text-sm font-medium text-gray-900 dark:text-white">{data.month} 2024</span>
+                        <div className="text-right">
+                          <p className="font-semibold text-green-600 dark:text-green-400">{formatCurrency(data.earnings ?? 0)}</p>
+                          <p className="text-xs text-gray-600 dark:text-gray-400">{formatNumber(data.airplay ?? 0)} airplay</p>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="font-semibold text-green-600 dark:text-green-400">{formatCurrency(data.earnings)}</p>
-                        <p className="text-xs text-gray-600 dark:text-gray-400">{formatNumber(data.airplay)} airplay</p>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
@@ -589,14 +698,14 @@ const ReportsAnalytics: React.FC = () => {
               </div>
             </div>
           </div>
-        )}
+          )}
 
-        {activeTab === 'regions' && (
+          {activeTab === 'regions' && (
           <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl rounded-2xl p-6 border border-gray-200/50 dark:border-slate-700/30 shadow-2xl">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Regional Performance Analysis</h3>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {reportData.regionalPerformance.map((region) => (
+              {regionalPerformance.map((region) => (
                 <div key={region.region} className="border border-gray-200 dark:border-slate-700 rounded-lg p-6">
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center space-x-3">
@@ -617,7 +726,7 @@ const ReportsAnalytics: React.FC = () => {
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-lg font-bold text-gray-900 dark:text-white">{region.percentage}%</p>
+                      <p className="text-lg font-bold text-gray-900 dark:text-white">{(region.percentage ?? 0).toLocaleString()}%</p>
                       <p className="text-xs text-gray-600 dark:text-gray-400">of total</p>
                     </div>
                   </div>
@@ -625,23 +734,24 @@ const ReportsAnalytics: React.FC = () => {
                   <div className="space-y-3">
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600 dark:text-gray-400">Earnings</span>
-                      <span className="font-medium text-gray-900 dark:text-white">{formatCurrency(region.earnings)}</span>
+                      <span className="font-medium text-gray-900 dark:text-white">{formatCurrency(region.earnings ?? 0)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600 dark:text-gray-400">Airplay</span>
-                      <span className="font-medium text-gray-900 dark:text-white">{formatNumber(region.airplay)}</span>
+                      <span className="font-medium text-gray-900 dark:text-white">{formatNumber(region.airplay ?? 0)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600 dark:text-gray-400">Stations</span>
-                      <span className="font-medium text-gray-900 dark:text-white">{region.stations}</span>
+                      <span className="font-medium text-gray-900 dark:text-white">{region.stations ?? 0}</span>
                     </div>
                   </div>
                 </div>
               ))}
             </div>
           </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </>
   );
 };
