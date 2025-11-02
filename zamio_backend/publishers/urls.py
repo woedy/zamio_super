@@ -24,6 +24,7 @@ from publishers.views.managed_artist_views import (
 )
 from publishers.views.publisher_playlog_views import get_publisher_playlogs_view
 from publishers.views.publisher_catalog_views import get_publisher_catalog_view
+from publishers.views.publisher_reports_views import get_publisher_reports_view
 from publishers.views.publisher_royalties_view import get_publisher_royalties_view
 
 app_name = 'publishers'
@@ -49,6 +50,7 @@ api_urlpatterns = [
     path('dashboard/', get_publisher_dashboard_view, name='publisher-dashboard'),
     path('playlogs/', get_publisher_playlogs_view, name='publisher-playlogs'),
     path('catalog/', get_publisher_catalog_view, name='publisher-catalog'),
+    path('reports/', get_publisher_reports_view, name='publisher-reports'),
     path('royalties/', get_publisher_royalties_view, name='publisher-royalties'),
     path('artists/', get_all_managed_artists_view, name='publisher-artists'),
     path('artists/detail/', get_managed_artist_details_view, name='publisher-artist-detail'),

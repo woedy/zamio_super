@@ -694,6 +694,113 @@ export interface PublisherLogsParams {
   logPageState?: 'playlogs' | 'matchlogs' | 'all';
 }
 
+export interface PublisherReportGrowthMetrics {
+  earnings?: number;
+  airplay?: number;
+  stations?: number;
+  artists?: number;
+  [key: string]: number | undefined;
+}
+
+export interface PublisherReportOverview {
+  totalEarnings?: number;
+  totalAirplay?: number;
+  totalStations?: number;
+  totalArtists?: number;
+  growth?: PublisherReportGrowthMetrics;
+  [key: string]: unknown;
+}
+
+export interface PublisherReportStationPerformance {
+  stationId?: string | number | null;
+  station?: string | null;
+  region?: string | null;
+  airplay?: number;
+  earnings?: number;
+  tracks?: number;
+  artists?: number;
+  avgPerPlay?: number;
+  trend?: string | null;
+  earningsTrend?: string | null;
+  [key: string]: unknown;
+}
+
+export interface PublisherReportArtistPerformance {
+  artistId?: string | number | null;
+  artist?: string | null;
+  region?: string | null;
+  totalAirplay?: number;
+  totalEarnings?: number;
+  topStation?: string | null;
+  tracks?: number;
+  avgPerTrack?: number;
+  trend?: string | null;
+  airplayTrend?: string | null;
+  [key: string]: unknown;
+}
+
+export interface PublisherReportMonthlyTrend {
+  month?: string | null;
+  year?: string | null;
+  label?: string | null;
+  earnings?: number;
+  airplay?: number;
+  [key: string]: unknown;
+}
+
+export interface PublisherReportRegionalPerformance {
+  region?: string | null;
+  earnings?: number;
+  airplay?: number;
+  stations?: number;
+  percentage?: number;
+  [key: string]: unknown;
+}
+
+export interface PublisherReportStationOption {
+  stationId?: string | null;
+  name?: string | null;
+  [key: string]: unknown;
+}
+
+export interface PublisherReportAvailablePeriod {
+  value: string;
+  label: string;
+}
+
+export interface PublisherReportFilterSelection {
+  period?: string;
+  stationId?: string | null;
+  region?: string | null;
+  [key: string]: unknown;
+}
+
+export interface PublisherReportFilters {
+  stations?: PublisherReportStationOption[];
+  regions?: string[];
+  availablePeriods?: PublisherReportAvailablePeriod[];
+  selected?: PublisherReportFilterSelection;
+  [key: string]: unknown;
+}
+
+export interface PublisherReportsPayload {
+  overview?: PublisherReportOverview;
+  stationPerformance?: PublisherReportStationPerformance[];
+  artistPerformance?: PublisherReportArtistPerformance[];
+  monthlyTrends?: PublisherReportMonthlyTrend[];
+  regionalPerformance?: PublisherReportRegionalPerformance[];
+  filters?: PublisherReportFilters;
+  metadata?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export interface PublisherReportsParams {
+  publisherId: string;
+  period?: string;
+  stationId?: string;
+  region?: string;
+}
+
 export const registerPublisher = async <T = Record<string, unknown>>(
   payload: RegisterPublisherPayload,
 ) => {
@@ -791,6 +898,36 @@ export const fetchPublisherLogs = async ({
 
   const { data } = await authApi.get<ApiEnvelope<PublisherLogsPayload>>(
     '/api/publishers/playlogs/',
+    { params: query },
+  );
+
+  return data;
+};
+
+export const fetchPublisherReports = async ({
+  publisherId,
+  period,
+  stationId,
+  region,
+}: PublisherReportsParams) => {
+  const query: Record<string, string> = {
+    publisher_id: publisherId,
+  };
+
+  if (period) {
+    query.period = period;
+  }
+
+  if (stationId && stationId !== 'all') {
+    query.station_id = stationId;
+  }
+
+  if (region && region !== 'all') {
+    query.region = region;
+  }
+
+  const { data } = await authApi.get<ApiEnvelope<PublisherReportsPayload>>(
+    '/api/publishers/reports/',
     { params: query },
   );
 
