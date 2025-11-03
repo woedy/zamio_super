@@ -10,6 +10,7 @@ from rest_framework.response import Response
 
 from music_monitor.models import Dispute
 from publishers.models import PublisherProfile
+from accounts.api.custom_jwt import CustomJWTAuthentication
 
 
 User = get_user_model()
@@ -17,7 +18,7 @@ User = get_user_model()
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
+@authentication_classes([TokenAuthentication, CustomJWTAuthentication])
 def get_all_publisher_disputes_view(request):
     """List disputes scoped to the current publisher with filters and pagination.
 
