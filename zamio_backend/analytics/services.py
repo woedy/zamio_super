@@ -1,7 +1,7 @@
 import json
 import redis
 from datetime import datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Dict, List, Optional, Any, Tuple
 from django.db import models
 from django.db.models import Count, Sum, Avg, Q, F
@@ -24,7 +24,7 @@ User = get_user_model()
 
 class AnalyticsAggregator:
     """Service for efficient analytics data processing and aggregation"""
-    
+
     def __init__(self):
         self.redis_client = redis.Redis(
             host=getattr(settings, 'REDIS_HOST', 'localhost'),
@@ -34,7 +34,18 @@ class AnalyticsAggregator:
         )
         self.cache_prefix = 'analytics:'
         self.default_cache_timeout = 3600  # 1 hour
-    
+
+    def _coerce_decimal(self, value: Optional[Any], default: Decimal = Decimal('0')) -> Decimal:
+        """Convert values to Decimal while guarding against nulls and invalid inputs."""
+        if value is None:
+            return default
+        if isinstance(value, Decimal):
+            return value
+        try:
+            return Decimal(value)
+        except (InvalidOperation, TypeError, ValueError):
+            return default
+
     def generate_cache_key(self, key_type: str, **params) -> str:
         """Generate consistent cache keys"""
         param_str = '_'.join([f"{k}:{v}" for k, v in sorted(params.items()) if v is not None])
@@ -509,11 +520,11 @@ class AnalyticsAggregator:
             active=True
         ).aggregate(
             total_plays=Count('id'),
-            total_revenue=Sum('royalty_amount') or Decimal('0'),
+            total_revenue=Sum('royalty_amount'),
             unique_tracks=Count('track', distinct=True),
             unique_stations=Count('station', distinct=True)
         )
-        
+
         # Detection metrics
         detection_metrics = AudioDetection.objects.filter(
             detected_at__range=(start_date, end_date)
@@ -521,7 +532,7 @@ class AnalyticsAggregator:
             total_detections=Count('id'),
             successful_detections=Count('id', filter=Q(processing_status='completed')),
             failed_detections=Count('id', filter=Q(processing_status='failed')),
-            avg_confidence=Avg('confidence_score') or Decimal('0')
+            avg_confidence=Avg('confidence_score')
         )
         
         # System health indicators
@@ -538,11 +549,11 @@ class AnalyticsAggregator:
 
         total_royalties = royalty_distributions.aggregate(
             total=Sum('net_amount')
-        )['total'] or Decimal('0')
+        )['total']
 
         pending_payments_amount = royalty_distributions.filter(
             status__in=['pending', 'approved', 'withheld']
-        ).aggregate(total=Sum('net_amount'))['total'] or Decimal('0')
+        ).aggregate(total=Sum('net_amount'))['total']
 
         # Growth calculations
         current_month_start = start_date.replace(day=1)
@@ -604,9 +615,23 @@ class AnalyticsAggregator:
         ).values(
             'recipient_type'
         ).annotate(
-            total_amount=Sum('net_amount') or Decimal('0'),
+            total_amount=Sum('net_amount'),
             count=Count('id')
         )
+
+        total_revenue_value = self._coerce_decimal(play_metrics.get('total_revenue'))
+        avg_confidence_value = self._coerce_decimal(detection_metrics.get('avg_confidence'))
+        total_royalties_value = self._coerce_decimal(total_royalties)
+        pending_payments_value = self._coerce_decimal(pending_payments_amount)
+
+        revenue_distribution = [
+            {
+                'recipient_type': entry['recipient_type'],
+                'total_amount': float(self._coerce_decimal(entry.get('total_amount'))),
+                'count': entry['count'],
+            }
+            for entry in revenue_by_type
+        ]
         
         # Daily system activity
         daily_activity = []
@@ -638,7 +663,7 @@ class AnalyticsAggregator:
             'platform_overview': platform_metrics,
             'period_summary': {
                 'total_plays': play_metrics['total_plays'],
-                'total_revenue': float(play_metrics['total_revenue']),
+                'total_revenue': float(total_revenue_value),
                 'unique_tracks_played': play_metrics['unique_tracks'],
                 'active_stations': play_metrics['unique_stations'],
                 'processing_success_rate': round(processing_success_rate, 2)
@@ -647,10 +672,10 @@ class AnalyticsAggregator:
                 'total_detections': detection_metrics['total_detections'],
                 'successful_detections': detection_metrics['successful_detections'],
                 'failed_detections': detection_metrics['failed_detections'],
-                'avg_confidence_score': float(detection_metrics['avg_confidence'])
+                'avg_confidence_score': float(avg_confidence_value)
             },
             'regional_performance': list(regional_performance),
-            'revenue_distribution': list(revenue_by_type),
+            'revenue_distribution': revenue_distribution,
             'daily_activity': daily_activity,
             'date_range': {
                 'start': start_date.isoformat(),
@@ -662,8 +687,8 @@ class AnalyticsAggregator:
                 'totalArtists': platform_metrics['total_artists'],
                 'totalSongs': platform_metrics['total_tracks'],
                 'totalPlays': play_metrics['total_plays'],
-                'totalRoyalties': float(total_royalties),
-                'pendingPayments': float(pending_payments_amount),
+                'totalRoyalties': float(total_royalties_value),
+                'pendingPayments': float(pending_payments_value),
                 'activeDistributors': active_distributors,
                 'monthlyGrowth': monthly_growth,
                 'systemHealth': round(processing_success_rate, 2),
