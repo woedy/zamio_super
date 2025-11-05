@@ -430,6 +430,8 @@ def upload_audio_match(request):
                 temp_out_path = temp_in_path
 
             # Audio processing with enhanced error handling
+            samples = None
+            sr = None
             try:
                 samples, sr = librosa.load(temp_out_path, sr=44100, mono=True)
                 
@@ -461,6 +463,14 @@ def upload_audio_match(request):
                     os.remove(temp_out_path)
                 except Exception:
                     pass
+
+            # Ensure audio was loaded successfully
+            if samples is None or sr is None:
+                logger.error(f"Audio loading failed - samples or sr is None")
+                return Response(
+                    {'error': 'Audio processing failed'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
 
             # Collect all known fingerprints
             fingerprints = Fingerprint.objects.select_related('track').values_list('track_id', 'hash', 'offset')

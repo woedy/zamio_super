@@ -234,7 +234,7 @@ class _StatusPageState extends State<StatusPage> with SingleTickerProviderStateM
         _isRecording = true;
         _currentChunkStartedAt = DateTime.now();
       });
-    } catch (e) {
+    } catch (e) { 
       debugPrint('Recorder start failed: $e');
       // Implement retry logic or show user feedback
     }
