@@ -359,6 +359,15 @@ class SnippetIngest(models.Model):
     duration_seconds = models.IntegerField(null=True, blank=True)
     received_at = models.DateTimeField(auto_now_add=True)
     processed = models.BooleanField(default=False)
+    metadata = models.JSONField(default=dict, blank=True)
+    file_size_bytes = models.BigIntegerField(null=True, blank=True)
+    audio_detection = models.OneToOneField(
+        'AudioDetection',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='snippet'
+    )
 
     def __str__(self):
         return f"{self.chunk_id} for {self.station.name}"

@@ -1,23 +1,29 @@
 
-from time import timezone
+import json
+import os
+import tempfile
 import uuid
-from collections import Counter
+from decimal import Decimal, ROUND_HALF_UP
+from pathlib import Path
 
-from accounts.models import AuditLog
-from artists.models import Fingerprint, Track
-from music_monitor.models import MatchCache, PlayLog
-from music_monitor.utils.match_engine import simple_match, simple_match_mp3
-from music_monitor.utils.stream_monitor import StreamMonitor, active_sessions
-from stations.models import Station
-
-
+import ffmpeg
+import librosa
+from django.db import transaction
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
+from django.utils.timezone import is_naive, make_aware
+from rest_framework import status
+from rest_framework.authentication import TokenAuthentication
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework import status
-import librosa
-from rest_framework.authentication import TokenAuthentication
-from django.utils import timezone
+
+from accounts.models import AuditLog
+from artists.models import Fingerprint, Track
+from music_monitor.models import AudioDetection, MatchCache, SnippetIngest
+from music_monitor.utils.match_engine import simple_match, simple_match_mp3
+from music_monitor.utils.stream_monitor import StreamMonitor, active_sessions
+from stations.models import Station
 
 
 
@@ -223,30 +229,6 @@ def upload_audio_match2222(request):
 
 
 
-from rest_framework.decorators import api_view, permission_classes, authentication_classes
-from rest_framework.response import Response
-from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.authentication import TokenAuthentication
-
-from django.utils import timezone
-from django.core.management import call_command
-from django.utils.dateparse import parse_datetime
-
-import librosa
-import tempfile
-import os
-from pathlib import Path
-import ffmpeg
-
-from music_monitor.models import MatchCache, SnippetIngest
-from stations.models import Station
-from artists.models import Track, Fingerprint
-
-from collections import Counter
-from datetime import timedelta
-
-
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 @authentication_classes([TokenAuthentication])
@@ -263,13 +245,53 @@ def upload_audio_match(request):
             ip = request.META.get('REMOTE_ADDR')
         return ip
 
+    def build_detection_response(detection):
+        payload = {
+            'detection_id': str(detection.detection_id),
+            'match': detection.track_id is not None,
+        }
+
+        confidence_ratio = detection.confidence_score or Decimal('0')
+        payload['confidence'] = round(float(confidence_ratio) * 100, 2)
+
+        metadata = detection.external_metadata or {}
+
+        if detection.track_id:
+            track = detection.track
+            payload.update({
+                'track_title': track.title,
+                'artist_name': track.artist.stage_name,
+                'album_title': track.album.title if track.album else None,
+            })
+            if 'hashes_matched' in metadata:
+                payload['hashes_matched'] = metadata['hashes_matched']
+        else:
+            reason = detection.error_message or metadata.get('reason')
+            if reason:
+                payload['reason'] = reason
+            if 'hashes_matched' in metadata:
+                payload['hashes_matched'] = metadata['hashes_matched']
+
+        return payload
+
     ip_address = get_client_ip(request)
-    
+
     audio_file = request.FILES.get('file')
     station_id = request.POST.get('station_id')
     chunk_id = request.POST.get('chunk_id')
     started_at = request.POST.get('started_at')
     duration_seconds = request.POST.get('duration_seconds')
+    raw_metadata = request.POST.get('metadata')
+
+    metadata = {}
+    if raw_metadata:
+        try:
+            parsed_metadata = json.loads(raw_metadata)
+            metadata = parsed_metadata if isinstance(parsed_metadata, dict) else {'raw': parsed_metadata}
+        except json.JSONDecodeError as exc:
+            metadata = {'raw': raw_metadata, 'parse_error': str(exc)}
+
+    file_size_bytes = getattr(audio_file, 'size', None)
 
     if not audio_file:
         # Log failed audio match attempt - no file
@@ -279,12 +301,12 @@ def upload_audio_match(request):
             resource_type='music_detection',
             ip_address=ip_address,
             user_agent=request.META.get('HTTP_USER_AGENT', ''),
-            request_data={'station_id': station_id, 'chunk_id': chunk_id},
+            request_data={'station_id': station_id, 'chunk_id': chunk_id, 'metadata': metadata},
             response_data={'error': 'no_audio_file'},
             status_code=400
         )
         return Response({'error': 'No audio file provided'}, status=status.HTTP_400_BAD_REQUEST)
-    
+
     if not station_id:
         # Log failed audio match attempt - no station ID
         AuditLog.objects.create(
@@ -293,7 +315,7 @@ def upload_audio_match(request):
             resource_type='music_detection',
             ip_address=ip_address,
             user_agent=request.META.get('HTTP_USER_AGENT', ''),
-            request_data={'chunk_id': chunk_id, 'file_size': audio_file.size},
+            request_data={'chunk_id': chunk_id, 'file_size': file_size_bytes},
             response_data={'error': 'no_station_id'},
             status_code=400
         )
@@ -313,26 +335,76 @@ def upload_audio_match(request):
             request_data={
                 'station_id': station_id,
                 'chunk_id': chunk_id,
-                'file_size': audio_file.size
+                'file_size': file_size_bytes,
+                'metadata': metadata,
             },
             response_data={'error': 'invalid_station_id'},
             status_code=404
         )
         return Response({'error': 'Invalid station ID'}, status=status.HTTP_404_NOT_FOUND)
 
-    # Idempotency check/create by chunk_id if provided
+    parsed_started = None
+    if started_at:
+        parsed_started = parse_datetime(started_at)
+        if parsed_started and is_naive(parsed_started):
+            parsed_started = make_aware(parsed_started, timezone.get_current_timezone())
+
+    audio_timestamp = parsed_started or timezone.now()
+
+    try:
+        session_uuid = uuid.UUID(chunk_id) if chunk_id else uuid.uuid4()
+    except (ValueError, AttributeError, TypeError):
+        session_uuid = uuid.uuid5(uuid.NAMESPACE_DNS, chunk_id) if chunk_id else uuid.uuid4()
+
+    duration_seconds_value = None
+    if duration_seconds:
+        try:
+            duration_seconds_value = int(duration_seconds)
+        except (TypeError, ValueError):
+            duration_seconds_value = None
+
+    def sync_ingest_metadata(ingest_obj):
+        update_fields = []
+        if parsed_started and ingest_obj.started_at != parsed_started:
+            ingest_obj.started_at = parsed_started
+            update_fields.append('started_at')
+        if duration_seconds_value is not None and ingest_obj.duration_seconds != duration_seconds_value:
+            ingest_obj.duration_seconds = duration_seconds_value
+            update_fields.append('duration_seconds')
+        if ingest_obj.metadata != metadata:
+            ingest_obj.metadata = metadata
+            update_fields.append('metadata')
+        if file_size_bytes is not None and ingest_obj.file_size_bytes != file_size_bytes:
+            ingest_obj.file_size_bytes = file_size_bytes
+            update_fields.append('file_size_bytes')
+        return update_fields
+
+    ingest = None
+    ingest_created = False
     if chunk_id:
-        parsed_started = parse_datetime(started_at) if started_at else None
-        ingest, created = SnippetIngest.objects.get_or_create(
+        ingest_defaults = {
+            'station': station,
+            'duration_seconds': duration_seconds_value,
+            'started_at': parsed_started,
+            'metadata': metadata,
+            'file_size_bytes': file_size_bytes,
+        }
+        ingest, ingest_created = SnippetIngest.objects.get_or_create(
             chunk_id=chunk_id,
-            defaults={
-                'station': station,
-                'duration_seconds': int(duration_seconds) if duration_seconds else None,
-                'started_at': parsed_started,
-            }
+            defaults=ingest_defaults,
         )
-        if not created:
-            return Response({'ok': True, 'already_processed': True, 'chunk_id': chunk_id}, status=status.HTTP_200_OK)
+        if not ingest_created:
+            update_fields = sync_ingest_metadata(ingest)
+            if update_fields:
+                ingest.save(update_fields=update_fields)
+
+            if ingest.processed:
+                response_payload = {'ok': True, 'already_processed': True, 'chunk_id': chunk_id}
+                if ingest.audio_detection_id:
+                    response_payload.update(build_detection_response(ingest.audio_detection))
+                return Response(response_payload, status=status.HTTP_200_OK)
+
+    processing_started = timezone.now()
 
     try:
         # Save file temporarily, then decode to WAV mono 44.1kHz
@@ -376,10 +448,63 @@ def upload_audio_match(request):
 
         result = simple_match_mp3(samples, sr, fingerprints)
 
+        processing_finished = timezone.now()
+        processing_time_ms = int((processing_finished - processing_started).total_seconds() * 1000)
+
+        detection_metadata = {
+            'chunk_id': chunk_id,
+            'station_id': station.station_id,
+            'capture_metadata': metadata,
+            'capture_started_at': started_at,
+            'duration_seconds_reported': duration_seconds_value,
+            'file_size_bytes': file_size_bytes,
+            'ingest_id': ingest.id if ingest else None,
+            'processing_started_at': processing_started.isoformat(),
+            'processing_completed_at': processing_finished.isoformat(),
+            'match_engine': 'simple_match_mp3',
+            'uploader_user_id': request.user.id,
+            'upload_ip': ip_address,
+        }
+
         if result['match']:
             track = Track.objects.get(id=result['song_id'])
             hashes_matched = result['hashes_matched']
-            confidence_score = min(100, (hashes_matched / 20) * 100)  # Assuming 20 is baseline
+            confidence_ratio = Decimal(hashes_matched) / Decimal(20)
+            if confidence_ratio > Decimal('1'):
+                confidence_ratio = Decimal('1')
+            confidence_ratio = confidence_ratio.quantize(Decimal('0.0001'), rounding=ROUND_HALF_UP)
+            confidence_score = float(confidence_ratio * Decimal('100'))
+
+            detection_metadata.update({
+                'match_found': True,
+                'hashes_matched': hashes_matched,
+                'matcher_confidence_reported': result.get('confidence'),
+            })
+
+            with transaction.atomic():
+                detection = AudioDetection.objects.create(
+                    session_id=session_uuid,
+                    station=station,
+                    track=track,
+                    detected_title=track.title,
+                    detected_artist=track.artist.stage_name,
+                    detected_album=track.album.title if track.album else None,
+                    detection_source='local',
+                    confidence_score=confidence_ratio,
+                    processing_status='completed',
+                    audio_timestamp=audio_timestamp,
+                    duration_seconds=duration_seconds_value,
+                    processing_time_ms=processing_time_ms,
+                    external_metadata=detection_metadata,
+                )
+
+                if ingest:
+                    extra_fields = sync_ingest_metadata(ingest)
+                    ingest.processed = True
+                    ingest.audio_detection = detection
+                    update_fields = ['processed', 'audio_detection']
+                    update_fields.extend(f for f in extra_fields if f not in update_fields)
+                    ingest.save(update_fields=update_fields)
 
             MatchCache.objects.create(
                 track=track,
@@ -395,9 +520,8 @@ def upload_audio_match(request):
                 except Exception:
                     pass
 
-            # Optional: Trigger match processing right away
-            # from django.core.management import call_command
-            # call_command('process_matches')
+            response_payload = build_detection_response(detection)
+            response_payload['processing_time_ms'] = processing_time_ms
 
             # Log successful audio match
             AuditLog.objects.create(
@@ -410,30 +534,46 @@ def upload_audio_match(request):
                 request_data={
                     'station_id': station_id,
                     'chunk_id': chunk_id,
-                    'file_size': audio_file.size,
-                    'duration_seconds': duration_seconds
+                    'file_size': file_size_bytes,
+                    'duration_seconds': duration_seconds,
+                    'metadata': metadata,
                 },
-                response_data={
-                    'match_found': True,
-                    'track_id': str(track.track_id),
-                    'track_title': track.title,
-                    'artist_name': track.artist.stage_name,
-                    'confidence_score': round(confidence_score, 2),
-                    'hashes_matched': hashes_matched
-                },
+                response_data={**response_payload, 'hashes_matched': hashes_matched},
                 status_code=200
             )
 
-            return Response({
-                'match': True,
-                'track_title': track.title,
-                'artist_name': track.artist.stage_name,
-                'album_title': track.album.title if track.album else None,
-                'confidence': round(confidence_score, 2),
-                'hashes_matched': hashes_matched
-            }, status=status.HTTP_200_OK)
+            return Response(response_payload, status=status.HTTP_200_OK)
 
         else:
+            detection_metadata.update({
+                'match_found': False,
+                'reason': result.get('reason'),
+                'hashes_matched': result.get('hashes_matched'),
+                'matcher_confidence_reported': result.get('confidence'),
+            })
+
+            with transaction.atomic():
+                detection = AudioDetection.objects.create(
+                    session_id=session_uuid,
+                    station=station,
+                    detection_source='local',
+                    confidence_score=Decimal('0'),
+                    processing_status='completed',
+                    audio_timestamp=audio_timestamp,
+                    duration_seconds=duration_seconds_value,
+                    processing_time_ms=processing_time_ms,
+                    external_metadata=detection_metadata,
+                    error_message=result.get('reason'),
+                )
+
+                if ingest:
+                    extra_fields = sync_ingest_metadata(ingest)
+                    ingest.processed = True
+                    ingest.audio_detection = detection
+                    update_fields = ['processed', 'audio_detection']
+                    update_fields.extend(f for f in extra_fields if f not in update_fields)
+                    ingest.save(update_fields=update_fields)
+
             # Log no match found
             AuditLog.objects.create(
                 user=request.user,
@@ -444,16 +584,20 @@ def upload_audio_match(request):
                 request_data={
                     'station_id': station_id,
                     'chunk_id': chunk_id,
-                    'file_size': audio_file.size,
-                    'duration_seconds': duration_seconds
+                    'file_size': file_size_bytes,
+                    'duration_seconds': duration_seconds,
+                    'metadata': metadata,
                 },
                 response_data={
                     'match_found': False,
-                    'reason': result['reason']
+                    'reason': result.get('reason'),
+                    'detection_id': str(detection.detection_id)
                 },
                 status_code=200
             )
-            return Response({'match': False, 'reason': result['reason']}, status=status.HTTP_200_OK)
+            response_payload = build_detection_response(detection)
+            response_payload['processing_time_ms'] = processing_time_ms
+            return Response(response_payload, status=status.HTTP_200_OK)
 
     except Exception as e:
         # Log processing error
@@ -466,7 +610,8 @@ def upload_audio_match(request):
             request_data={
                 'station_id': station_id,
                 'chunk_id': chunk_id,
-                'file_size': audio_file.size if audio_file else None
+                'file_size': file_size_bytes,
+                'metadata': metadata,
             },
             response_data={
                 'error': 'processing_error',
