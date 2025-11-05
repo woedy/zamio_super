@@ -424,10 +424,24 @@ def upload_audio_match(request):
                     .overwrite_output()
                     .run(quiet=True)
                 )
-                samples, sr = librosa.load(temp_out_path, sr=44100)
             except Exception:
                 # Fallback to original content if decode fails
-                samples, sr = librosa.load(temp_in_path, sr=44100)
+                temp_out_path = temp_in_path
+
+            try:
+                samples, sr = librosa.load(temp_out_path, sr=44100)
+                if len(samples) == 0:
+                    logger.error(f"Empty audio samples after processing from {temp_out_path}")
+                    return Response(
+                        {'error': 'Empty audio data', 'path': temp_out_path}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            except Exception as e:
+                logger.error(f"Audio loading failed: {str(e)}")
+                return Response(
+                    {'error': 'Audio processing failed', 'detail': str(e)},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
             finally:
                 try:
                     os.remove(temp_in_path)
@@ -437,9 +451,6 @@ def upload_audio_match(request):
                     os.remove(temp_out_path)
                 except Exception:
                     pass
-
-            if len(samples) == 0:
-                return Response({'error': 'Empty audio data'}, status=status.HTTP_400_BAD_REQUEST)
 
             # Collect all known fingerprints
             fingerprints = Fingerprint.objects.select_related('track').values_list('track_id', 'hash', 'offset')

@@ -241,42 +241,49 @@ class _StatusPageState extends State<StatusPage> with SingleTickerProviderStateM
   }
 
   Future<void> _uploadAudioChunk(File file) async {
-    try {
-      if (!file.existsSync()) return;
+    const maxRetries = 3;
+    const initialDelay = Duration(seconds: 1);
+    
+    for (var attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        if (!await file.exists()) return;
+        
+        final startedAt = _currentChunkStartedAt ?? DateTime.now();
+        final chunkId = "${_stationId}-${startedAt.millisecondsSinceEpoch}";
 
-      final startedAt = _currentChunkStartedAt ?? DateTime.now();
-      final durationSecs = chunkDurationSeconds;
-      final chunkId = "${_stationId}-${startedAt.millisecondsSinceEpoch}";
-
-      var request = http.MultipartRequest('POST', Uri.parse(_uploadUrl));
-      // Correct field name expected by backend is `file`
-      request.files.add(await http.MultipartFile.fromPath('file', file.path));
-      request.fields['station_id'] = _stationId;
-      request.fields['chunk_id'] = chunkId;
-      request.fields['started_at'] = startedAt.toIso8601String();
-      request.fields['duration_seconds'] = durationSecs.toString();
-      if (_authToken.isNotEmpty) {
-        request.headers['Authorization'] = 'Token ' + _authToken;
-      }
-
-      var response = await request.send();
-      var responseBody = await response.stream.bytesToString();
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        print('✅ Chunk uploaded successfully');
-        // Delete only on success
-        try { await file.delete(); } catch (_) {}
-        setState(() {
-          _lastUploadAt = DateTime.now();
+        var request = http.MultipartRequest('POST', Uri.parse(_uploadUrl));
+        request.files.add(await http.MultipartFile.fromPath('file', file.path));
+        request.fields.addAll({
+          'station_id': _stationId,
+          'chunk_id': chunkId,
+          'started_at': startedAt.toIso8601String(),
+          'duration_seconds': chunkDurationSeconds.toString(),
         });
-      } else {
-        print('❌ Upload failed: ${response.statusCode}, Body: $responseBody');
-        // Keep file for retry on next scan
+
+        if (_authToken.isNotEmpty) {
+          request.headers['Authorization'] = 'Token $_authToken';
+        }
+
+        final response = await request.send();
+        final body = await response.stream.bytesToString();
+        
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          await file.delete();
+          setState(() => _lastUploadAt = DateTime.now());
+          return;
+        } else {
+          debugPrint('Upload failed (attempt ${attempt + 1}): ${response.statusCode} - $body');
+        }
+      } catch (e) {
+        debugPrint('Upload error (attempt ${attempt + 1}): $e');
       }
-      _updateBacklogCount();
-    } catch (e) {
-      print('❌ Error uploading chunk: $e');
+      
+      if (attempt < maxRetries - 1) {
+        await Future.delayed(initialDelay * (attempt + 1));
+      }
     }
+    
+    debugPrint('Failed to upload after $maxRetries attempts');
   }
 
   Future<void> _scanAndUploadPendingChunks() async {
