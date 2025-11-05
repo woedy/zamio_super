@@ -222,17 +222,22 @@ class _StatusPageState extends State<StatusPage> with SingleTickerProviderStateM
   }
 
   Future<void> _startNewChunk(String path) async {
-    await _recorder.startRecorder(
-      toFile: path,
-      codec: Codec.aacADTS,
-      sampleRate: 16000,
-      numChannels: 1,
-      bitRate: 24000,
-    );
-    setState(() {
-      _isRecording = true;
-      _currentChunkStartedAt = DateTime.now();
-    });
+    try {
+      await _recorder.startRecorder(
+        toFile: path,
+        codec: Codec.aacADTS,
+        sampleRate: 16000,
+        numChannels: 1,
+        bitRate: 24000,
+      );
+      setState(() {
+        _isRecording = true;
+        _currentChunkStartedAt = DateTime.now();
+      });
+    } catch (e) {
+      debugPrint('Recorder start failed: $e');
+      // Implement retry logic or show user feedback
+    }
   }
 
   Future<void> _uploadAudioChunk(File file) async {

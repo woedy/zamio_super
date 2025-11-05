@@ -447,17 +447,11 @@ def upload_audio_match(request):
 
             try:
                 result = simple_match_mp3(samples, sr, fingerprints)
+                processing_finished = timezone.now()
+                processing_time_ms = int((processing_finished - processing_started).total_seconds() * 1000)
             except Exception as e:
-                if "analytics_realtimemetric" in str(e):
-                    # Log but continue processing if analytics fails
-                    logger.warning(f"Analytics write failed: {e}")
-                    # Proceed with core functionality
-                    result = simple_match_mp3(samples, sr, fingerprints)
-                else:
-                    raise  # Re-raise other exceptions
-
-            processing_finished = timezone.now()
-            processing_time_ms = int((processing_finished - processing_started).total_seconds() * 1000)
+                logger.error(f"Audio processing failed: {str(e)}")
+                return Response({'error': 'Audio processing failed'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
             detection_metadata = {
                 'chunk_id': chunk_id,
@@ -531,25 +525,6 @@ def upload_audio_match(request):
                 response_payload = build_detection_response(detection)
                 response_payload['processing_time_ms'] = processing_time_ms
 
-                # Log successful audio match
-                AuditLog.objects.create(
-                    user=request.user,
-                    action='audio_match_success',
-                    resource_type='music_detection',
-                    resource_id=str(track.track_id),
-                    ip_address=ip_address,
-                    user_agent=request.META.get('HTTP_USER_AGENT', ''),
-                    request_data={
-                        'station_id': station_id,
-                        'chunk_id': chunk_id,
-                        'file_size': file_size_bytes,
-                        'duration_seconds': duration_seconds,
-                        'metadata': metadata,
-                    },
-                    response_data={**response_payload, 'hashes_matched': hashes_matched},
-                    status_code=200
-                )
-
                 return Response(response_payload, status=status.HTTP_200_OK)
 
             else:
@@ -593,71 +568,14 @@ def upload_audio_match(request):
                     no_match_reason=result.get('reason')
                 )
 
-                # Log no match found
-                AuditLog.objects.create(
-                    user=request.user,
-                    action='audio_match_no_result',
-                    resource_type='music_detection',
-                    ip_address=ip_address,
-                    user_agent=request.META.get('HTTP_USER_AGENT', ''),
-                    request_data={
-                        'station_id': station_id,
-                        'chunk_id': chunk_id,
-                        'file_size': file_size_bytes,
-                        'duration_seconds': duration_seconds,
-                        'metadata': metadata,
-                    },
-                    response_data={
-                        'match_found': False,
-                        'reason': result.get('reason'),
-                        'detection_id': str(detection.detection_id)
-                    },
-                    status_code=200
-                )
                 response_payload = build_detection_response(detection)
                 response_payload['processing_time_ms'] = processing_time_ms
                 return Response(response_payload, status=status.HTTP_200_OK)
 
         except Exception as e:
-            # Log processing error
-            AuditLog.objects.create(
-                user=request.user,
-                action='audio_match_error',
-                resource_type='music_detection',
-                ip_address=ip_address,
-                user_agent=request.META.get('HTTP_USER_AGENT', ''),
-                request_data={
-                    'station_id': station_id,
-                    'chunk_id': chunk_id,
-                    'file_size': file_size_bytes,
-                    'metadata': metadata,
-                },
-                response_data={
-                    'error': 'processing_error',
-                    'error_message': str(e)
-                },
-                status_code=500
-            )
-            return Response({'error': f'Processing error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.error(f"Audio processing failed: {str(e)}")
+            return Response({'error': 'Audio processing failed'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     except Exception as e:
-        # Log processing error
-        AuditLog.objects.create(
-            user=request.user,
-            action='audio_match_error',
-            resource_type='music_detection',
-            ip_address=ip_address,
-            user_agent=request.META.get('HTTP_USER_AGENT', ''),
-            request_data={
-                'station_id': station_id,
-                'chunk_id': chunk_id,
-                'file_size': file_size_bytes,
-                'metadata': metadata,
-            },
-            response_data={
-                'error': 'processing_error',
-                'error_message': str(e)
-            },
-            status_code=500
-        )
-        return Response({'error': f'Processing error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        logger.error(f"Audio processing failed: {str(e)}")
+        return Response({'error': 'Audio processing failed'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
