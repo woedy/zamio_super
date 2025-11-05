@@ -274,6 +274,15 @@ class _StatusPageState extends State<StatusPage> with SingleTickerProviderStateM
           continue;
         }
         
+        if (response.statusCode == 400) {
+          // Handle silent audio - don't retry, just clean up
+          if (body.contains('Silent audio detected')) {
+            debugPrint('📵 Silent audio chunk - cleaning up');
+            await file.delete();
+            return;
+          }
+        }
+        
         if (response.statusCode == 200 || response.statusCode == 201) {
           await file.delete();
           setState(() => _lastUploadAt = DateTime.now());

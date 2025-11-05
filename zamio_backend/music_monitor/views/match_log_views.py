@@ -431,10 +431,6 @@ def upload_audio_match(request):
 
             # Audio processing with enhanced error handling
             try:
-                import os
-                import numpy as np
-                from rest_framework import status
-
                 samples, sr = librosa.load(temp_out_path, sr=44100, mono=True)
                 
                 if len(samples) == 0:
@@ -443,13 +439,12 @@ def upload_audio_match(request):
                         {'error': 'Invalid audio - zero samples'},
                         status=status.HTTP_400_BAD_REQUEST
                     )
-                    
-                if np.max(np.abs(samples)) < 0.01:  # Silent audio threshold
-                    logger.warning(f"Silent audio detected in {temp_out_path}")
-                    return Response(
-                        {'error': 'Silent audio detected'},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
+                
+                # More lenient silent audio threshold for studio environments
+                max_amplitude = np.max(np.abs(samples))
+                if max_amplitude < 0.001:  # Reduced from 0.01 to 0.001
+                    logger.info(f"Silent audio detected: {temp_out_path} (max: {max_amplitude})")
+                    # Continue processing silent audio instead of rejecting
                     
             except Exception as e:
                 logger.error(f"Audio processing failed: {str(e)}\nFile: {temp_out_path}")
