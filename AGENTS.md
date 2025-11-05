@@ -21,6 +21,7 @@
 - **Goal** Provide reliable coverage for partner stations that broadcast over the air (with no public stream) or suffer unstable connectivity by pairing the in-studio Flutter capture app with the primary ingestion pipeline.
 - **Capture Loop** `OfflineCaptureService` schedules short AAC clips from the studio environment, persists them locally with metadata for both online and offline sync, and forwards them through `SyncService` to `/api/music-monitor/stream/upload/`.
 - **Backend Alignment** `SnippetIngest` deduplicates incoming chunks while `MatchCache` stores high-confidence matches; new telemetry requirements should flow into `AudioDetection` (or related tables) so fallback captures mirror stream-based detections regardless of how the audio originated.
+- **Telemetry Flow** All successful uploads (matched or unmatched) create linked records in `SnippetIngest` (metadata storage), `AudioDetection` (fingerprint results), and `MatchCache` (royalty attribution). Studio-originated captures are marked with `detection_source='local'`.
 - **Working Agreement** Keep the Fallback backlog in `MOBILE_STREAM.md`. Update both this file and the backlog whenever scope or acceptance criteria evolve.
 
 ## Frontend Surfaces

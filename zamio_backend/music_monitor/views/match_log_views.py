@@ -1,4 +1,3 @@
-
 import json
 import os
 import tempfile
@@ -574,6 +573,17 @@ def upload_audio_match(request):
                     update_fields.extend(f for f in extra_fields if f not in update_fields)
                     ingest.save(update_fields=update_fields)
 
+            # Create MatchCache entry even for unmatched clips
+            MatchCache.objects.create(
+                track=None,
+                station=station,
+                station_program=None,
+                matched_at=timezone.now(),
+                avg_confidence_score=0.0,
+                processed=False,
+                no_match_reason=result.get('reason')
+            )
+
             # Log no match found
             AuditLog.objects.create(
                 user=request.user,
@@ -620,7 +630,3 @@ def upload_audio_match(request):
             status_code=500
         )
         return Response({'error': f'Processing error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-
-

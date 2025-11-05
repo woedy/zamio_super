@@ -10,10 +10,10 @@ The studio capture experience must deliver the same fidelity, auditability, and 
 > As a royalties operations analyst, I want every studio-recorded audio chunk that reaches the backend to produce the same telemetry artifacts as streamed detections so that compliance audits and revenue reconciliation stay complete.
 
 **Acceptance Criteria**
-- [ ] Each successful upload via `/api/music-monitor/stream/upload/` creates (or augments) a persistent record that links the `SnippetIngest`, resulting `MatchCache`, and a new or updated `AudioDetection` row.
-- [ ] Studio ingests retain the original clip metadata (sample rate, bit rate, retries, capture timestamp, capture context) in the database for later diagnostics.
-- [ ] Reprocessed clips (manual or automated) reuse the stored metadata without duplicating detections.
-- [ ] Documentation references to telemetry flows are updated in `implementation.md` and `AGENTS.md` when the schema or process changes.
+- [x] Each successful upload via `/api/music-monitor/stream/upload/` creates (or augments) a persistent record that links the `SnippetIngest`, resulting `MatchCache`, and a new or updated `AudioDetection` row.
+- [x] Studio ingests retain the original clip metadata (sample rate, bit rate, retries, capture timestamp, capture context) in the database for later diagnostics.
+- [x] Reprocessed clips (manual or automated) reuse the stored metadata without duplicating detections.
+- [x] Documentation references to telemetry flows are updated in `implementation.md` and `AGENTS.md` when the schema or process changes.
 
 **Testing**
 1. Trigger an upload from the mobile app (or `curl`) containing metadata fields and confirm the API returns `201/200`.
