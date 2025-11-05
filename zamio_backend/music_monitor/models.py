@@ -12,7 +12,7 @@ from stations.models import Station, StationProgram
 User = get_user_model()
 
 class MatchCache(models.Model):
-    track = models.ForeignKey(Track, on_delete=models.CASCADE, related_name="match_track")
+    track = models.ForeignKey(Track, on_delete=models.CASCADE, related_name="match_track", null=True, blank=True)
     station = models.ForeignKey(Station, on_delete=models.CASCADE, related_name="match_station")
     station_program = models.ForeignKey(StationProgram, null=True, blank=True, on_delete=models.SET_NULL,  related_name="match_station_program")
 
