@@ -632,7 +632,7 @@ def upload_audio_match(request):
                     matched_at=timezone.now(),
                     avg_confidence_score=0.0,
                     processed=False,
-                    no_match_reason=result.get('reason')
+                    failed_reason=result.get('reason')
                 )
 
                 response_payload = build_detection_response(detection)
