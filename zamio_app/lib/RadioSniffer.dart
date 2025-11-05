@@ -539,15 +539,25 @@ class _StatPill extends StatelessWidget {
     return _Glass(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 16, color: Colors.white.withOpacity(0.9)),
-            const SizedBox(width: 8),
-            Text(label, style: TextStyle(color: Colors.white.withOpacity(0.7))),
-            const SizedBox(width: 6),
-            Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-          ],
+        child: Center(
+          child: Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              Icon(icon, size: 16, color: Colors.white.withOpacity(0.9)),
+              Text(
+                label,
+                style: TextStyle(color: Colors.white.withOpacity(0.7)),
+                overflow: TextOverflow.ellipsis,
+              ),
+              Text(
+                value,
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -801,26 +811,38 @@ class _LevelMeter extends StatelessWidget {
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
-        final bars = 20;
-        final values = List<double>.generate(bars, (i) {
-          final phase = (controller.value + i / bars) * 2 * math.pi;
-          final base = (math.sin(phase) + 1) / 2; // 0..1
-          final amp = active ? 1.0 : 0.2;
-          return (0.2 + base * 0.8) * amp;
-        });
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: values.map((v) => Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 1.0),
-            child: Container(
-              width: 5,
-              height: 8 + v * 28,
-              decoration: BoxDecoration(
-                color: Colors.deepPurple,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          )).toList(),
+        const bars = 20;
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final totalWidth = constraints.maxWidth;
+            final barWidth = (totalWidth / (bars * 1.6)).clamp(2.0, 6.0);
+            final spacing = (barWidth * 0.6).clamp(1.0, 4.0);
+            final values = List<double>.generate(bars, (i) {
+              final phase = (controller.value + i / bars) * 2 * math.pi;
+              final base = (math.sin(phase) + 1) / 2; // 0..1
+              final amp = active ? 1.0 : 0.2;
+              return (0.2 + base * 0.8) * amp;
+            });
+
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                for (var v in values)
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: spacing / 2),
+                    child: Container(
+                      width: barWidth,
+                      height: 8 + v * 28,
+                      decoration: BoxDecoration(
+                        color: Colors.deepPurple,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
         );
       },
     );
