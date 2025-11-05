@@ -44,6 +44,7 @@ class OfflineCaptureService extends ChangeNotifier {
   String? get currentStationId => _currentStationId;
   CaptureSettings get settings => _settings;
   AudioCapture? get currentCapture => _currentCapture;
+  DateTime? get currentCaptureStartTime => _currentCaptureStartTime;
   
   int get totalCapturesCreated => _totalCapturesCreated;
   int get totalCapturesCompleted => _totalCapturesCompleted;

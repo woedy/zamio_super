@@ -437,6 +437,12 @@ def upload_audio_match(request):
                 
                 if len(samples) == 0:
                     logger.error(f"Empty audio file: {temp_out_path}")
+                    # Clean up before returning
+                    try:
+                        os.remove(temp_in_path)
+                        os.remove(temp_out_path)
+                    except Exception:
+                        pass
                     return Response(
                         {'error': 'Invalid audio - zero samples'},
                         status=status.HTTP_400_BAD_REQUEST
@@ -450,23 +456,26 @@ def upload_audio_match(request):
                     
             except Exception as e:
                 logger.error(f"Audio processing failed: {str(e)}\nFile: {temp_out_path}")
+                # Clean up before returning
+                try:
+                    os.remove(temp_in_path)
+                    os.remove(temp_out_path)
+                except Exception:
+                    pass
                 return Response(
                     {'error': 'Audio processing failed', 'detail': str(e)},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
-            finally:
-                try:
-                    os.remove(temp_in_path)
-                except Exception:
-                    pass
-                try:
-                    os.remove(temp_out_path)
-                except Exception:
-                    pass
 
             # Ensure audio was loaded successfully
             if samples is None or sr is None:
                 logger.error(f"Audio loading failed - samples or sr is None")
+                # Clean up before returning
+                try:
+                    os.remove(temp_in_path)
+                    os.remove(temp_out_path)
+                except Exception:
+                    pass
                 return Response(
                     {'error': 'Audio processing failed'},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -481,8 +490,21 @@ def upload_audio_match(request):
                 processing_finished = timezone.now()
                 processing_time_ms = int((processing_finished - processing_started).total_seconds() * 1000)
             except Exception as e:
-                logger.error(f"Audio processing failed: {str(e)}")
+                logger.error(f"Fingerprinting failed: {str(e)}")
+                # Clean up temp files
+                try:
+                    os.remove(temp_in_path)
+                    os.remove(temp_out_path)
+                except Exception:
+                    pass
                 return Response({'error': 'Audio processing failed'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            # Fingerprinting complete - clean up temp files
+            try:
+                os.remove(temp_in_path)
+                os.remove(temp_out_path)
+            except Exception as e:
+                logger.warning(f"Failed to cleanup temp files: {e}")
 
             detection_metadata = {
                 'chunk_id': chunk_id,

@@ -3,7 +3,8 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:flutter_sound/flutter_sound.dart';
+// flutter_sound removed - OfflineCaptureService handles recording
+// import 'package:flutter_sound/flutter_sound.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:http/http.dart' as http;
@@ -22,7 +23,8 @@ class StatusPage extends StatefulWidget {
 }
 
 class _StatusPageState extends State<StatusPage> with SingleTickerProviderStateMixin {
-  final FlutterSoundRecorder _recorder = FlutterSoundRecorder();
+  // Legacy recorder removed - OfflineCaptureService handles all recording
+  // final FlutterSoundRecorder _recorder = FlutterSoundRecorder();
   final OfflineCaptureService _captureService = OfflineCaptureService();
   final ConnectivityService _connectivity = ConnectivityService();
   final StorageService _storage = StorageService();
@@ -118,9 +120,10 @@ class _StatusPageState extends State<StatusPage> with SingleTickerProviderStateM
     await Permission.storage.request();
 
     if (await Permission.microphone.isGranted) {
-      await _recorder.openRecorder();
+      // Legacy recorder disabled - OfflineCaptureService handles recording
+      // await _recorder.openRecorder();
 
-      // Prepare file paths
+      // Prepare file paths (still needed for legacy upload scanning)
       final dir = await getTemporaryDirectory();
       chunkPathA = '${dir.path}/chunk_A.aac';
       chunkPathB = '${dir.path}/chunk_B.aac';
@@ -156,8 +159,8 @@ class _StatusPageState extends State<StatusPage> with SingleTickerProviderStateM
         // Start offline capture service
         await _captureService.startCapturing(_stationId);
         
-        // Start legacy chunk loop for backward compatibility
-        _startChunkLoop();
+        // Legacy chunk loop disabled - now using OfflineCaptureService exclusively
+        // _startChunkLoop();
         
         // Ensure foreground service active on Android
         await startForegroundService(content: 'Station $_stationId - Offline Mode');
@@ -182,12 +185,12 @@ class _StatusPageState extends State<StatusPage> with SingleTickerProviderStateM
       // Stop offline capture service
       await _captureService.stopCapturing();
       
-      // Stop the legacy recording and timer
-      _chunkTimer?.cancel();
-      if (_recorder.isRecording) {
-        await _recorder.stopRecorder();
-      }
-      setState(() => _isRecording = false);
+      // Legacy recording disabled - OfflineCaptureService handles everything
+      // _chunkTimer?.cancel();
+      // if (_recorder.isRecording) {
+      //   await _recorder.stopRecorder();
+      // }
+      // setState(() => _isRecording = false);
 
       // Try to flush any pending chunks
       unawaited(_scanAndUploadPendingChunks());
@@ -198,47 +201,9 @@ class _StatusPageState extends State<StatusPage> with SingleTickerProviderStateM
     }
   }
 
-  void _startChunkLoop() async {
-    // Start first chunk
-    await _startNewChunk(chunkPathA);
-
-    _chunkTimer = Timer.periodic(Duration(seconds: chunkDurationSeconds), (_) async {
-      final String currentPath = toggle ? chunkPathA : chunkPathB;
-      final String nextPath = toggle ? chunkPathB : chunkPathA;
-
-      // Stop current recording and immediately start the next one to avoid gaps
-      if (_recorder.isRecording) {
-        await _recorder.stopRecorder();
-        setState(() => _isRecording = false);
-      }
-
-      await _startNewChunk(nextPath);
-      toggle = !toggle;
-
-      // Upload previous chunk in background (delete only on success)
-      _uploadAudioChunk(File(currentPath));
-      _updateBacklogCount();
-    });
-  }
-
-  Future<void> _startNewChunk(String path) async {
-    try {
-      await _recorder.startRecorder(
-        toFile: path,
-        codec: Codec.aacADTS,
-        sampleRate: 16000,
-        numChannels: 1,
-        bitRate: 24000,
-      );
-      setState(() {
-        _isRecording = true;
-        _currentChunkStartedAt = DateTime.now();
-      });
-    } catch (e) { 
-      debugPrint('Recorder start failed: $e');
-      // Implement retry logic or show user feedback
-    }
-  }
+  // Legacy chunk loop methods removed - OfflineCaptureService handles all recording
+  // void _startChunkLoop() { ... }
+  // Future<void> _startNewChunk(String path) { ... }
 
   Future<void> _uploadAudioChunk(File file) async {
     const maxRetries = 5;
@@ -341,7 +306,8 @@ class _StatusPageState extends State<StatusPage> with SingleTickerProviderStateM
     _chunkTimer?.cancel();
     _uiTimer?.cancel();
     _meterController.dispose();
-    _recorder.closeRecorder();
+    // Legacy recorder disabled
+    // _recorder.closeRecorder();
     
     // Remove service listeners
     _captureService.removeListener(_onCaptureServiceChanged);
@@ -383,7 +349,7 @@ class _StatusPageState extends State<StatusPage> with SingleTickerProviderStateM
                       isRecording: _isRecording,
                       isServiceRunning: _isServiceRunning,
                       chunkDurationSeconds: chunkDurationSeconds,
-                      currentChunkStartedAt: _currentChunkStartedAt,
+                      currentChunkStartedAt: _captureService.currentCaptureStartTime,
                       controller: _meterController,
                     ),
                   ),
