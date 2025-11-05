@@ -1,6 +1,6 @@
+import 'dart:math' as math;
 import 'dart:async';
 import 'dart:io';
-import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_sound/flutter_sound.dart';
@@ -241,8 +241,8 @@ class _StatusPageState extends State<StatusPage> with SingleTickerProviderStateM
   }
 
   Future<void> _uploadAudioChunk(File file) async {
-    const maxRetries = 3;
-    const initialDelay = Duration(seconds: 1);
+    const maxRetries = 5;
+    const initialDelay = Duration(seconds: 2);
     
     for (var attempt = 0; attempt < maxRetries; attempt++) {
       try {
@@ -267,13 +267,20 @@ class _StatusPageState extends State<StatusPage> with SingleTickerProviderStateM
         final response = await request.send();
         final body = await response.stream.bytesToString();
         
+        if (response.statusCode == 429) {
+          final backoff = Duration(seconds: math.pow(2, attempt + 1).toInt());
+          debugPrint('⚠️ Rate limited - waiting ${backoff.inSeconds}s');
+          await Future.delayed(backoff);
+          continue;
+        }
+        
         if (response.statusCode == 200 || response.statusCode == 201) {
           await file.delete();
           setState(() => _lastUploadAt = DateTime.now());
           return;
-        } else {
-          debugPrint('Upload failed (attempt ${attempt + 1}): ${response.statusCode} - $body');
         }
+        
+        debugPrint('Upload failed (attempt ${attempt + 1}): ${response.statusCode} - $body');
       } catch (e) {
         debugPrint('Upload error (attempt ${attempt + 1}): $e');
       }
@@ -283,7 +290,8 @@ class _StatusPageState extends State<StatusPage> with SingleTickerProviderStateM
       }
     }
     
-    debugPrint('Failed to upload after $maxRetries attempts');
+    debugPrint('❌ Failed to upload after $maxRetries attempts');
+    _updateBacklogCount();
   }
 
   Future<void> _scanAndUploadPendingChunks() async {

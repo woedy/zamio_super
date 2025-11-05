@@ -5,6 +5,7 @@ import uuid
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 import logging
+import numpy as np
 
 import ffmpeg
 import librosa
@@ -428,16 +429,30 @@ def upload_audio_match(request):
                 # Fallback to original content if decode fails
                 temp_out_path = temp_in_path
 
+            # Audio processing with enhanced error handling
             try:
-                samples, sr = librosa.load(temp_out_path, sr=44100)
+                import os
+                import numpy as np
+                from rest_framework import status
+
+                samples, sr = librosa.load(temp_out_path, sr=44100, mono=True)
+                
                 if len(samples) == 0:
-                    logger.error(f"Empty audio samples after processing from {temp_out_path}")
+                    logger.error(f"Empty audio file: {temp_out_path}")
                     return Response(
-                        {'error': 'Empty audio data', 'path': temp_out_path}, 
+                        {'error': 'Invalid audio - zero samples'},
                         status=status.HTTP_400_BAD_REQUEST
                     )
+                    
+                if np.max(np.abs(samples)) < 0.01:  # Silent audio threshold
+                    logger.warning(f"Silent audio detected in {temp_out_path}")
+                    return Response(
+                        {'error': 'Silent audio detected'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                    
             except Exception as e:
-                logger.error(f"Audio loading failed: {str(e)}")
+                logger.error(f"Audio processing failed: {str(e)}\nFile: {temp_out_path}")
                 return Response(
                     {'error': 'Audio processing failed', 'detail': str(e)},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
