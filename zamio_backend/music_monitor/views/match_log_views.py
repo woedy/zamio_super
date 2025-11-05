@@ -418,22 +418,33 @@ def upload_audio_match(request):
                 temp_out_path = temp_out.name
 
             try:
+                logger.info(f"Converting {temp_in_path} to WAV using ffmpeg")
                 (
                     ffmpeg
                     .input(temp_in_path)
                     .output(temp_out_path, f='wav', ar=44100, ac=1)
                     .overwrite_output()
-                    .run(quiet=True)
+                    .run(quiet=True, capture_stdout=True, capture_stderr=True)
                 )
-            except Exception:
+                logger.info(f"FFmpeg conversion successful: {temp_out_path}")
+            except ffmpeg.Error as e:
+                logger.error(f"FFmpeg conversion failed: {e.stderr.decode() if e.stderr else str(e)}")
                 # Fallback to original content if decode fails
                 temp_out_path = temp_in_path
+                logger.warning(f"Using original file format: {temp_in_path}")
+            except Exception as e:
+                logger.error(f"Unexpected error during ffmpeg conversion: {str(e)}", exc_info=True)
+                # Fallback to original content if decode fails
+                temp_out_path = temp_in_path
+                logger.warning(f"Using original file format: {temp_in_path}")
 
             # Audio processing with enhanced error handling
             samples = None
             sr = None
             try:
+                logger.info(f"Loading audio from {temp_out_path}")
                 samples, sr = librosa.load(temp_out_path, sr=44100, mono=True)
+                logger.info(f"Audio loaded: {len(samples)} samples at {sr}Hz")
                 
                 if len(samples) == 0:
                     logger.error(f"Empty audio file: {temp_out_path}")
@@ -455,7 +466,7 @@ def upload_audio_match(request):
                     # Continue processing silent audio instead of rejecting
                     
             except Exception as e:
-                logger.error(f"Audio processing failed: {str(e)}\nFile: {temp_out_path}")
+                logger.error(f"Audio loading failed: {str(e)}\nFile: {temp_out_path}", exc_info=True)
                 # Clean up before returning
                 try:
                     os.remove(temp_in_path)
@@ -463,7 +474,7 @@ def upload_audio_match(request):
                 except Exception:
                     pass
                 return Response(
-                    {'error': 'Audio processing failed', 'detail': str(e)},
+                    {'error': 'Audio loading failed', 'detail': str(e)},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
 
@@ -484,20 +495,23 @@ def upload_audio_match(request):
             # Collect all known fingerprints
             fingerprints = Fingerprint.objects.select_related('track').values_list('track_id', 'hash', 'offset')
             fingerprints = list(fingerprints)
+            logger.info(f"Loaded {len(fingerprints)} fingerprints from database")
 
             try:
+                logger.info(f"Starting fingerprint matching with {len(samples)} samples")
                 result = simple_match_mp3(samples, sr, fingerprints)
+                logger.info(f"Fingerprint matching completed: {result}")
                 processing_finished = timezone.now()
                 processing_time_ms = int((processing_finished - processing_started).total_seconds() * 1000)
             except Exception as e:
-                logger.error(f"Fingerprinting failed: {str(e)}")
+                logger.error(f"Fingerprinting failed: {str(e)}", exc_info=True)
                 # Clean up temp files
                 try:
                     os.remove(temp_in_path)
                     os.remove(temp_out_path)
                 except Exception:
                     pass
-                return Response({'error': 'Audio processing failed'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                return Response({'error': 'Fingerprinting failed', 'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
             # Fingerprinting complete - clean up temp files
             try:
@@ -626,9 +640,9 @@ def upload_audio_match(request):
                 return Response(response_payload, status=status.HTTP_200_OK)
 
         except Exception as e:
-            logger.error(f"Audio processing failed: {str(e)}")
-            return Response({'error': 'Audio processing failed'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.error(f"Audio processing failed (outer try): {str(e)}", exc_info=True)
+            return Response({'error': 'Audio processing failed', 'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     except Exception as e:
-        logger.error(f"Audio processing failed: {str(e)}")
-        return Response({'error': 'Audio processing failed'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        logger.error(f"Audio processing failed (outermost try): {str(e)}", exc_info=True)
+        return Response({'error': 'Audio processing failed', 'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
