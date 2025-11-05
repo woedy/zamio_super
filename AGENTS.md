@@ -17,9 +17,15 @@
 - **Royalty Accounting** `RoyaltyCycle`, `RoyaltyLineItem`, `PartnerRemittance`, and `RoyaltyDistribution` orchestrate calculations, statements, and payments (including currency exchange via `CurrencyExchangeRate`).
 - **Financial Controls** `RoyaltyWithdrawal` enforces authority validation for artists, publishers, and admins requesting payouts.
 
+### Mobile Fallback Initiative
+- **Goal** Provide reliable coverage for partner stations that broadcast over the air (with no public stream) or suffer unstable connectivity by pairing the in-studio Flutter capture app with the primary ingestion pipeline.
+- **Capture Loop** `OfflineCaptureService` schedules short AAC clips from the studio environment, persists them locally with metadata for both online and offline sync, and forwards them through `SyncService` to `/api/music-monitor/stream/upload/`.
+- **Backend Alignment** `SnippetIngest` deduplicates incoming chunks while `MatchCache` stores high-confidence matches; new telemetry requirements should flow into `AudioDetection` (or related tables) so fallback captures mirror stream-based detections regardless of how the audio originated.
+- **Working Agreement** Keep the Fallback backlog in `MOBILE_STREAM.md`. Update both this file and the backlog whenever scope or acceptance criteria evolve.
+
 ## Frontend Surfaces
 - **React SPAs** Each SPA (admin, station, publisher, frontend) uses Vite + React 18 + Tailwind, and consumes shared components from `packages/ui/src/`.
-- **Flutter Capture App** `zamio_app/` serves broadcast stations lacking stream endpoints. It authenticates station operators, runs continuous/interval microphone capture via `OfflineCaptureService`, queues AAC chunks locally with storage safeguards, and pushes them to backend upload endpoints for fingerprinting.
+- **Flutter Capture App** `zamio_app/` lives inside partner studios to cover stations that broadcast via terrestrial radio/TV (with or without an online stream). It authenticates station operators, runs continuous/interval microphone capture via `OfflineCaptureService`, queues AAC chunks locally with storage safeguards (even when temporarily offline), and pushes them to backend upload endpoints for fingerprinting once connectivity is available.
 
 ## Integration Approach
 - **Phased Delivery** Follow the sequence defined in `implementation.md`: Authentication → Onboarding → Dashboard → In-App Activities. Treat the completion of email verification as the trigger for immediately launching the onboarding journey in every client.
